@@ -1,0 +1,9 @@
+max_io_fraction,mode,min_quantum_ms
+0.5,one_way_or_full_duplex_lower_bound,906.808
+0.5,serialized_evict_plus_load,1813.616
+0.2,one_way_or_full_duplex_lower_bound,3627.232
+0.2,serialized_evict_plus_load,7254.464
+0.1,one_way_or_full_duplex_lower_bound,8161.272
+0.1,serialized_evict_plus_load,16322.545
+0.05,one_way_or_full_duplex_lower_bound,17229.353
+0.05,serialized_evict_plus_load,34458.705

@@ -1,0 +1,29 @@
+# Imported or downloaded source bundles. Their hashes are tracked separately.
+/ASLE.tar.gz
+/vendor/asle/
+/related_work/
+
+# Experiment outputs are immutable local artifacts, not source.
+/experiments/runs/
+/profiles/raw/
+/artifacts/
+
+# Python/build caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local environments and editor files.
+.venv/
+.env
+.idea/
+.vscode/
+*.swp
+

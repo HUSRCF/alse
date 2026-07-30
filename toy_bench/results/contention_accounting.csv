@@ -1,0 +1,13 @@
+scenario,currency,base_wall_ms,contended_wall_ms,slowdown,charge_ratio
+compute_victim_vs_bandwidth,wall,50.7369,55.7818,1.0994,1.0994
+compute_victim_vs_bandwidth,sm_time,50.7369,55.7818,1.0994,1.0994
+compute_victim_vs_bandwidth,fge_progress,50.7369,55.7818,1.0994,1.0
+compute_victim_vs_bandwidth,dominant_time,50.7369,55.7818,1.0994,1.0994
+streamed_victim_vs_bandwidth,wall,50.459,63.8681,1.2657,1.2657
+streamed_victim_vs_bandwidth,sm_time,50.459,63.8681,1.2657,1.2657
+streamed_victim_vs_bandwidth,fge_progress,50.459,63.8681,1.2657,1.0
+streamed_victim_vs_bandwidth,dominant_time,50.459,63.8681,1.2657,1.2657
+bandwidth_victim_vs_streamed,wall,6.0,7.6894,1.2816,1.2816
+bandwidth_victim_vs_streamed,sm_time,6.0,7.6894,1.2816,1.2816
+bandwidth_victim_vs_streamed,fge_progress,6.0,7.6894,1.2816,1.0
+bandwidth_victim_vs_streamed,dominant_time,6.0,7.6894,1.2816,1.0

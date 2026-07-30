@@ -1,0 +1,9 @@
+currency,slack_guard,optimistic_edf_feasible,urgent_deadline_misses,urgent_mean_latency_ms,urgent_max_latency_ms,video_finish_ms,video_max_no_progress_ms,makespan_ms
+wall,False,True,1,99.552,111.498,529.388,20.0,529.388
+sm_time,False,True,1,101.004,111.518,530.075,20.0,530.075
+fge_progress,False,True,1,101.705,111.463,530.914,20.0,530.914
+dominant_time,False,True,1,101.004,111.518,530.075,20.0,530.075
+wall,True,True,0,93.527,111.754,530.295,20.0,530.295
+sm_time,True,True,0,93.164,113.162,531.482,20.0,531.482
+fge_progress,True,True,0,93.245,113.478,531.469,20.0,531.469
+dominant_time,True,True,0,93.164,113.162,531.482,20.0,531.482

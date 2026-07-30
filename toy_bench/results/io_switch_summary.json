@@ -1,0 +1,23 @@
+{
+  "assumptions": {
+    "pcie_generation": 4,
+    "lanes": 16,
+    "payload_efficiency": 0.7,
+    "state_size_decimal_gb_per_direction": 20.0,
+    "full_duplex_overlap_assumes_independent_H2D_and_D2H_capacity": true
+  },
+  "bandwidth": {
+    "theoretical_payload_gbps_per_direction": 31.5077,
+    "effective_gbps_per_direction": 22.0554
+  },
+  "switch_cost": {
+    "one_way_decimal_gb_ms": 906.808,
+    "one_way_if_input_means_gib_ms": 973.678,
+    "evict_and_load_serialized_ms": 1813.616,
+    "evict_and_load_ideal_full_duplex_lower_bound_ms": 906.808
+  },
+  "interpretation": {
+    "per_step_rotation": "Infeasible when every rotation transfers the full state; the I/O setup time dominates millisecond-scale denoising quanta.",
+    "scheduler": "Treat transition I/O as a sequence-dependent setup cost and rotate finely only inside the currently resident set."
+  }
+}

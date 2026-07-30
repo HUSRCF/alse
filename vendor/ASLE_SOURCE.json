@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "source_archive": "ASLE.tar.gz",
+  "archive_sha256": "5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d",
+  "archive_size_bytes": 31479528,
+  "archive_top_level": "ASLE",
+  "imported_path": "vendor/asle",
+  "imported_file_count": 347,
+  "imported_tree_sha256": "380cbf15baf36e741e4b32758c8ce48b11413f3bc41364a33ce3bb6c894a2afb",
+  "imported_at": "2026-07-30T13:45:23-05:00",
+  "policy": "Immutable baseline. Do not edit files below vendor/asle; implement new work in src/burstserve."
+}

@@ -1,0 +1,15 @@
+{
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "torch": "2.11.0+cu130",
+  "bytes_per_direction": 1073741824,
+  "repetitions": 8,
+  "cpu_affinity": "NUMA-local CPU 32 for GPU 1",
+  "h2d_median_ms": 50.822,
+  "h2d_gbps": 21.1273,
+  "d2h_median_ms": 47.329,
+  "d2h_gbps": 22.6866,
+  "duplex_median_ms": 100.914,
+  "duplex_aggregate_gbps": 21.2803,
+  "duplex_each_direction_gbps": 10.6401,
+  "note": "Pinned 1 GiB PyTorch copies. Duplex launches H2D and D2H on separate CUDA streams."
+}

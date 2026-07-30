@@ -1,0 +1,226 @@
+{
+  "max_quota_charge_bias": {
+    "wall": 3.4691,
+    "sm_time": 0.65,
+    "fge_progress": 0.0,
+    "dominant_time": 0.1173
+  },
+  "max_contention_charge_bias": {
+    "wall": 0.2816,
+    "sm_time": 0.2816,
+    "fge_progress": 0.0,
+    "dominant_time": 0.2657
+  },
+  "boost_rotation": [
+    {
+      "currency": "wall",
+      "epochs": 2000,
+      "compute_progress_share": 0.4627,
+      "streamed_progress_share": 0.5373,
+      "progress_jain": 0.9945,
+      "compute_sm_share": 0.5,
+      "streamed_sm_share": 0.5,
+      "compute_dominant_share": 0.5,
+      "streamed_dominant_share": 0.5,
+      "compute_boost_epochs": 1000,
+      "streamed_boost_epochs": 1000,
+      "total_fge_progress_ms": 1950.81
+    },
+    {
+      "currency": "sm_time",
+      "epochs": 2000,
+      "compute_progress_share": 0.4627,
+      "streamed_progress_share": 0.5373,
+      "progress_jain": 0.9945,
+      "compute_sm_share": 0.5,
+      "streamed_sm_share": 0.5,
+      "compute_dominant_share": 0.5,
+      "streamed_dominant_share": 0.5,
+      "compute_boost_epochs": 1000,
+      "streamed_boost_epochs": 1000,
+      "total_fge_progress_ms": 1950.81
+    },
+    {
+      "currency": "fge_progress",
+      "epochs": 2000,
+      "compute_progress_share": 0.5001,
+      "streamed_progress_share": 0.4999,
+      "progress_jain": 1.0,
+      "compute_sm_share": 0.5363,
+      "streamed_sm_share": 0.4637,
+      "compute_dominant_share": 0.5363,
+      "streamed_dominant_share": 0.4637,
+      "compute_boost_epochs": 1145,
+      "streamed_boost_epochs": 855,
+      "total_fge_progress_ms": 1946.91
+    },
+    {
+      "currency": "dominant_time",
+      "epochs": 2000,
+      "compute_progress_share": 0.4627,
+      "streamed_progress_share": 0.5373,
+      "progress_jain": 0.9945,
+      "compute_sm_share": 0.5,
+      "streamed_sm_share": 0.5,
+      "compute_dominant_share": 0.5,
+      "streamed_dominant_share": 0.5,
+      "compute_boost_epochs": 1000,
+      "streamed_boost_epochs": 1000,
+      "total_fge_progress_ms": 1950.81
+    }
+  ],
+  "predictor_bias_sensitivity": [
+    {
+      "streamed_accounting_scale": 0.7,
+      "compute_actual_progress_share": 0.4119,
+      "streamed_actual_progress_share": 0.5881,
+      "progress_jain": 0.9699,
+      "compute_boost_epochs": 802,
+      "streamed_boost_epochs": 1198
+    },
+    {
+      "streamed_accounting_scale": 0.8,
+      "compute_actual_progress_share": 0.4444,
+      "streamed_actual_progress_share": 0.5556,
+      "progress_jain": 0.9878,
+      "compute_boost_epochs": 929,
+      "streamed_boost_epochs": 1071
+    },
+    {
+      "streamed_accounting_scale": 0.9,
+      "compute_actual_progress_share": 0.4738,
+      "streamed_actual_progress_share": 0.5262,
+      "progress_jain": 0.9973,
+      "compute_boost_epochs": 1043,
+      "streamed_boost_epochs": 957
+    },
+    {
+      "streamed_accounting_scale": 1.0,
+      "compute_actual_progress_share": 0.5001,
+      "streamed_actual_progress_share": 0.4999,
+      "progress_jain": 1.0,
+      "compute_boost_epochs": 1145,
+      "streamed_boost_epochs": 855
+    },
+    {
+      "streamed_accounting_scale": 1.1,
+      "compute_actual_progress_share": 0.5239,
+      "streamed_actual_progress_share": 0.4761,
+      "progress_jain": 0.9977,
+      "compute_boost_epochs": 1237,
+      "streamed_boost_epochs": 763
+    },
+    {
+      "streamed_accounting_scale": 1.2,
+      "compute_actual_progress_share": 0.5454,
+      "streamed_actual_progress_share": 0.4546,
+      "progress_jain": 0.9918,
+      "compute_boost_epochs": 1320,
+      "streamed_boost_epochs": 680
+    },
+    {
+      "streamed_accounting_scale": 1.3,
+      "compute_actual_progress_share": 0.5652,
+      "streamed_actual_progress_share": 0.4348,
+      "progress_jain": 0.9833,
+      "compute_boost_epochs": 1396,
+      "streamed_boost_epochs": 604
+    }
+  ],
+  "burst_deadline": [
+    {
+      "currency": "wall",
+      "slack_guard": false,
+      "optimistic_edf_feasible": true,
+      "urgent_deadline_misses": 1,
+      "urgent_mean_latency_ms": 99.552,
+      "urgent_max_latency_ms": 111.498,
+      "video_finish_ms": 529.388,
+      "video_max_no_progress_ms": 20.0,
+      "makespan_ms": 529.388
+    },
+    {
+      "currency": "sm_time",
+      "slack_guard": false,
+      "optimistic_edf_feasible": true,
+      "urgent_deadline_misses": 1,
+      "urgent_mean_latency_ms": 101.004,
+      "urgent_max_latency_ms": 111.518,
+      "video_finish_ms": 530.075,
+      "video_max_no_progress_ms": 20.0,
+      "makespan_ms": 530.075
+    },
+    {
+      "currency": "fge_progress",
+      "slack_guard": false,
+      "optimistic_edf_feasible": true,
+      "urgent_deadline_misses": 1,
+      "urgent_mean_latency_ms": 101.705,
+      "urgent_max_latency_ms": 111.463,
+      "video_finish_ms": 530.914,
+      "video_max_no_progress_ms": 20.0,
+      "makespan_ms": 530.914
+    },
+    {
+      "currency": "dominant_time",
+      "slack_guard": false,
+      "optimistic_edf_feasible": true,
+      "urgent_deadline_misses": 1,
+      "urgent_mean_latency_ms": 101.004,
+      "urgent_max_latency_ms": 111.518,
+      "video_finish_ms": 530.075,
+      "video_max_no_progress_ms": 20.0,
+      "makespan_ms": 530.075
+    },
+    {
+      "currency": "wall",
+      "slack_guard": true,
+      "optimistic_edf_feasible": true,
+      "urgent_deadline_misses": 0,
+      "urgent_mean_latency_ms": 93.527,
+      "urgent_max_latency_ms": 111.754,
+      "video_finish_ms": 530.295,
+      "video_max_no_progress_ms": 20.0,
+      "makespan_ms": 530.295
+    },
+    {
+      "currency": "sm_time",
+      "slack_guard": true,
+      "optimistic_edf_feasible": true,
+      "urgent_deadline_misses": 0,
+      "urgent_mean_latency_ms": 93.164,
+      "urgent_max_latency_ms": 113.162,
+      "video_finish_ms": 531.482,
+      "video_max_no_progress_ms": 20.0,
+      "makespan_ms": 531.482
+    },
+    {
+      "currency": "fge_progress",
+      "slack_guard": true,
+      "optimistic_edf_feasible": true,
+      "urgent_deadline_misses": 0,
+      "urgent_mean_latency_ms": 93.245,
+      "urgent_max_latency_ms": 113.478,
+      "video_finish_ms": 531.469,
+      "video_max_no_progress_ms": 20.0,
+      "makespan_ms": 531.469
+    },
+    {
+      "currency": "dominant_time",
+      "slack_guard": true,
+      "optimistic_edf_feasible": true,
+      "urgent_deadline_misses": 0,
+      "urgent_mean_latency_ms": 93.164,
+      "urgent_max_latency_ms": 113.162,
+      "video_finish_ms": 531.482,
+      "video_max_no_progress_ms": 20.0,
+      "makespan_ms": 531.482
+    }
+  ],
+  "interpretation": {
+    "fge_progress": "Best invariant service currency: completed work receives the same charge across SM quotas and residual contention.",
+    "sm_time": "Correct currency for allocated compute-resource fairness, but not for equal completed progress when scaling is nonlinear.",
+    "dominant_time": "Useful as a separate resource/admission ledger for bandwidth-heavy or PCIe-heavy jobs.",
+    "wall": "Overcharges slowed victims and ignores how much spatial GPU capacity was assigned; unsuitable as the primary virtual-service currency."
+  }
+}

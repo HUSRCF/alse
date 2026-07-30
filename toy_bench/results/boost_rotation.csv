@@ -1,0 +1,5 @@
+currency,epochs,compute_progress_share,streamed_progress_share,progress_jain,compute_sm_share,streamed_sm_share,compute_dominant_share,streamed_dominant_share,compute_boost_epochs,streamed_boost_epochs,total_fge_progress_ms
+wall,2000,0.4627,0.5373,0.9945,0.5,0.5,0.5,0.5,1000,1000,1950.81
+sm_time,2000,0.4627,0.5373,0.9945,0.5,0.5,0.5,0.5,1000,1000,1950.81
+fge_progress,2000,0.5001,0.4999,1.0,0.5363,0.4637,0.5363,0.4637,1145,855,1946.91
+dominant_time,2000,0.4627,0.5373,0.9945,0.5,0.5,0.5,0.5,1000,1000,1950.81
