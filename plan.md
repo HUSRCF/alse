@@ -9,10 +9,10 @@
 - Last accepted evidence: baseline 与 same-mode correctness 均通过；专用 `burstserve-phase0` 环境的 25+52 包 relocatable lock exact-match；其 stock trials 2/3 跨 GPU latent SHA 完全一致且与原栈相同；14 个 run 中 12 accepted、2 legacy completed；45 项测试双解释器通过
 - Active blockers: 尚未完成第二 GPU SKU 的外部预约；从锁重建的干净 conda base 已成功，但数 GB pip wheelhouse 按高带宽机下载约定待回传后完成 offline-install 验证
 - Next three actions:
-  1. 提交专用环境 snapshot、lock verification 和 correctness repeat 证据
-  2. 获取并固定 libsmctrl 论文作者的最新 upstream；实现 CUDA 13.3 fail-closed SM-ID probe
+  1. 完成并运行 CUDA 13.3 fail-closed native/Python SM-ID baseline probe
+  2. 在隔离进程中验证 upstream global/next callback，再决定是否进入 stream-offset adaptation
   3. 明确第二 SKU 预约证据并回传 wheelhouse；满足后关闭 Phase 0
-- Latest run IDs / commit: commit `e94474e`；dedicated stock repeats `bs1-26ed3d2…3fb3`/`bs1-2289516…f334`；原 offload repeats `bs1-67ddcaf…cfab3`/`bs1-17ac978…b69d`
+- Latest run IDs / commit: commit `8041eb5`；dedicated stock repeats `bs1-26ed3d2…3fb3`/`bs1-2289516…f334`；libsmctrl upstream pinned `c250928…fcb7`
 
 ## 一、目标与最终验收标准
 
@@ -487,9 +487,14 @@ $$
   pass/fail。
 - 2026-07-30：RTX 4090 上 libsmctrl 的控制粒度按 TPC（通常 2 SM）建模，
   不再使用“任意指定 SM”表述；每张卡必须用 SM-ID histogram 建立实际映射。
-- 2026-07-30：本机 `cuDriverGetVersion=13030`，公共 libsmctrl 仅覆盖到
-  CUDA 12.2，BulletServe 内嵌版本覆盖到 12.8；未知版本必须 fail closed，
-  禁止把未生效 mask 误判为成功。
+- 2026-07-30：本机 `cuDriverGetVersion=13030`；早期 GitHub fork 的
+  stream offset 仅覆盖到 CUDA 12.2，作者 upstream 与 BulletServe 内嵌
+  版本覆盖到 12.8；未知版本必须 fail closed，禁止把未生效 mask 误判为
+  成功。
+- 2026-07-30：以作者维护的
+  `http://rtsrv.cs.unc.edu/cgit/cgit.cgi/libsmctrl.git` 为 Gate A upstream，
+  固定 commit `c250928…fcb7` 为 immutable Git submodule；该版本的 x86
+  stream switch 最高为 CUDA 12.8 (`12080`)，对本机 `13030` 仍不支持。
 
 ## 八、Compaction Checkpoints
 
@@ -539,3 +544,9 @@ $$
   SHA 均为 `364b6fa3…a9d`，与原 `aris-vllm` stock correctness SHA
   相同，same-mode comparison `verdict=pass`。刷新聚合为 14 runs：
   12 accepted、2 legacy completed、0 failed/incomplete。
+- 2026-07-30 / gate-a0-source-pin：论文作者 upstream 已固定为 submodule
+  `vendor/libsmctrl@c250928…fcb7`，关键源码 SHA 与兼容性事实记录于
+  `vendor/LIBSMCTRL_SOURCE.json`。本机 driver API `13030`，而 upstream
+  stream cases 最高 `12080`；因此任何 masked probe 默认 fail closed。
+  当前仅推进无 mask baseline 与隔离的 callback 语义探针，不直接猜测或写入
+  CUDA 13.3 stream offset。

@@ -18,4 +18,5 @@ mkdir -p "$wheelhouse"
   --requirement "$requirements" \
   --dest "$wheelhouse"
 
+(cd "$wheelhouse" && sha256sum ./*.whl | sort -k2 > SHA256SUMS)
 echo "wheelhouse ready: $wheelhouse"

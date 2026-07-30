@@ -1,0 +1,19 @@
+{
+  "schema_version": "burstserve.libsmctrl-source/v1",
+  "source_url": "http://rtsrv.cs.unc.edu/cgit/cgit.cgi/libsmctrl.git",
+  "source_commit": "c250928930cb5c95bffc878913301f9a5d4efcb7",
+  "retrieved_on": "2026-07-30",
+  "path": "vendor/libsmctrl",
+  "files": {
+    "README.md": "97fa06bfb130a5a08f31594c0a7650c89a3ff9f7d20ed368b6b26d9cc2f8445d",
+    "libsmctrl.c": "e15b56bdecd654c27f1ec2cc307737560de620bd802cd6373b4d480b5f1c3f76",
+    "libsmctrl.h": "1a63169f883e4a22b2d63b13a580759cfb6dae7328bd619a1c7977315e16cea8"
+  },
+  "compatibility": {
+    "upstream_readme_cuda_range": "6.5 through 12.6",
+    "latest_x86_64_stream_case": 12080,
+    "target_driver_api_version": 13030,
+    "target_stream_mask_status": "unsupported-until-semantically-probed"
+  },
+  "policy": "Immutable upstream submodule. Never patch this checkout; keep BurstServe guards, probes, and any offset adaptation outside vendor/libsmctrl."
+}

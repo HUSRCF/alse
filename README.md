@@ -45,6 +45,8 @@ scripts/download_phase0_wheelhouse.sh \
 After transferring that directory to this host, complete the offline install:
 
 ```bash
+(cd artifacts/phase0-wheelhouse && sha256sum -c SHA256SUMS)
+
 /data/zhuoxu/miniconda3/envs/burstserve-phase0-locked/bin/python \
   -m pip install --no-index --find-links artifacts/phase0-wheelhouse \
   --no-deps --requirement environments/phase0/pip-requirements.txt
