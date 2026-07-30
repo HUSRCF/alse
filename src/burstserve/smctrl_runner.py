@@ -945,6 +945,7 @@ def execute(
         experimental_mask_off=experimental_mask_off,
     )
     revision = source_revision(repo_root, libsmctrl_root)
+    build_record = native_build_record(binary)
     environment = capture_probe_environment(
         repo_root=repo_root,
         selected_gpu_uuid=str(gpu_preflight["uuid"]),
@@ -998,6 +999,10 @@ def execute(
         "busy_override_recorded_in_config": (
             config.get("allow_busy_gpu") is allow_busy_gpu
         ),
+        "source_tree_is_clean_commit": (
+            "+dirty-" not in revision and "unavailable" not in revision
+        ),
+        "native_build_stamp_is_present": build_record.get("found") is True,
     }
     preflight_permitted = (
         driver_policy_permitted
@@ -1025,7 +1030,7 @@ def execute(
                 "path": str(binary),
                 "sha256": _sha256_file(binary),
             },
-            "native_build": native_build_record(binary),
+            "native_build": build_record,
         }
     )
     manifest = RunManifest.create(

@@ -502,6 +502,10 @@ class ExecuteTest(unittest.TestCase):
             binary = root / "build" / "smctrl_probe" / "smid_probe"
             binary.parent.mkdir(parents=True)
             binary.write_bytes(b"fake")
+            (binary.parent / "build-config.stamp").write_text(
+                "test build\n",
+                encoding="utf-8",
+            )
             libsmctrl = root / "vendor" / "libsmctrl"
             libsmctrl.mkdir(parents=True)
 
@@ -581,6 +585,10 @@ class ExecuteTest(unittest.TestCase):
             binary = root / "build" / "smctrl_probe" / "smid_probe"
             binary.parent.mkdir(parents=True)
             binary.write_bytes(b"fake")
+            (binary.parent / "build-config.stamp").write_text(
+                "test build\n",
+                encoding="utf-8",
+            )
             libsmctrl = root / "vendor" / "libsmctrl"
             libsmctrl.mkdir(parents=True)
             fake_process = _FakeProcess(json.dumps(native) + "\n", "diagnostic\n")
