@@ -22,7 +22,9 @@ from .provenance import (
 )
 
 
-DEFAULT_PYTHON = Path("/data/zhuoxu/miniconda3/envs/aris-vllm/bin/python")
+DEFAULT_PYTHON = Path(
+    "/data/zhuoxu/miniconda3/envs/burstserve-phase0/bin/python"
+)
 DEFAULT_MODEL_ROOT = Path("/data/zhuoxu/models")
 DEFAULT_VENDOR_ROOT = Path("vendor/asle")
 DEFAULT_RUN_ROOT = Path("experiments/runs")

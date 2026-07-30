@@ -7,13 +7,14 @@ name = "burstserve"
 version = "0.1.0"
 description = "Deadline-aware virtual-service scheduling for malleable diffusion workloads"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["packaging>=24"]
 
 [project.scripts]
 burstserve-correctness = "burstserve.correctness_runner:main"
 burstserve-run-asle = "burstserve.asle_runner:main"
 burstserve-aggregate-results = "burstserve.results:main"
 burstserve-capture-environment = "burstserve.environment:main"
+burstserve-runtime-lock = "burstserve.runtime_lock:main"
 burstserve-vendor-asle = "burstserve.vendor_import:main"
 
 [tool.setuptools]

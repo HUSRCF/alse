@@ -3,16 +3,63 @@
 This workspace is implementing the staged roadmap in [`plan.md`](plan.md) for
 deadline-aware virtual-service scheduling of bursty diffusion workloads.
 
-The current implementation is in Phase 0. The original ASLE source is imported
+The current implementation is closing Phase 0. The original ASLE source is imported
 under `vendor/asle` and identified by `vendor/ASLE_SOURCE.json`; new work belongs
 under `src/burstserve`.
+
+## Locked Phase-0 runtime
+
+The project runtime is `/data/zhuoxu/miniconda3/envs/burstserve-phase0`. Its
+relocatable contract is tracked in `environments/phase0/runtime-lock.json`.
+The two installer inputs contain 25 exact conda artifacts and the 52-package
+non-extra dependency closure of Torch, Diffusers, Transformers, Accelerate,
+NumPy, Pillow, Safetensors, and SentencePiece.
+
+Verify the active project runtime without changing it:
+
+```bash
+PYTHONPATH=src \
+/data/zhuoxu/miniconda3/envs/burstserve-phase0/bin/python \
+  -m burstserve.runtime_lock verify \
+  --repo-root "$PWD" \
+  --lock environments/phase0/runtime-lock.json
+```
+
+To reconstruct it, create the Python base first:
+
+```bash
+/data/zhuoxu/miniconda3/bin/conda create -y \
+  -p /data/zhuoxu/miniconda3/envs/burstserve-phase0-locked \
+  --file environments/phase0/conda-explicit.txt
+```
+
+The CUDA/PyTorch wheels are several GB. On a high-bandwidth Linux x86_64
+machine with Python 3.11, download the exact wheelhouse with:
+
+```bash
+scripts/download_phase0_wheelhouse.sh \
+  "$PWD" \
+  "$PWD/artifacts/phase0-wheelhouse"
+```
+
+After transferring that directory to this host, complete the offline install:
+
+```bash
+/data/zhuoxu/miniconda3/envs/burstserve-phase0-locked/bin/python \
+  -m pip install --no-index --find-links artifacts/phase0-wheelhouse \
+  --no-deps --requirement environments/phase0/pip-requirements.txt
+```
+
+Then rerun the lock verifier with the reconstructed interpreter.
 
 ## Phase-0 checks
 
 Run the standard-library test suite:
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+PYTHONPATH=src \
+/data/zhuoxu/miniconda3/envs/burstserve-phase0/bin/python \
+  -m unittest discover -s tests -v
 ```
 
 Verify that the imported baseline still matches its source archive:
@@ -27,7 +74,7 @@ Capture the active runtime and hardware:
 
 ```bash
 PYTHONPATH=src \
-/data/zhuoxu/miniconda3/envs/aris-vllm/bin/python \
+/data/zhuoxu/miniconda3/envs/burstserve-phase0/bin/python \
   -m burstserve.environment \
   --repo-root "$PWD" \
   --model-root /data/zhuoxu/models \
@@ -38,7 +85,7 @@ Run the deterministic tiny ASLE control cell on an idle physical GPU:
 
 ```bash
 PYTHONPATH=src \
-/data/zhuoxu/miniconda3/envs/aris-vllm/bin/python \
+/data/zhuoxu/miniconda3/envs/burstserve-phase0/bin/python \
   -m burstserve.asle_runner \
   --repo-root "$PWD" \
   --physical-gpu 1 \
@@ -55,7 +102,7 @@ Capture a real final latent for repeatability or cross-mode comparison:
 
 ```bash
 PYTHONPATH=src \
-/data/zhuoxu/miniconda3/envs/aris-vllm/bin/python \
+/data/zhuoxu/miniconda3/envs/burstserve-phase0/bin/python \
   -m burstserve.correctness_runner run \
   --repo-root "$PWD" \
   --physical-gpu 1 \
@@ -84,7 +131,6 @@ PYTHONPATH=src python3 -m burstserve.results \
   --output experiments/aggregates/phase0_runs.json
 ```
 
-All model execution is offline. The first smoke uses the provisional
-`aris-vllm` environment (Python 3.11, Torch 2.11/CUDA 13.0, Diffusers 0.38);
-its exact package inventory is embedded in the environment snapshot and every
-run manifest.
+All model execution is offline. The locked runtime uses Python 3.11.15, Torch
+2.11.0+cu130, Diffusers 0.38.0, and Transformers 5.12.1. Its exact package
+inventory is embedded in the environment snapshot and every run manifest.

@@ -316,6 +316,20 @@ def write_json_atomic(path: str | os.PathLike[str], value: Any) -> None:
     _write_bytes_atomic(Path(path), _json_payload(value))
 
 
+def write_text_atomic(path: str | os.PathLike[str], value: str) -> None:
+    """Atomically replace *path* with UTF-8 text.
+
+    Callers must provide their desired trailing newline explicitly.  This is
+    useful for machine-generated lock and configuration files that are not
+    JSON, while retaining the same crash-safety guarantees as experiment
+    provenance.
+    """
+
+    if not isinstance(value, str):
+        raise TypeError("value must be a string")
+    _write_bytes_atomic(Path(path), value.encode("utf-8"))
+
+
 def write_jsonl_atomic(
     path: str | os.PathLike[str],
     records: Iterable[Any],

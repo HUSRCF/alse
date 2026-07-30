@@ -21,6 +21,7 @@ from burstserve.provenance import (
     read_jsonl,
     write_json_atomic,
     write_jsonl_atomic,
+    write_text_atomic,
 )
 
 
@@ -117,6 +118,15 @@ class EventRecordTest(unittest.TestCase):
 
 
 class AtomicOutputTest(unittest.TestCase):
+    def test_atomic_text_preserves_explicit_newline_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "nested" / "runtime.lock"
+
+            write_text_atomic(path, "first\nsecond\n")
+
+            self.assertEqual(path.read_text(), "first\nsecond\n")
+            self.assertEqual(list(path.parent.glob(f".{path.name}.*.tmp")), [])
+
     def test_atomic_json_round_trip_and_canonical_format(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "nested" / "manifest.json"

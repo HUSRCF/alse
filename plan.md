@@ -6,13 +6,13 @@
 - Current phase: 第 1 周——工程基线与可复现环境
 - Current gate: Phase 0 baseline reproducibility
 - Status: in_progress
-- Last accepted evidence: 修正后的 `stepswap`/`offload_tiled` smoke 与默认 49-frame seeds 0/1/2 均通过；stock 与 `offload_tiled` 各自跨 GPU 重复的 latent SHA 完全一致；12 个 Phase-0 run 中 10 个按新语义规则 accepted、2 个旧格式 completed；39 项测试通过
-- Active blockers: 尚未完成第二 GPU SKU 的外部预约；当前 `aris-vllm` 环境已有完整快照但仍需落盘最小复现锁并验证
+- Last accepted evidence: baseline 与 same-mode correctness 均通过；专用 `burstserve-phase0` 环境已经建立，25 个 conda artifact + 52 个必要 pip distribution 的 relocatable lock exact-match；45 项测试在系统与专用解释器中均通过
+- Active blockers: 尚未完成第二 GPU SKU 的外部预约；从锁重建的干净 conda base 已成功，但数 GB pip wheelhouse 按高带宽机下载约定待回传后完成 offline-install 验证
 - Next three actions:
-  1. 提交 Phase-0 correctness comparisons、刷新后的聚合与本 checkpoint
-  2. 落盘并验证最小 runtime lock/环境复现合同
-  3. 明确第二 SKU 预约证据；随后关闭 Phase 0 并开始 libsmctrl Gate A
-- Latest run IDs / commit: commit `f83b5ac`；stock repeats `bs1-23397e1…66b8`/`bs1-9f6d425…6840`；offload repeats `bs1-67ddcaf…cfab3`/`bs1-17ac978…b69d`
+  1. 提交 runtime-lock 实现，并在专用环境重跑 correctness smoke
+  2. 获取并固定 libsmctrl 论文作者的最新 upstream；实现 CUDA 13.3 fail-closed SM-ID probe
+  3. 明确第二 SKU 预约证据并回传 wheelhouse；满足后关闭 Phase 0
+- Latest run IDs / commit: commit `9b7b1c7`；stock repeats `bs1-23397e1…66b8`/`bs1-9f6d425…6840`；offload repeats `bs1-67ddcaf…cfab3`/`bs1-17ac978…b69d`
 
 ## 一、目标与最终验收标准
 
@@ -65,7 +65,8 @@
 - CogVideoX、FLUX、SDXL adapter 将完整 pipeline 拆成可恢复的显式 denoising-step 状态机。
 - 每个 adapter 暴露 `prepare()`、`run_step()`、`suspend()`、`resume()` 和 `finalize()`。
 - 需要空间并发时，由独立 worker thread 向专属 stream 发射 kernel，并以 CUDA event 汇合到 quantum 边界。
-- libsmctrl 为 stream 设置互不重叠的 SM mask。
+- libsmctrl 为 stream 设置互不重叠的 TPC mask，并由每卡 probe 映射到
+  实际 SM 集合；Ada 上不宣称任意单-SM 粒度。
 - 第一版不依赖 MPS 或多进程；多进程/MPS 只作为非核心扩展实验。
 
 ### 3. 核心数据类型
@@ -203,15 +204,16 @@ $$
 实现：
 
 - 依次尝试当前 upstream、兼容 CUDA userspace 环境、最小 offset 适配。
-- 编写 SM-ID probe kernel，验证 global、per-stream 和 next-launch mask。
+- 编写 SM-ID probe kernel，验证 global、per-stream 和 next-launch TPC
+  mask，并从单-bit 观测建立每卡 `TPC bit -> SM set` 映射。
 - 在同一 context 的两个 stream 上验证互斥 SM partition 和并发执行。
 - 测量 mask 更新、event boundary、kernel drain 和 cache 冷启动。
 - 固定 seed 比较 masked、unmasked、co-run 输出。
 
 验收 Gate A：
 
-- 所有 8 张 4090 均能检测到合法拓扑。
-- probe kernel 100% 只落在指定 SM 集合。
+- 所有 8 张 4090 均能检测到合法 SM/TPC 拓扑。
+- probe kernel 100% 只落在指定 TPC mask 经该卡实测映射得到的 SM 集合。
 - 10,000 次动态重配置无崩溃、越界或错误 mask。
 - native 更新 p99 不超过 100 μs。
 - deterministic correctness 不因 mask 或发射顺序破坏。
@@ -483,6 +485,11 @@ $$
 - 2026-07-30：同模式 correctness 使用 exact latent SHA 作为 Phase-0
   硬验收；跨模式只报告 fp64 数值差异，未预注册阈值前不得事后把差异解释为
   pass/fail。
+- 2026-07-30：RTX 4090 上 libsmctrl 的控制粒度按 TPC（通常 2 SM）建模，
+  不再使用“任意指定 SM”表述；每张卡必须用 SM-ID histogram 建立实际映射。
+- 2026-07-30：本机 `cuDriverGetVersion=13030`，公共 libsmctrl 仅覆盖到
+  CUDA 12.2，BulletServe 内嵌版本覆盖到 12.8；未知版本必须 fail closed，
+  禁止把未生效 mask 误判为成功。
 
 ## 八、Compaction Checkpoints
 
@@ -516,3 +523,13 @@ $$
   按冻结规则为 `report_only`。刷新后的聚合包含 12 个 run：10 accepted、
   2 legacy completed、0 failed/incomplete。Phase 0 尚不能标记 accepted：
   最小 runtime lock 的落盘验证和第二 SKU 外部预约证据仍缺失。
+- 2026-07-30 / phase0-runtime-lock：从已验证栈建立项目专用
+  `/data/zhuoxu/miniconda3/envs/burstserve-phase0`，锁位于
+  `environments/phase0/runtime-lock.json`；包含 25 个 exact conda URL
+  和 8 个根包解析出的 52 个 pip distribution，文本锁 SHA 分别为
+  `a4782192…1567`、`1f81112e…1a80`。专用环境 exact verification
+  `matches=true`，系统/专用解释器均为 45 tests passed。使用 conda 锁从零
+  创建 `burstserve-phase0-locked` base 已成功；pip 下载因当前链路仅约
+  2–3 MB/s 中止，按既定方式由高带宽机生成 wheelhouse 后再做 offline
+  reconstruction。Phase 0 仍因这项独立重建验证和第二 SKU 预约而
+  `in_progress`。

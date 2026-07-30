@@ -148,6 +148,11 @@ def _package_lock() -> dict[str, Any]:
         if conda
         else {"ok": False, "error": "conda executable not found"}
     )
+    result["conda_json"] = (
+        _run([str(conda), "list", "--json", "-p", str(prefix)])
+        if conda
+        else {"ok": False, "error": "conda executable not found"}
+    )
     return result
 
 
