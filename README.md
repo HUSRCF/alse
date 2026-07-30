@@ -51,6 +51,39 @@ every semantic cell a deterministic run ID, never overwrites a prior run, and
 stores its manifest, events, command, stdout, vendor logs, summary, and outcome
 under `experiments/runs/`.
 
+Capture a real final latent for repeatability or cross-mode comparison:
+
+```bash
+PYTHONPATH=src \
+/data/zhuoxu/miniconda3/envs/aris-vllm/bin/python \
+  -m burstserve.correctness_runner run \
+  --repo-root "$PWD" \
+  --physical-gpu 1 \
+  --mode stock \
+  --trial 0
+```
+
+Repeat with `--trial 1`, then compare the two returned run directories:
+
+```bash
+PYTHONPATH=src python3 -m burstserve.correctness_runner compare \
+  experiments/runs/<first-run-id> \
+  experiments/runs/<second-run-id> \
+  --output experiments/aggregates/stock_repeat.json
+```
+
+Same-mode repeats require exact latent SHA equality. Cross-mode comparisons
+report both hashes and float64 difference statistics but deliberately do not
+turn those numbers into an unregistered correctness threshold.
+
+Aggregate all complete, failed, timed-out, incomplete, and invalid runs:
+
+```bash
+PYTHONPATH=src python3 -m burstserve.results \
+  --run-root experiments/runs \
+  --output experiments/aggregates/phase0_runs.json
+```
+
 All model execution is offline. The first smoke uses the provisional
 `aris-vllm` environment (Python 3.11, Torch 2.11/CUDA 13.0, Diffusers 0.38);
 its exact package inventory is embedded in the environment snapshot and every

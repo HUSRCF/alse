@@ -6,13 +6,13 @@
 - Current phase: 第 1 周——工程基线与可复现环境
 - Current gate: Phase 0 baseline reproducibility
 - Status: in_progress
-- Last accepted evidence: tiny `stepswap` control 在 GPU1 通过（1 urgent/1 video，峰值 7.6128 GB）；首次 `offload_tiled` 揭示 1 秒 horizon 被 `on_load` 耗尽，0 video，已判为无效 smoke 而非伪通过；29 项测试通过
+- Last accepted evidence: 修正后的 `stepswap`/`offload_tiled` smoke 均通过；默认 49-frame baseline seeds 0/1/2 均无 OOM；seed 1 跨 GPU 重复得到相同 22 urgent/2 video 与 7.6286 GB 峰值；39 项测试通过
 - Active blockers: 无
 - Next three actions:
-  1. 提交 smoke 语义验收修复（10 秒窗口、0 video 返回非零）
-  2. 用修正后的同一 trace 重跑 `stepswap` 与 `offload_tiled`
-  3. 通过后扩展 seeds 0/1/2 的 Phase 0 baseline
-- Latest run IDs / commit: commit `ab6b4c0`; control `bs1-185ab7f…ab857`；无效 ASLE smoke `bs1-7d5de5f…659b4`
+  1. 提交 correctness runner、失败保留型聚合器与本 checkpoint
+  2. 在当前 4090 栈运行 stock latent trials 0/1，并做 exact SHA repeat comparison
+  3. 运行 `offload_tiled` latent cell，报告与 stock 的 fp64 数值差异
+- Latest run IDs / commit: commit `0afa8ad`；正式 seeds 0/1/2 为 `bs1-bac7ffa…ae0e`、`bs1-b036088…fbba`、`bs1-afc4d16…77e8`；seed 1 repeat `bs1-d938498…a9a`
 
 ## 一、目标与最终验收标准
 
@@ -477,6 +477,9 @@ $$
 - 2026-07-30：Phase 0 smoke 的语义验收必须同时满足
   `runnable=true`、`n_urgent>=1`、`n_video>=1`；原 driver 的进程 exit code
   和 `runnable` 不足以证明两类请求都执行。
+- 2026-07-30：ASLE 原 driver 将 arm setup 计入 arrival horizon；Phase 0
+  保留其行为用于 baseline provenance，但任何 steady-state 性能比较必须将
+  setup/warmup 与 service window 分离。
 
 ## 八、Compaction Checkpoints
 
@@ -492,3 +495,12 @@ $$
   1 urgent/0 video。根因是 arm 初始化计入 1 秒 horizon，触发 final-drain-only。
   默认 trace 改为 seed 1、horizon 10 s、lambda 0.1，仍确定只有一次 arrival；
   runner 新增语义验收，防止再次伪通过。
+- 2026-07-30 / phase0-default-baselines：修正后 tiny runs：
+  `stepswap bs1-7043686…c55a`（1 urgent/6 video）与
+  `offload_tiled bs1-b279da9…3d44`（1 urgent/1 video）均通过。默认
+  49-frame、30/8-step、120 s Poisson runs：
+  seed 0 为 18 urgent/2 video、seed 1 为 22/2、seed 2 为 16/2，全部
+  runnable 且峰值 7.6286 GB。seed 1 在 GPU2/GPU4 重复的 elapsed 为
+  149.2/149.1 s，urgent p50 为 3.281/3.242 s，p99 为 6.186/6.306 s。
+  聚合证据为 `experiments/aggregates/phase0_runs_20260730.json`；latent
+  correctness 尚待专用 runner 验收，不能以 timing repeat 替代。

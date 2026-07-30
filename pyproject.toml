@@ -10,7 +10,9 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
+burstserve-correctness = "burstserve.correctness_runner:main"
 burstserve-run-asle = "burstserve.asle_runner:main"
+burstserve-aggregate-results = "burstserve.results:main"
 burstserve-capture-environment = "burstserve.environment:main"
 burstserve-vendor-asle = "burstserve.vendor_import:main"
 
