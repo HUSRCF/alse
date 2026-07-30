@@ -6,13 +6,13 @@
 - Current phase: 第 1 周——工程基线与可复现环境
 - Current gate: Phase 0 baseline reproducibility
 - Status: in_progress
-- Last accepted evidence: 修正后的 `stepswap`/`offload_tiled` smoke 均通过；默认 49-frame baseline seeds 0/1/2 均无 OOM；seed 1 跨 GPU 重复得到相同 22 urgent/2 video 与 7.6286 GB 峰值；39 项测试通过
-- Active blockers: 无
+- Last accepted evidence: 修正后的 `stepswap`/`offload_tiled` smoke 与默认 49-frame seeds 0/1/2 均通过；stock 与 `offload_tiled` 各自跨 GPU 重复的 latent SHA 完全一致；12 个 Phase-0 run 中 10 个按新语义规则 accepted、2 个旧格式 completed；39 项测试通过
+- Active blockers: 尚未完成第二 GPU SKU 的外部预约；当前 `aris-vllm` 环境已有完整快照但仍需落盘最小复现锁并验证
 - Next three actions:
-  1. 提交 correctness runner、失败保留型聚合器与本 checkpoint
-  2. 在当前 4090 栈运行 stock latent trials 0/1，并做 exact SHA repeat comparison
-  3. 运行 `offload_tiled` latent cell，报告与 stock 的 fp64 数值差异
-- Latest run IDs / commit: commit `0afa8ad`；正式 seeds 0/1/2 为 `bs1-bac7ffa…ae0e`、`bs1-b036088…fbba`、`bs1-afc4d16…77e8`；seed 1 repeat `bs1-d938498…a9a`
+  1. 提交 Phase-0 correctness comparisons、刷新后的聚合与本 checkpoint
+  2. 落盘并验证最小 runtime lock/环境复现合同
+  3. 明确第二 SKU 预约证据；随后关闭 Phase 0 并开始 libsmctrl Gate A
+- Latest run IDs / commit: commit `f83b5ac`；stock repeats `bs1-23397e1…66b8`/`bs1-9f6d425…6840`；offload repeats `bs1-67ddcaf…cfab3`/`bs1-17ac978…b69d`
 
 ## 一、目标与最终验收标准
 
@@ -480,6 +480,9 @@ $$
 - 2026-07-30：ASLE 原 driver 将 arm setup 计入 arrival horizon；Phase 0
   保留其行为用于 baseline provenance，但任何 steady-state 性能比较必须将
   setup/warmup 与 service window 分离。
+- 2026-07-30：同模式 correctness 使用 exact latent SHA 作为 Phase-0
+  硬验收；跨模式只报告 fp64 数值差异，未预注册阈值前不得事后把差异解释为
+  pass/fail。
 
 ## 八、Compaction Checkpoints
 
@@ -504,3 +507,12 @@ $$
   149.2/149.1 s，urgent p50 为 3.281/3.242 s，p99 为 6.186/6.306 s。
   聚合证据为 `experiments/aggregates/phase0_runs_20260730.json`；latent
   correctness 尚待专用 runner 验收，不能以 timing repeat 替代。
+- 2026-07-30 / phase0-correctness：stock trials
+  `bs1-23397e1…66b8`/`bs1-9f6d425…6840` 的 tensor SHA 均为
+  `364b6fa3…a9d`；`offload_tiled` trials
+  `bs1-67ddcaf…cfab3`/`bs1-17ac978…b69d` 的 tensor SHA 均为
+  `18621be8…05a`，两个 same-mode comparison 均 `verdict=pass`。stock
+  对 offload 的 fp64 `max_abs=0.021484375`、`mean_abs=0.0012742501`，
+  按冻结规则为 `report_only`。刷新后的聚合包含 12 个 run：10 accepted、
+  2 legacy completed、0 failed/incomplete。Phase 0 尚不能标记 accepted：
+  最小 runtime lock 的落盘验证和第二 SKU 外部预约证据仍缺失。
