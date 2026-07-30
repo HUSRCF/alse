@@ -3,16 +3,31 @@
 ## 执行状态
 
 - Last updated: 2026-07-30
-- Current phase: 第 1 周——工程基线与可复现环境
-- Current gate: Phase 0 baseline reproducibility
+- Current phase: 第 1 周——工程基线与可复现环境；并行进行 Gate A0
+  fail-closed 预研，不视为进入第 2 周
+- Current gate: Phase 0 baseline reproducibility；Gate A0 仅允许 unmasked
+  baseline
 - Status: in_progress
-- Last accepted evidence: baseline 与 same-mode correctness 均通过；专用 `burstserve-phase0` 环境的 25+52 包 relocatable lock exact-match；其 stock trials 2/3 跨 GPU latent SHA 完全一致且与原栈相同；14 个 run 中 12 accepted、2 legacy completed；45 项测试双解释器通过
-- Active blockers: 尚未完成第二 GPU SKU 的外部预约；从锁重建的干净 conda base 已成功，但数 GB pip wheelhouse 按高带宽机下载约定待回传后完成 offline-install 验证
+- Last accepted evidence: Phase-0 baseline 与 same-mode correctness 均通过；
+  专用 `burstserve-phase0` 环境的 25+52 包 relocatable lock exact-match；其
+  stock trials 2/3 跨 GPU latent SHA 完全一致且与原栈相同；14 个 run 中
+  12 accepted、2 legacy completed。Gate A0 当前只有 clean native build、
+  双解释器各 64 tests passed 和 pre-commit 128/128 SM 探索性 baseline，
+  尚无可接收的 post-commit run。
+- Active blockers: 尚未完成第二 GPU SKU 的外部预约；从锁重建的干净
+  conda base 已成功，但数 GB pip wheelhouse 按高带宽机下载约定待回传后
+  完成 offline-install 验证；masked CUDA 13.3 probe 还缺独占 GPU
+  预约、可观测 Xid 的健康监控和经审查的 promotion manifest
 - Next three actions:
-  1. 完成并运行 CUDA 13.3 fail-closed native/Python SM-ID baseline probe
-  2. 在隔离进程中验证 upstream global/next callback，再决定是否进入 stream-offset adaptation
-  3. 明确第二 SKU 预约证据并回传 wheelhouse；满足后关闭 Phase 0
-- Latest run IDs / commit: commit `8041eb5`；dedicated stock repeats `bs1-26ed3d2…3fb3`/`bs1-2289516…f334`；libsmctrl upstream pinned `c250928…fcb7`
+  1. 提交 Gate A0 fail-closed native/Python probe，并从干净 commit 运行
+     unmasked formal baseline 与 sealed-mask rejection
+  2. 生成 Gate A0 requirement-to-evidence 对照；未满足独占/Xid 条件前不
+     promotion，不运行 global/next/stream
+  3. 明确第二 SKU 预约证据并回传 wheelhouse；满足后关闭 Phase 0，再按
+     阶段切换协议决定是否正式进入第 2 周
+- Latest run IDs / commit: commit `013d6d2`；dedicated stock repeats
+  `bs1-26ed3d2…3fb3`/`bs1-2289516…f334`；libsmctrl upstream pinned
+  `c250928…fcb7`；Gate A0 formal run: none
 
 ## 一、目标与最终验收标准
 
@@ -458,6 +473,31 @@ $$
 
 每个工作日结束或每个重大实验批次完成后更新一次状态。验收标准不得因结果不理想而静默降低；任何变更必须记录日期、原因、旧值和新值。
 
+### 阶段切换前的 requirement alignment
+
+进入任何下一阶段前，必须先在 `plan.md` checkpoint 或独立、带哈希的
+验收报告中列出：
+
+| 项目 | 必填内容 |
+| --- | --- |
+| Requirement | 本阶段原始实现/验收要求，不事后改写 |
+| Implementation | 对应代码、配置或机制路径 |
+| Evidence | commit、run ID、raw log、测试或报告路径 |
+| Alignment | `exact`、`approximate`、`missing` 或 `not_applicable` |
+| Carry-over | 若非 exact，下一阶段的限制、责任人和最晚关闭时间 |
+
+允许 `approximate` alignment 后并行开展低风险、可逆的下一阶段预研，但需
+同时满足：
+
+- 不能跨越安全、正确性、可复现性或论文核心 claim 的硬 Gate；
+- 不能把预研结果标记为前一 Gate accepted；
+- 所有缺口必须进入 Active blockers 和下一阶段 manifest；
+- 在产生依赖该缺口的正式数据前必须补成 `exact`，否则回退。
+
+Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通过。
+本协议落实用户提出的“进入下一阶段前先近似对齐要求”，其中“近似”用于
+允许受控预研，不用于降低正式验收门槛。
+
 ## 六、固定假设与边界
 
 - 排期按一名主力研究者、8 张 RTX 4090 和自动化实验队列制定。
@@ -495,6 +535,16 @@ $$
   `http://rtsrv.cs.unc.edu/cgit/cgit.cgi/libsmctrl.git` 为 Gate A upstream，
   固定 commit `c250928…fcb7` 为 immutable Git submodule；该版本的 x86
   stream switch 最高为 CUDA 12.8 (`12080`)，对本机 `13030` 仍不支持。
+- 2026-07-30：阶段切换前新增 requirement-to-evidence alignment；允许
+  `approximate` 只用于低风险并行预研，任何硬 Gate 和正式 claim 仍要求
+  `exact`。
+- 2026-07-30：Gate A runner 使用 GPU UUID 选择并反向核对设备；因主机
+  存在多个 MPS control daemon，不能用“删除变量”证明隔离，改为 NVIDIA
+  文档指定的空 `CUDA_MPS_PIPE_DIRECTORY` bypass，并记录 daemon。
+- 2026-07-30：checked-in Gate-A manifest 是代码强制的 promotion lock；
+  CLI experimental flags 不能单独启动 CUDA 13.3 masked probe。单次
+  masked histogram 最多记为 `local_probe_passed`，只有跨 trial/bit、
+  follow-up health 和 leakage validator 才能接收 cell/Gate。
 
 ## 八、Compaction Checkpoints
 
@@ -550,3 +600,14 @@ $$
   stream cases 最高 `12080`；因此任何 masked probe 默认 fail closed。
   当前仅推进无 mask baseline 与隔离的 callback 语义探针，不直接猜测或写入
   CUDA 13.3 stream offset。
+- 2026-07-30 / gate-a0-probe-implementation：实现 native `%smid` probe
+  和 provenance-complete Python runner；native JSON 反向报告 GPU UUID，
+  baseline 要求至少 75% SM coverage、计数总和等于 blocks、requested
+  iterations 和硬件 manifest 一致。runner 用 UUID 设置
+  `CUDA_VISIBLE_DEVICES`，以空 MPS pipe 明确 bypass，环境采集后再次检查
+  GPU 占用，并在结束后检查 GPU 可访问性。Gate-A manifest 当前
+  `experimental_mask_enabled=false`、无 approved mode/reserved UUID/
+  stream candidate，因此所有 masked 模式仍被代码封死。native clean
+  build 成功，系统和 `burstserve-phase0` 解释器各 64 tests passed；
+  pre-commit GPU7 baseline 为 128/128 SM，只能算探索性证据。尚未运行
+  post-commit formal baseline，也未运行任何 masked probe。

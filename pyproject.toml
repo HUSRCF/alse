@@ -15,6 +15,7 @@ burstserve-run-asle = "burstserve.asle_runner:main"
 burstserve-aggregate-results = "burstserve.results:main"
 burstserve-capture-environment = "burstserve.environment:main"
 burstserve-runtime-lock = "burstserve.runtime_lock:main"
+burstserve-smctrl = "burstserve.smctrl_runner:main"
 burstserve-vendor-asle = "burstserve.vendor_import:main"
 
 [tool.setuptools]

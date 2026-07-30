@@ -136,3 +136,49 @@ PYTHONPATH=src python3 -m burstserve.results \
 All model execution is offline. The locked runtime uses Python 3.11.15, Torch
 2.11.0+cu130, Diffusers 0.38.0, and Transformers 5.12.1. Its exact package
 inventory is embedded in the environment snapshot and every run manifest.
+
+## libsmctrl Gate A
+
+The paper authors' upstream is pinned as the `vendor/libsmctrl` submodule.
+Initialize it after cloning this repository:
+
+```bash
+git submodule update --init --recursive
+```
+
+CUDA 13.3 is newer than the upstream stream-mask table and is unsupported by
+default. Read `docs/gate-a-safety.md` before running any masked probe. A native
+process exit code is never sufficient; Gate A is accepted only from retained
+SM-ID histogram evidence.
+
+Build the native probe outside the immutable submodule:
+
+```bash
+PYTHONPATH=src \
+/data/zhuoxu/miniconda3/envs/burstserve-phase0/bin/python \
+  -m burstserve.smctrl_runner build --repo-root "$PWD"
+```
+
+Run the safe baseline on an idle physical GPU:
+
+```bash
+PYTHONPATH=src \
+/data/zhuoxu/miniconda3/envs/burstserve-phase0/bin/python \
+  -m burstserve.smctrl_runner run \
+  --repo-root "$PWD" \
+  --physical-gpu 7 \
+  --mode baseline \
+  --trial 0
+```
+
+The runner addresses the physical GPU by UUID, bypasses MPS with an empty
+`CUDA_MPS_PIPE_DIRECTORY` as documented by NVIDIA, records host MPS daemons,
+rechecks GPU occupancy immediately before launch, and applies the manifest's
+hard timeout. It accepts a baseline only when at least 75% of valid SM IDs are
+observed and the native UUID matches the preflight UUID.
+
+Masked CUDA 13.3 modes are sealed by the versioned Gate-A manifest. CLI
+experimental flags alone cannot enable them: the manifest must separately
+declare the mode, reserved GPU UUID, prerequisites, and any stream-offset
+candidates. A single masked process can report only `local_probe_passed`; only
+a later cross-run matrix validator may accept a masked cell or Gate A.
