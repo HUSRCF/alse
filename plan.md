@@ -12,7 +12,7 @@
   1. 建立 Phase 0 初始 Git commit，使 GPU run 绑定明确源码 revision
   2. 在空闲 GPU 上运行确定性 tiny `stepswap` control cell
   3. 同配置运行 `offload_tiled`，核对 summary、日志和显存结果
-- Latest run IDs / commit: 尚无
+- Latest run IDs / commit: commit `37fa86f`; 尚无 GPU run
 
 ## 一、目标与最终验收标准
 
