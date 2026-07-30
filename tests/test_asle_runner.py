@@ -11,6 +11,7 @@ from burstserve.asle_runner import (
     build_child_environment,
     build_command,
     ensure_gpu_available,
+    evaluate_smoke,
     execute,
 )
 
@@ -22,8 +23,8 @@ def _config() -> dict[str, object]:
         "arm": "stepswap",
         "arrival": "poisson",
         "seed": 1,
-        "horizon_s": 1.0,
-        "arrival_rate": 1.0,
+        "horizon_s": 10.0,
+        "arrival_rate": 0.1,
         "long_model": "cog2b",
         "urgent_model": "sdxl",
         "budget_gb": 0.0,
@@ -65,6 +66,21 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "4")
         self.assertEqual(environment["R1_DEBUG_ARM"], "arm_offload_tiled")
         self.assertEqual(environment["HF_HUB_OFFLINE"], "1")
+
+    def test_smoke_requires_both_request_classes(self) -> None:
+        accepted, ok = evaluate_smoke(
+            {"runnable": True, "n_urgent": 1, "n_video": 1},
+            process_exit_code=0,
+        )
+        self.assertTrue(ok)
+        self.assertTrue(all(accepted.values()))
+
+        accepted, ok = evaluate_smoke(
+            {"runnable": True, "n_urgent": 1, "n_video": 0},
+            process_exit_code=0,
+        )
+        self.assertFalse(ok)
+        self.assertFalse(accepted["minimum_video_met"])
 
 
 class _FakeProcess:
@@ -121,12 +137,13 @@ class ExecuteTest(unittest.TestCase):
                 allow_busy_gpu=False,
             )
 
-            self.assertEqual(code, 0)
             self.assertTrue((run_directory / "manifest.json").is_file())
             self.assertTrue((run_directory / "events.jsonl").is_file())
             self.assertTrue((run_directory / "outcome.json").is_file())
             outcome = json.loads((run_directory / "outcome.json").read_text())
             self.assertFalse(outcome["summary_found"])
+            self.assertFalse(outcome["smoke_accepted"])
+            self.assertEqual(code, 3)
             with self.assertRaises(FileExistsError):
                 execute(
                     repo_root=root,

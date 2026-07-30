@@ -6,13 +6,13 @@
 - Current phase: 第 1 周——工程基线与可复现环境
 - Current gate: Phase 0 baseline reproducibility
 - Status: in_progress
-- Last accepted evidence: ASLE archive/tree 校验通过；4090/软件环境快照已生成；provenance、vendor import 和 baseline runner 共 28 项单元测试通过
+- Last accepted evidence: tiny `stepswap` control 在 GPU1 通过（1 urgent/1 video，峰值 7.6128 GB）；首次 `offload_tiled` 揭示 1 秒 horizon 被 `on_load` 耗尽，0 video，已判为无效 smoke 而非伪通过；29 项测试通过
 - Active blockers: 无
 - Next three actions:
-  1. 建立 Phase 0 初始 Git commit，使 GPU run 绑定明确源码 revision
-  2. 在空闲 GPU 上运行确定性 tiny `stepswap` control cell
-  3. 同配置运行 `offload_tiled`，核对 summary、日志和显存结果
-- Latest run IDs / commit: commit `37fa86f`; 尚无 GPU run
+  1. 提交 smoke 语义验收修复（10 秒窗口、0 video 返回非零）
+  2. 用修正后的同一 trace 重跑 `stepswap` 与 `offload_tiled`
+  3. 通过后扩展 seeds 0/1/2 的 Phase 0 baseline
+- Latest run IDs / commit: commit `ab6b4c0`; control `bs1-185ab7f…ab857`；无效 ASLE smoke `bs1-7d5de5f…659b4`
 
 ## 一、目标与最终验收标准
 
@@ -474,6 +474,9 @@ $$
 - 2026-07-30：采用 dual-ledger；canonical service 负责公平，资源债务和 marginal externality 负责动作选择，真实 SLO 与显存保持独立。
 - 2026-07-30：I/O 模型改为 resident/state-only/cold 三态；20 GB 不再作为任意轮转的固定 PCIe 开销。
 - 2026-07-30：批准本计划并开始 Phase 0。
+- 2026-07-30：Phase 0 smoke 的语义验收必须同时满足
+  `runnable=true`、`n_urgent>=1`、`n_video>=1`；原 driver 的进程 exit code
+  和 `runnable` 不足以证明两类请求都执行。
 
 ## 八、Compaction Checkpoints
 
@@ -483,3 +486,9 @@ $$
   `aris-vllm` 环境（Python 3.11.15、Torch 2.11.0+cu130、Diffusers
   0.38.0）；环境快照位于
   `experiments/environment/phase0_4090_20260730.json`；28 项测试通过。
+- 2026-07-30 / first-gpu-smokes：`stepswap`
+  `bs1-185ab7f…ab857` 通过（1 urgent/1 video，urgent 1.152 s，峰值
+  7.6128 GB）；`offload_tiled` `bs1-7d5de5f…659b4` 虽进程成功但为
+  1 urgent/0 video。根因是 arm 初始化计入 1 秒 horizon，触发 final-drain-only。
+  默认 trace 改为 seed 1、horizon 10 s、lambda 0.1，仍确定只有一次 arrival；
+  runner 新增语义验收，防止再次伪通过。

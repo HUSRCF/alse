@@ -225,6 +225,23 @@ def _find_summary(logdir: Path) -> Path | None:
     return summaries[-1] if summaries else None
 
 
+def evaluate_smoke(
+    summary: Mapping[str, Any] | None,
+    *,
+    process_exit_code: int,
+) -> tuple[dict[str, bool], bool]:
+    """Evaluate the semantic Phase-0 smoke contract."""
+
+    acceptance = {
+        "runnable": bool(summary and summary.get("runnable") is True),
+        "minimum_urgent_met": bool(
+            summary and int(summary.get("n_urgent") or 0) >= 1
+        ),
+        "minimum_video_met": bool(summary and int(summary.get("n_video") or 0) >= 1),
+    }
+    return acceptance, process_exit_code == 0 and all(acceptance.values())
+
+
 def execute(
     *,
     repo_root: Path,
@@ -334,15 +351,23 @@ def execute(
             summary = json.load(source)
         write_json_atomic(run_directory / "summary.json", summary)
 
-    exit_code = 124 if timed_out else int(process.returncode or 0)
+    process_exit_code = 124 if timed_out else int(process.returncode or 0)
+    acceptance, smoke_accepted = evaluate_smoke(
+        summary,
+        process_exit_code=process_exit_code,
+    )
+    exit_code = process_exit_code if process_exit_code != 0 else (0 if smoke_accepted else 3)
     outcome = {
         "completed_at_utc": _utc_now(),
         "exit_code": exit_code,
+        "process_exit_code": process_exit_code,
         "timed_out": timed_out,
         "summary_found": summary is not None,
         "runnable": summary.get("runnable") if summary else None,
         "n_urgent": summary.get("n_urgent") if summary else None,
         "n_video": summary.get("n_video") if summary else None,
+        "smoke_acceptance": acceptance,
+        "smoke_accepted": smoke_accepted,
     }
     write_json_atomic(run_directory / "outcome.json", outcome)
     _record_event(
@@ -365,8 +390,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--physical-gpu", type=int, required=True)
     parser.add_argument("--arm", choices=_SUPPORTED_ARMS, default="stepswap")
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--horizon-s", type=float, default=1.0)
-    parser.add_argument("--arrival-rate", type=float, default=1.0)
+    parser.add_argument("--horizon-s", type=float, default=10.0)
+    parser.add_argument("--arrival-rate", type=float, default=0.1)
     parser.add_argument("--frames", type=int, default=9)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--width", type=int, default=720)
