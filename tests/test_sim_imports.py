@@ -25,6 +25,7 @@ ALLOWED_ABSOLUTE_ROOTS = {
     "fractions",
     "functools",
     "hashlib",
+    "io",
     "json",
     "math",
     "types",
@@ -35,6 +36,7 @@ ALLOWED_RELATIVE_MODULES = {
     "io_model",
     "model",
     "protocols",
+    "trace",
 }
 
 
