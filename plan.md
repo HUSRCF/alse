@@ -6,13 +6,13 @@
 - Current phase: 第 1 周——工程基线与可复现环境
 - Current gate: Phase 0 baseline reproducibility
 - Status: in_progress
-- Last accepted evidence: baseline 与 same-mode correctness 均通过；专用 `burstserve-phase0` 环境已经建立，25 个 conda artifact + 52 个必要 pip distribution 的 relocatable lock exact-match；45 项测试在系统与专用解释器中均通过
+- Last accepted evidence: baseline 与 same-mode correctness 均通过；专用 `burstserve-phase0` 环境的 25+52 包 relocatable lock exact-match；其 stock trials 2/3 跨 GPU latent SHA 完全一致且与原栈相同；14 个 run 中 12 accepted、2 legacy completed；45 项测试双解释器通过
 - Active blockers: 尚未完成第二 GPU SKU 的外部预约；从锁重建的干净 conda base 已成功，但数 GB pip wheelhouse 按高带宽机下载约定待回传后完成 offline-install 验证
 - Next three actions:
-  1. 提交 runtime-lock 实现，并在专用环境重跑 correctness smoke
+  1. 提交专用环境 snapshot、lock verification 和 correctness repeat 证据
   2. 获取并固定 libsmctrl 论文作者的最新 upstream；实现 CUDA 13.3 fail-closed SM-ID probe
   3. 明确第二 SKU 预约证据并回传 wheelhouse；满足后关闭 Phase 0
-- Latest run IDs / commit: commit `9b7b1c7`；stock repeats `bs1-23397e1…66b8`/`bs1-9f6d425…6840`；offload repeats `bs1-67ddcaf…cfab3`/`bs1-17ac978…b69d`
+- Latest run IDs / commit: commit `e94474e`；dedicated stock repeats `bs1-26ed3d2…3fb3`/`bs1-2289516…f334`；原 offload repeats `bs1-67ddcaf…cfab3`/`bs1-17ac978…b69d`
 
 ## 一、目标与最终验收标准
 
@@ -533,3 +533,9 @@ $$
   2–3 MB/s 中止，按既定方式由高带宽机生成 wheelhouse 后再做 offline
   reconstruction。Phase 0 仍因这项独立重建验证和第二 SKU 预约而
   `in_progress`。
+- 2026-07-30 / phase0-dedicated-smoke：在 commit `e94474e` 的干净源码
+  与专用 `burstserve-phase0` 环境上运行 stock trials 2/3：
+  `bs1-26ed3d2…3fb3`（GPU3）和 `bs1-2289516…f334`（GPU4）。两者 tensor
+  SHA 均为 `364b6fa3…a9d`，与原 `aris-vllm` stock correctness SHA
+  相同，same-mode comparison `verdict=pass`。刷新聚合为 14 runs：
+  12 accepted、2 legacy completed、0 failed/incomplete。
