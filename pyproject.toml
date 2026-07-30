@@ -11,6 +11,7 @@ dependencies = ["packaging>=24"]
 
 [project.scripts]
 burstserve-correctness = "burstserve.correctness_runner:main"
+burstserve-gate-a0-results = "burstserve.gate_a_results:main"
 burstserve-run-asle = "burstserve.asle_runner:main"
 burstserve-aggregate-results = "burstserve.results:main"
 burstserve-capture-environment = "burstserve.environment:main"
