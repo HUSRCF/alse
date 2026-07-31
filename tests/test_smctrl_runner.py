@@ -1731,7 +1731,9 @@ class LifecycleLeaseTest(unittest.TestCase):
 
 
 class ExecuteV2BoundaryTest(unittest.TestCase):
-    def test_default_manifest_is_v2_unpromoted_and_zero_pinned(self):
+    def test_default_manifest_is_artifact_pinned_but_still_unpromoted(self):
+        """Artifact pins bind which build may run; they authorize nothing."""
+
         repo_root = Path(__file__).resolve().parents[1]
         content = json.loads(
             (repo_root / smctrl_runner.DEFAULT_GATE_MANIFEST).read_text(
@@ -1742,17 +1744,71 @@ class ExecuteV2BoundaryTest(unittest.TestCase):
             content["schema_version"],
             smctrl_runner.GATE_MANIFEST_SCHEMA_VERSION,
         )
-        self.assertFalse(
-            content["safety"]["experimental_mask_enabled"]
-        )
-        self.assertEqual(content["safety"]["approved_mask_modes"], [])
-        for field in (
-            "approved_launcher_sha256",
-            "approved_real_probe_sha256",
-            "approved_build_stamp_sha256",
-            "approved_build_attestation_sha256",
-        ):
-            self.assertEqual(content["source"][field], "0" * 64)
+        safety = content["safety"]
+        self.assertIs(safety["experimental_mask_enabled"], False)
+        self.assertEqual(safety["approved_mask_modes"], [])
+        self.assertEqual(safety["reserved_gpu_uuids"], [])
+        self.assertIsNone(safety["exclusive_reservation_evidence"])
+        self.assertIs(safety["stream_offset_search_enabled"], False)
+        self.assertIs(safety["global_next_matrix_accepted"], False)
+
+        build = repo_root / "build" / "smctrl_probe"
+        artifacts = {
+            "approved_launcher_sha256": build / "smid_probe",
+            "approved_real_probe_sha256": build / "smid_probe.real",
+            "approved_build_stamp_sha256": build / "build-config.stamp",
+            "approved_build_attestation_sha256": (
+                build / "build-attestation.json"
+            ),
+        }
+        for field, artifact in artifacts.items():
+            with self.subTest(field=field):
+                pin = content["source"][field]
+                self.assertRegex(pin, r"\A[0-9a-f]{64}\Z")
+                self.assertNotEqual(
+                    pin,
+                    "0" * 64,
+                    "an all-zero pin approves no artifact at all",
+                )
+                if artifact.is_file():
+                    self.assertEqual(
+                        pin,
+                        hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                    )
+
+        # Pinning an artifact must never promote a masked mode.
+        gpu = {
+            "index": 1,
+            "name": content["hardware"]["gpu_name"],
+            "uuid": "GPU-00000000-0000-0000-0000-000000000001",
+            "pci_bus_id": "00000000:01:00.0",
+            "memory_total_mib": 24564,
+            "memory_used_mib": 2,
+            "utilization_gpu_percent": 0,
+            "driver_version": content["hardware"]["driver_version"],
+        }
+        for mode in ("global", "next", "stream"):
+            with self.subTest(mode=mode):
+                _checks, permitted = (
+                    smctrl_runner.evaluate_gate_manifest_policy(
+                        content,
+                        mode=mode,
+                        physical_gpu=1,
+                        gpu=gpu,
+                        driver_version=content["hardware"][
+                            "driver_api_version"
+                        ],
+                        experimental_mask_off=None,
+                        timeout_s=30.0,
+                        maximum_used_mib=1024,
+                        iterations=content["baseline"]["iterations"],
+                        blocks=4096,
+                        threads_per_block=256,
+                        trial=0,
+                        enabled_tpc=0,
+                    )
+                )
+                self.assertFalse(permitted)
 
     def test_zero_pinned_default_manifest_rejects_before_gpu_access(self):
         repo_root = Path(__file__).resolve().parents[1]
