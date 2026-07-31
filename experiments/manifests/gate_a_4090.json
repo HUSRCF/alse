@@ -9,7 +9,7 @@
     "expected_tpc_count": 64,
     "driver_version": "610.43.02",
     "driver_api_version": 13030,
-    "runtime_api_version": 13000,
+    "runtime_api_version": 13030,
     "toolkit_version": "13.3"
   },
   "source": {
