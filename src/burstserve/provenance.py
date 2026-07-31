@@ -274,13 +274,12 @@ def _json_payload(value: Any) -> bytes:
 
 
 def _fsync_directory(directory: Path) -> None:
-    flags = os.O_RDONLY
-    if hasattr(os, "O_DIRECTORY"):
-        flags |= os.O_DIRECTORY
-    try:
-        descriptor = os.open(directory, flags)
-    except OSError:
-        return
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    # Directory durability is part of the atomic-write contract.  A rename
+    # whose containing directory could not be opened/fsynced must never be
+    # reported as durable to callers that may release safety poison.
+    descriptor = os.open(directory, flags)
     try:
         os.fsync(descriptor)
     finally:

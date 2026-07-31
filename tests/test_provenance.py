@@ -4,10 +4,12 @@ import json
 import math
 import os
 from pathlib import Path
+import stat
 import tempfile
 import unittest
 from unittest import mock
 
+import burstserve.provenance as provenance
 from burstserve.provenance import (
     EVENT_RECORD_SCHEMA_VERSION,
     RUN_MANIFEST_SCHEMA_VERSION,
@@ -118,6 +120,48 @@ class EventRecordTest(unittest.TestCase):
 
 
 class AtomicOutputTest(unittest.TestCase):
+    def test_directory_open_failure_is_not_silently_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "manifest.json"
+            original_open = os.open
+
+            def fail_directory_open(target, flags, *args, **kwargs):
+                if flags & getattr(os, "O_DIRECTORY", 0):
+                    raise OSError("synthetic directory open failure")
+                return original_open(target, flags, *args, **kwargs)
+
+            with mock.patch.object(
+                provenance.os,
+                "open",
+                side_effect=fail_directory_open,
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "synthetic directory open failure",
+                ):
+                    write_json_atomic(path, {"state": "renamed"})
+
+    def test_directory_fsync_failure_is_not_silently_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "manifest.json"
+            original_fsync = os.fsync
+
+            def fail_directory_fsync(descriptor):
+                if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                    raise OSError("synthetic directory fsync failure")
+                return original_fsync(descriptor)
+
+            with mock.patch.object(
+                provenance.os,
+                "fsync",
+                side_effect=fail_directory_fsync,
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "synthetic directory fsync failure",
+                ):
+                    write_json_atomic(path, {"state": "renamed"})
+
     def test_atomic_text_preserves_explicit_newline_policy(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "nested" / "runtime.lock"
