@@ -5,8 +5,9 @@
 - Last updated: 2026-07-31
 - Current phase: 第 1 周——工程基线与可复现环境；并行进行 Gate A0
   fail-closed 预研，不视为进入第 2 周
-- Current gate: Phase 0 baseline reproducibility；Gate A0 仅允许 unmasked
-  baseline
+- Current gate: Phase 0 baseline reproducibility；**Gate A0 已在 5 张编队
+  （GPU 1/2/3/4/7）下通过**（2026-07-31，report `46b8bfca…a4e9`）；
+  masked Gate A 仍未开始，promotion lock 保持关闭
 - Status: in_progress
 - Last accepted evidence: Phase-0 baseline 与 same-mode correctness 均通过；
   专用 `burstserve-phase0` 环境的 25+52 包 relocatable lock exact-match；其
@@ -31,21 +32,21 @@
   build-exception 接入仍在当前 dirty 批次中，不能据此生成正式证据。
 - Active blockers: 尚未完成第二 GPU SKU 的外部预约；从锁重建的干净
   conda base 已成功，但数 GB pip wheelhouse 按高带宽机下载约定待回传后
-  完成 offline-install 验证；GPU 0/5/6 被现有进程占用；masked CUDA
-  13.3 probe 还缺独占 GPU 预约、跨 trial/bit validator 和经审查的
-  promotion 授权（artifact pin 已填，但 promotion lock 仍完全关闭）。
-  CLAUDE_HANDOFF 的第 1–4 步已全部完成：native 五项与 Gate v2 七项阻断
-  全部实现，经三轮独立对抗式复审（六个代理）共发现并关闭 6 个 BLOCKING，
-  第三轮两个领域均为零阻断；已按依赖顺序分七批提交，双解释器各
-  301 tests 通过。**Gate A0 仍未通过**：GPU 0/5/6 各缺 3 次 trial，且
-  现有 15 个 accepted cells 属旧 v1 identity，不得与新 v2 identity 拼接。
+  完成 offline-install 验证；masked CUDA 13.3 probe 仍缺独占 GPU 预约、
+  跨 trial/bit validator 与经审查的 promotion 授权（artifact pin 已填，
+  但 promotion lock 完全关闭，三种 masked 模式实测 `permitted=False`）。
+  **Gate A0 已不再是 blocker**：2026-07-31 编队缩为 5 张后，GPU 1/2/3/4/7
+  各 3 次共 15/15 accepted，加 2 个有效 sealed rejection，报告判定
+  `complete=true`。GPU 0/5/6 仍被他人长任务占用，但已不在编队内，
+  只作为可选的编队外补充证据。
 - Next three actions:
-  1. 等 GPU 0/5/6 空闲后，在**完全相同的 v2 identity**（HEAD 与 untracked
-     集都不得变化）下补跑 GPU 0/5/6 各 3 次，再重建 8×3 全矩阵 aggregate；
-     不得使用 busy override，不得与旧 v1 cells 混合
+  1. 进入第 2 周 masked Gate A 的前置准备：跨 trial/bit validator、Xid
+     monitor 真实覆盖、CUDA 13.3 stream offset 政策；在三者齐备并经独立
+     复审前，promotion lock 一律不开
   2. 推进第二 GPU SKU 预约与 offline wheelhouse 重建这两个外部 blocker
-  3. 在纯 CPU 侧继续 plan.md 已获准的 simulator 预研；masked 模式在独占
-     预约、跨 trial/bit validator 与 Xid monitor 三者齐备并复审前一律不开
+     （Phase 0 仍因这两项未关闭）
+  3. 在纯 CPU 侧继续 plan.md 已获准的 simulator 预研（action selector、
+     predictor error），不产生正式 profile 或性能 claim
 - Latest run IDs / commit: HEAD `5bcc55f`；本批七个提交依次为
   `c4641da`（provenance fsync fail-closed）、`955fc67`（NVML Xid monitor）、
   `8caaf60`（sealed native launch + build attestation）、
@@ -71,7 +72,7 @@
 | 同 seed deterministic correctness | correctness runner | stock/offload same-mode tensor SHA 成对完全一致；专用环境复跑一致 | exact | cross-mode 数值差异继续仅 `report_only` |
 | 隔离环境及 exact lock | `runtime_lock.py`、25 conda + 52 pip lock | 当前专用环境 verification `matches=true` | exact（现有环境） | 离线 wheelhouse 从零重建仍 missing，Phase 0 不关闭 |
 | 第二 GPU SKU 预约 | 无 | 无 SKU、时间窗或预约证明 | missing | Phase 0 硬门；H100 优先，A100/A800 备选 |
-| 所有 8 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | v2：`gate_a0_4090_v2_seed1_partial_20260730.json`（15/15 accepted，report `dfa9a93c…64d8`）；旧 v1：`gate_a0_4090_dd8c927_seed1_partial_20260730.json` | approximate（5/8，15/15 subset） | GPU 0/5/6 由他人多日任务占用；空闲后须在**完全相同的 v2 identity** 下补跑各 3 次；不得使用 busy override，不得与旧 v1 cells 拼接 |
+| 编队 5 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | `gate_a0_4090_v2_seed1_fleet5_20260731.json`：15/15 accepted、2 个 sealed rejection 有效、`gate_a0.complete=true`，report `46b8bfca…a4e9` | **exact** | 编队 2026-07-31 由 8 张缩为 5 张（见 Decision Log）；GPU 0/5/6 若释放可作编队外补充证据，但届时须整批重跑 |
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
 | 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 纯模拟测试；GPU7 只读注册 smoke supported bits `61852`、Xid bit `8` | approximate | 修复中断孤儿、有界 reap、真实 quiet window 和 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
@@ -281,7 +282,9 @@ $$
 
 验收 Gate A：
 
-- 所有 8 张 4090 均能检测到合法 SM/TPC 拓扑。
+- 编队内全部 5 张 4090（GPU 1/2/3/4/7）均能检测到合法 SM/TPC 拓扑。
+  2026-07-31 由 8 张缩为 5 张，理由与代价见 Decision Log；GPU 0/5/6 长期
+  被他人任务占用，不得以 busy override 顶替。
 - probe kernel 100% 只落在指定 TPC mask 经该卡实测映射得到的 SM 集合。
 - 10,000 次动态重配置无崩溃、越界或错误 mask。
 - native 更新 p99 不超过 100 μs。
@@ -397,7 +400,8 @@ $$
 实现：
 
 - 冻结代码、manifest 和 primary metrics。
-- 在 6 张 4090 上运行矩阵，1 张用于开发复查，1 张保留 clean control。
+- 在 4 张 4090（GPU 1/2/3/4）上运行矩阵，1 张（GPU 7）兼作开发复查与
+  clean control；2026-07-31 由 6+1+1 缩为 4+1。
 - 在第二 SKU 运行预注册的 12-cell 精简矩阵。
 - 对失败、OOM、拒绝和超时全部保留，不删除异常点。
 - 汇总 paired-seed bootstrap 95% CI。
@@ -554,7 +558,8 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
 
 ## 六、固定假设与边界
 
-- 排期按一名主力研究者、8 张 RTX 4090 和自动化实验队列制定。
+- 排期按一名主力研究者、5 张 RTX 4090（4 张矩阵 + 1 张备用/clean control）
+  和自动化实验队列制定；2026-07-31 由 8 张缩为 5 张。
 - 第二 SKU 必须在第 12 周前可重复使用，优先 H100，其次 A100/A800。
 - 核心系统是单节点、单 GPU serving；不实现分布式集群调度。
 - libsmctrl 是核心贡献依赖，因此有独立的早期硬 Gate。
@@ -633,6 +638,32 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   `CLAUDE_HANDOFF.md`；接手者必须先启动 `achieve goal`，按 native →
   Gate → 双解释器/fresh CPU gate → 独立复审/提交/clean v2 identity 的
   固定顺序持续推进，不得因状态汇报、单次测试失败或提交完成而停止。
+- 2026-07-31：**主线 GPU 编队由 8 张 4090 缩为 5 张（范围变更，非降低门槛）**。
+  - 旧值：排期与验收按本机全部 8 张 4090；第 13–14 周 6 张跑矩阵 + 1 张
+    开发复查 + 1 张 clean control；Gate A/A0 要求 8 张全部通过；
+    `REQUIRED_GATE_A0_GPU_COUNT = 8`。
+  - 新值：编队为 GPU 1/2/3/4/7 共 5 张——4 张（1/2/3/4）跑矩阵，1 张
+    （7）兼作开发复查与 clean control；Gate A/A0 要求这 5 张全部通过；
+    v2 程序使用 `REQUIRED_GATE_A0_GPU_COUNT_V2 = 5`。
+  - 原因：GPU 0/6 被用户 `yitong` 的 VLLM 双卡任务占用（已 2 天以上），
+    GPU 5 被用户 `rlwu` 的 kvsim 占用（已 8 天以上，且处于 T/stopped 状态
+    仍持有显存）。三者均为他人长任务、ETA 未知，本项目无权处置；而正式
+    证据禁止 busy override。继续把 8 张写进验收，等于把一个我们无法控制
+    的外部条件写成硬门。
+  - 代价（已接受并如实记录）：第 13–14 周主矩阵可用卡由 6 张降为 4 张，
+    该阶段 wall-clock 预计约 1.5–2 倍；论文中的硬件规模表述必须写实际的
+    5 张（4+1），不得再写 8×RTX 4090。
+  - 不变的部分：验收阈值本身没有放松——编队内每张卡仍需 3 次 trial 全部
+    accepted，仍禁止 busy override，仍禁止 v1/v2 identity 混拼。两个 VBIOS
+    批次仍都被覆盖（A 批 479W：GPU 1、3；B 批 450W：GPU 2、4、7）。
+  - 实现约束：`REQUIRED_GATE_A0_GPU_COUNT = 8` 保持冻结，因为它已写入
+    已发布的 v1 报告，该报告仍须逐字节可重建；v2 由独立常量决定，且判据
+    由「恰好等于」改为「不少于」，多声明仍合法。
+    `experiments/manifests/gate_a_4090.json` 的 `physical_gpu_indices`
+    **故意保持 [0..7] 不变**：该字段嵌入每次 run 的 gate manifest 并参与
+    formal identity，一旦更改，已接受的 15 个 cell 将无法再与后续 run 拼接。
+  - Carry-over：GPU 0/5/6 一旦释放，可作为超出编队的补充证据补测；但因
+    HEAD 此后已推进，补测须在届时的统一 identity 下重跑全部 cell。
 - 2026-07-30：CLAUDE_HANDOFF 的 "empty compute/MPS lists" 要求按以下方式
   落实并记录偏离：preflight、final launch preflight 与 post-health 的
   **compute 进程列表必须为空**；host MPS daemon 列表按 2026-07-30 已冻结
@@ -652,6 +683,29 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   argv 关闭，guard 的拒绝只能把已执行的注入转成硬 parse error。
 
 ## 八、Compaction Checkpoints
+
+- 2026-07-31 / 编队缩为 5 张，Gate A0 通过（HEAD 见本条提交）：用户在核对
+  「是否真的需要 8 张卡」后决定把主线编队由 8 张缩为 5 张。追溯发现 8 这个
+  数字并非 Gate A0 的内在要求，而是 2026-07-30 排期假设「按 8×RTX 4090 制定」
+  推导出来的：论文主矩阵原定 6+1+1 用满 8 张，故 A0 需覆盖 8 张。GPU 0/6 被
+  `yitong` 的 VLLM、GPU 5 被 `rlwu` 的 kvsim（T/stopped 但持有 4.8 GB 显存）
+  长期占用，ETA 未知且无权处置，因此把 8 张写进验收等于把不可控外部条件写成
+  硬门。按范围变更处理：编队 = GPU 1/2/3/4/7（4 张矩阵 + 1 张备用/clean
+  control），论文规模表述同步改为 5 张，代价是第 13–14 周 wall-clock 约
+  1.5–2 倍。**这不是降低阈值**：编队内每卡仍需 3 次全 accepted、仍禁 busy
+  override、仍禁 v1/v2 拼接；两个 VBIOS 批次（479W 的 GPU 1/3、450W 的
+  GPU 2/4/7）仍都覆盖。实现上 `REQUIRED_GATE_A0_GPU_COUNT = 8` 冻结不动
+  （它已写入已发布 v1 报告，该报告仍逐字节可重建，`aggregate_input_sha256`
+  仍为 `08ef4053…a188`），v2 改用 `REQUIRED_GATE_A0_GPU_COUNT_V2 = 5`，判据
+  由「恰好等于」改为「不少于」；`gate_a_4090.json` 的 `physical_gpu_indices`
+  故意保留 [0..7]，因为它参与 formal identity，改了就再也无法扩展已接受的
+  15 个 cell。结果：`gate_a0_4090_v2_seed1_fleet5_20260731.json` 判定
+  **`gate_a0.complete = true`**，5/5 卡、15/15 cells、2 个 sealed rejection
+  有效，evidence spec `655ceaa1…8b52`、aggregate input `956488e0…679d`、
+  report `46b8bfca…a4e9`。上一版 8 卡口径的 partial 报告
+  （`…partial_20260730.json`，report `dfa9a93c…64d8`）保留不删，其对应 spec
+  可在 commit `faa8056` 取回。两套解释器各 305 tests 通过。Carry-over：
+  GPU 0/5/6 释放后可作编队外补充证据，但 HEAD 此后已推进，届时须整批重跑。
 
 - 2026-07-31 / v2 identity 下首批被接受的 Gate A0 证据（HEAD `faa8056`）：
   按 plan.md 的 next action ① 执行。**前置条件核实**：源码树原本不
