@@ -1731,6 +1731,69 @@ class LifecycleLeaseTest(unittest.TestCase):
 
 
 class ExecuteV2BoundaryTest(unittest.TestCase):
+    def test_source_identity_excludes_the_ephemeral_verifier_descriptor(self):
+        """The pre-exec revalidation must not trip on a descriptor number.
+
+        The pinned verifier runs through /proc/self/fd/<n>, and <n> differs
+        between the preflight capture and each revalidation because more
+        descriptors are open by then.  Including it in the source-identity
+        snapshot made every formal run fail its own pre-exec revalidation.
+        """
+
+        script_identity = {
+            "path": "/repo/native/smctrl_probe/build_attestation.py",
+            "device": 2304,
+            "inode": 4314879117,
+            "mode": stat.S_IFREG | 0o644,
+            "size": 99888,
+            "mtime_ns": 1785470710208889458,
+            "sha256": "0" * 63 + "1",
+        }
+
+        def record(descriptor: int) -> dict[str, object]:
+            return {
+                "command": [
+                    "/usr/bin/python3.13",
+                    "-I",
+                    "-S",
+                    "-B",
+                    f"/proc/self/fd/{descriptor}",
+                    "verify",
+                    "--stamp",
+                    "/repo/build/smctrl_probe/build-config.stamp",
+                    "--attestation",
+                    "/repo/build/smctrl_probe/build-attestation.json",
+                ],
+                "script_fd_identity": dict(script_identity),
+                "return_code": 0,
+                "stdout_sha256": "a" * 64,
+                "stderr_sha256": "b" * 64,
+                "stderr": "",
+                "passed": True,
+            }
+
+        prelaunch = smctrl_runner._stable_verifier_record(record(6))
+        preexec = smctrl_runner._stable_verifier_record(record(8))
+        self.assertEqual(prelaunch, preexec)
+        self.assertEqual(
+            canonical_json(prelaunch),
+            canonical_json(preexec),
+        )
+        self.assertIn("/proc/self/fd/<descriptor>", prelaunch["command"])
+
+        # The script itself is still bound by its exact stat identity, and
+        # the literal descriptor path is still recorded for provenance.
+        self.assertEqual(prelaunch["script_fd_identity"], script_identity)
+        self.assertEqual(record(6)["command"][4], "/proc/self/fd/6")
+
+        # A different script, same descriptor, must still differ.
+        other = record(6)
+        other["script_fd_identity"]["sha256"] = "0" * 63 + "2"
+        self.assertNotEqual(
+            canonical_json(smctrl_runner._stable_verifier_record(other)),
+            canonical_json(prelaunch),
+        )
+
     def test_default_manifest_is_artifact_pinned_but_still_unpromoted(self):
         """Artifact pins bind which build may run; they authorize nothing."""
 

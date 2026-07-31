@@ -17,6 +17,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shlex
 import signal
 import stat
@@ -308,6 +309,7 @@ FORMAL_ENVIRONMENT_CAPTURE_SUBPROCESS_ENVIRONMENT = {
     "CUDA_VISIBLE_DEVICES": "",
     "CUDA_MPS_PIPE_DIRECTORY": "",
 }
+_PROC_SELF_FD_PATTERN = re.compile(r"\A/proc/self/fd/[0-9]+\Z")
 FORMAL_GIT_ALLOWED_UNTRACKED_ROOTS = (
     "experiments/runs",
     "related_work",
@@ -4601,6 +4603,30 @@ def _verify_attestation_with_pinned_builder(
     }
 
 
+def _stable_verifier_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the verifier record without its ephemeral descriptor number.
+
+    The pinned verifier is executed through ``/proc/self/fd/<n>``, and ``<n>``
+    depends on how many descriptors happen to be open at that instant, so it
+    differs between the preflight capture and each later revalidation.  Baking
+    it into the source-identity snapshot made every pre-exec revalidation
+    report that the source binding had changed, which no run could ever pass.
+    The script's identity is bound by ``script_fd_identity`` and the run's
+    result by the return code and output digests; the number is not identity.
+    """
+
+    stable = dict(record)
+    command = stable.get("command")
+    if isinstance(command, list):
+        stable["command"] = [
+            _PROC_SELF_FD_PATTERN.sub("/proc/self/fd/<descriptor>", item)
+            if isinstance(item, str)
+            else item
+            for item in command
+        ]
+    return stable
+
+
 def _artifact_record_matches(
     record: Any,
     expected_path: Path,
@@ -5760,7 +5786,9 @@ def formal_source_binding(
         "outputs": actual_outputs,
         "runtime_dependencies": actual_dependencies,
         "guard_fixture_runtime_dependencies": actual_guard_dependencies,
-        "pinned_attestation_verifier": verifier_record,
+        "pinned_attestation_verifier": _stable_verifier_record(
+            verifier_record
+        ),
         "launcher_fd": launcher_actual,
         "build_lock": dict(build_lock or {}),
         "formal_git": formal_git_record,
