@@ -1,6 +1,6 @@
 {
-  "schema_version": "burstserve.gate-a-manifest/v1",
-  "manifest_id": "gate-a-4090-cuda133-20260730",
+  "schema_version": "burstserve.gate-a-manifest/v2",
+  "manifest_id": "gate-a-4090-cuda133-20260730-unpromoted",
   "hardware": {
     "gpu_name": "NVIDIA GeForce RTX 4090",
     "physical_gpu_indices": [0, 1, 2, 3, 4, 5, 6, 7],
@@ -9,11 +9,16 @@
     "expected_tpc_count": 64,
     "driver_version": "610.43.02",
     "driver_api_version": 13030,
+    "runtime_api_version": 13000,
     "toolkit_version": "13.3"
   },
   "source": {
     "libsmctrl_commit": "c250928930cb5c95bffc878913301f9a5d4efcb7",
-    "libsmctrl_metadata": "vendor/LIBSMCTRL_SOURCE.json"
+    "libsmctrl_metadata": "vendor/LIBSMCTRL_SOURCE.json",
+    "approved_launcher_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "approved_real_probe_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "approved_build_stamp_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "approved_build_attestation_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
   },
   "safety": {
     "protocol": "docs/gate-a-safety.md",
@@ -26,8 +31,14 @@
     "approved_mask_modes": [],
     "reserved_gpu_uuids": [],
     "exclusive_reservation_evidence": null,
-    "xid_monitoring_available": false,
-    "xid_monitoring_method": null,
+    "xid_monitoring": {
+      "available": false,
+      "method": null,
+      "quiet_ms": 1000,
+      "library_path": null,
+      "library_sha256": null,
+      "library_version": null
+    },
     "stream_offset_search_enabled": false,
     "stream_mask_off_candidates": [],
     "global_next_matrix_accepted": false
@@ -35,6 +46,7 @@
   "baseline": {
     "blocks_per_sm": 32,
     "iterations": 4096,
+    "threads_per_block": 256,
     "minimum_sm_coverage_fraction": 0.75,
     "trials_per_gpu": 3
   },
@@ -42,12 +54,16 @@
     "modes": ["global", "next", "stream"],
     "tpc_bits": [0, 31, 32, 63],
     "trials_per_cell": 3,
-    "allowed_observed_sm_count": [1, 2]
+    "allowed_observed_sm_count": [1, 2],
+    "iterations": 4096,
+    "blocks": 4096,
+    "threads_per_block": 256
   },
   "promotion_requirements": [
-    "baseline accepted on the reserved target GPU",
-    "no pre-existing compute process on the target GPU",
-    "global and next callback probes explicitly approved for CUDA 13.3",
-    "stream offset search separately enabled only after callback probes pass"
+    "replace every all-zero source approval pin with the verified current artifact digest",
+    "record every reserved physical GPU UUID and a current exclusive reservation lease",
+    "pin the exact sealed NVML library identity and version",
+    "accept baseline evidence before explicitly promoting global and next callbacks",
+    "enable stream offset search only after the global/next matrix is accepted"
   ]
 }
