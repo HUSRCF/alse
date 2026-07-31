@@ -4496,6 +4496,13 @@ def _validate_sealed_rejection_v2(
             "--blocks",
             str(config.get("blocks")),
         ]
+        # The strongest sealed rejection is one the operator explicitly opted
+        # into on an unpinned driver, because then only the checked-in
+        # promotion manifest can be what refused it.  The producer appends
+        # this flag exactly when the config declares it, so the expected argv
+        # must mirror that instead of forbidding the stronger evidence.
+        if config.get("experimental_allow_unsupported_driver") is True:
+            expected_argv.append("--allow-unsupported-driver")
         if argv != expected_argv:
             errors.append("sealed rejection command argv is not exact")
         launcher_value = command.get("launcher_fd")

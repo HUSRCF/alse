@@ -992,6 +992,7 @@ def _write_rejection_v2(
     gpu: int = 0,
     mode: str = "global",
     manifest_policy: dict[str, object] | None = None,
+    experimental_allow_unsupported_driver: bool = False,
 ) -> Path:
     uuid = _gpu_uuid(gpu)
     gate_record = {
@@ -1013,7 +1014,9 @@ def _write_rejection_v2(
         "timeout_s": 30.0,
         "maximum_used_mib": 1024,
         "allow_busy_gpu": False,
-        "experimental_allow_unsupported_driver": False,
+        "experimental_allow_unsupported_driver": (
+            experimental_allow_unsupported_driver
+        ),
         "experimental_mask_off": None,
         "gate_manifest": gate_record,
     }
@@ -1117,6 +1120,11 @@ def _write_rejection_v2(
             "4096",
             "--blocks",
             "4096",
+            *(
+                ["--allow-unsupported-driver"]
+                if experimental_allow_unsupported_driver
+                else []
+            ),
         ],
         "cwd": "/synthetic/repo",
         "prepared_at_utc": "2026-01-01T00:00:00.300000Z",
@@ -3594,6 +3602,78 @@ class GateAResultsTest(unittest.TestCase):
                 ),
                 record["validation_errors"],
             )
+
+    def test_v2_sealed_rejection_accepts_the_explicit_driver_opt_in(
+        self,
+    ) -> None:
+        """The strongest rejection opts into the unpinned driver explicitly.
+
+        On a driver outside libsmctrl's validated table a masked request is
+        refused twice over, so a rejection that did not opt in proves only
+        that the driver guard fired.  Opting in leaves the checked-in
+        promotion manifest as the only thing that can refuse, and the
+        producer appends --allow-unsupported-driver in exactly that case.
+        """
+
+        cases = (
+            ("opted-in", True, None, True),
+            ("not-opted-in", False, None, True),
+            ("flag-without-config", False, "add", False),
+            ("config-without-flag", True, "remove", False),
+        )
+        for name, declared, tamper, expected in cases:
+            with self.subTest(case=name):
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    runs = root / "runs"
+                    runs.mkdir()
+                    _write_baseline_v2(runs, gpu=0, trial=0)
+                    # The run ID is derived from the manifest, so the opt-in
+                    # is built into the fixture rather than patched in.
+                    rejection = _write_rejection_v2(
+                        runs,
+                        experimental_allow_unsupported_driver=declared,
+                    )
+
+                    if tamper is not None:
+                        command_path = rejection / "command.json"
+                        command = json.loads(
+                            command_path.read_text(encoding="utf-8")
+                        )
+                        if tamper == "add":
+                            command["argv"] = [
+                                *command["argv"],
+                                "--allow-unsupported-driver",
+                            ]
+                        else:
+                            command["argv"] = [
+                                item
+                                for item in command["argv"]
+                                if item != "--allow-unsupported-driver"
+                            ]
+                        write_json_atomic(command_path, command)
+
+                    spec_path = root / "spec.json"
+                    write_json_atomic(
+                        spec_path,
+                        _spec_v2(
+                            selected=[0],
+                            trials=[0],
+                            rejections=[rejection.name],
+                        ),
+                    )
+                    report = aggregate_from_spec(runs, spec_path)
+                    record = report["sealed_rejections"]["runs"][0]
+                    self.assertEqual(
+                        record["valid"],
+                        expected,
+                        record["validation_errors"],
+                    )
+                    if not expected:
+                        self.assertIn(
+                            "sealed rejection command argv is not exact",
+                            record["validation_errors"],
+                        )
 
     def test_v2_child_environment_and_launcher_policies_are_validated(
         self,
