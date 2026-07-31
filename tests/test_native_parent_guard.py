@@ -1098,6 +1098,41 @@ class NativeParentGuardSourceTest(unittest.TestCase):
             finally:
                 self._reap_descendant(record)
 
+    def test_attested_build_lock_excludes_ambient_directory_link_count(
+        self,
+    ) -> None:
+        """A sibling directory beside the lock must not void the build.
+
+        The runner creates its GPU lease directory inside the same private
+        runtime directory as the build lock, which raises that directory's
+        link count.  Attesting the count made the first formal run invalidate
+        its own attestation permanently, so it is deliberately not attested.
+        """
+
+        module = _load_attestation_module()
+        self.assertNotIn(
+            "directory_nlink",
+            module.build_lock_record.__code__.co_consts,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            lock_directory = root / "burstserve-smctrl-probe"
+            lock_directory.mkdir(mode=0o700)
+            lock_path = lock_directory / "build.lock"
+            lock_path.touch(mode=0o600)
+            configuration = {"build_lock_path": str(lock_path)}
+
+            before = module.build_lock_record(configuration)
+            (lock_directory / ".burstserve-gpu-locks").mkdir(mode=0o700)
+            after = module.build_lock_record(configuration)
+
+            self.assertEqual(before, after)
+            self.assertNotIn("directory_nlink", before)
+            # The lock file's own hardlink defence is still pinned.
+            self.assertEqual(before["nlink"], 1)
+            self.assertEqual(before["mode_octal"], "0600")
+            self.assertEqual(before["directory_mode_octal"], "0700")
+
     def test_attestation_json_node_budget_is_enforced_before_parsing(
         self,
     ) -> None:
@@ -2297,12 +2332,12 @@ class NativeParentGuardArtifactTest(unittest.TestCase):
             "leading-whitespace": (b" " + canonical, "canonical encoding"),
             "duplicate-key": (duplicate, "duplicate key"),
             "alternate-escape": (escaped_slash, "canonical encoding"),
-            # The exact-type comparison reports its own message, so this
-            # variant pins the type check rather than the byte comparison
-            # that would independently reject the same document.
+            # Canonical-byte equality already distinguishes true from 1, so
+            # this pins the end-to-end rejection; exact_json_equal is defence
+            # in depth behind it and is unit-tested separately.
             "bool-to-int-substitution": (
                 bool_to_int,
-                "does not match outputs by exact JSON type",
+                "stale or does not match outputs",
             ),
         }
         environment = _attestation_environment(

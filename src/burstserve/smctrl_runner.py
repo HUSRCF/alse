@@ -5709,7 +5709,6 @@ def formal_source_binding(
             "directory_uid",
             "directory_gid",
             "directory_mode_octal",
-            "directory_nlink",
             "directory_xattrs",
             "inherited_lock_fd",
         }
@@ -5738,7 +5737,6 @@ def formal_source_binding(
                 "directory_mode_octal": (
                     f"{stat.S_IMODE(directory_status.st_mode):04o}"
                 ),
-                "directory_nlink": directory_status.st_nlink,
                 "directory_xattrs": _xattr_records(lock_directory),
                 "inherited_lock_fd": 9,
             }
@@ -5982,7 +5980,6 @@ def _load_attestation_bootstrap(
         or build_lock.get("directory_uid") != directory_status.st_uid
         or build_lock.get("directory_gid") != directory_status.st_gid
         or build_lock.get("directory_mode_octal") != "0700"
-        or build_lock.get("directory_nlink") != directory_status.st_nlink
         or build_lock.get("directory_xattrs")
         != _xattr_records(directory)
         or not stat.S_ISREG(lock_status.st_mode)

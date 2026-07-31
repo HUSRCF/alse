@@ -3889,25 +3889,45 @@ class GateAResultsTest(unittest.TestCase):
         ):  # pragma: no cover - depends on retained raw evidence
             self.skipTest("historical Gate-A0 raw evidence is unavailable")
 
+        published_bytes = published.read_bytes()
+        # The published artifact itself is immutable evidence.
+        self.assertEqual(
+            hashlib.sha256(published_bytes).hexdigest(),
+            "f35164ab85648e51525c88d214897f74d5736c6807a7a37ad57f8459a46b"
+            "22bf",
+        )
+
         report = aggregate_from_spec(run_root, spec_path)
-        regenerated = (canonical_json(report) + "\n").encode("utf-8")
 
         self.assertEqual(
             report["schema_version"],
             "burstserve.gate-a0-evidence-report/v1",
         )
+        # aggregate_input_sha256 binds the evidence itself: the spec digest
+        # and the per-file hashes of every cell, exclusion and rejection the
+        # spec selects.  It must never drift.
         self.assertEqual(
             report["aggregate_input_sha256"],
             "08ef4053d9d5931c42b3f0199ddcf036b7501f55fc9f34c2ccfda56c42b0"
             "a188",
         )
-        self.assertEqual(regenerated, published.read_bytes())
-        self.assertEqual(
-            hashlib.sha256(regenerated).hexdigest(),
-            "f35164ab85648e51525c88d214897f74d5736c6807a7a37ad57f8459a46b"
-            "22bf",
-        )
         self.assertFalse(report["gate_a0"]["complete"])
+
+        # Everything except the raw-directory scan count must still rebuild
+        # byte-for-byte.  That count reports how many run directories exist
+        # locally, and retained raw evidence only ever grows it, so it is not
+        # a stable property of the v1 report contract.
+        original = json.loads(published_bytes)
+        regenerated = json.loads(canonical_json(report))
+        self.assertGreaterEqual(
+            regenerated["scan"].pop("discovered_run_directories"),
+            original["scan"].pop("discovered_run_directories"),
+        )
+        self.assertEqual(regenerated, original)
+        self.assertEqual(
+            canonical_json(regenerated),
+            canonical_json(original),
+        )
 
 
 if __name__ == "__main__":

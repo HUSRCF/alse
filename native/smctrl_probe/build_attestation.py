@@ -2398,7 +2398,12 @@ def build_lock_record(configuration: Mapping[str, str]) -> dict[str, Any]:
         "directory_uid": directory_metadata["uid"],
         "directory_gid": directory_metadata["gid"],
         "directory_mode_octal": directory_metadata["mode_octal"],
-        "directory_nlink": directory_metadata["nlink"],
+        # The lock directory's link count is ambient runtime state, not build
+        # identity: any subdirectory the runner legitimately creates beside
+        # the lock changes it, which would make the first formal run
+        # permanently invalidate its own attestation.  The lock file's own
+        # nlink is still pinned to 1, which is the hardlink defence that
+        # matters, and the directory stays euid-owned mode 0700.
         "directory_xattrs": directory_metadata["xattrs"],
         "inherited_lock_fd": 9,
     }
@@ -2767,15 +2772,17 @@ def command_verify(arguments: argparse.Namespace) -> None:
         raise AttestationError("build attestation bytes are unavailable")
     actual = parse_canonical_json(attestation_snapshot.content)
     expected_content = canonical_json(expected, max_bytes=MAX_ATTESTATION_BYTES)
-    # The exact-type comparison runs first and reports its own message so that
-    # a type substitution is observable, even though canonical-byte equality
-    # independently rejects the same document.
+    # Canonical-byte equality runs first because it is what a stale or
+    # tampered attestation actually trips, and its message says so.  The
+    # exact-type comparison then runs as defence in depth: it rejects any
+    # value or type difference that byte equality could ever miss, and it
+    # never accepts a document byte equality rejected.
+    if attestation_snapshot.content != expected_content:
+        raise AttestationError("build attestation is stale or does not match outputs")
     if not exact_json_equal(actual, expected):
         raise AttestationError(
             "build attestation does not match outputs by exact JSON type"
         )
-    if attestation_snapshot.content != expected_content:
-        raise AttestationError("build attestation is stale or does not match outputs")
 
 
 def command_make_parse_guard(arguments: argparse.Namespace) -> None:
