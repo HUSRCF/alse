@@ -23,27 +23,46 @@
   JSONL、整数 PRNG、线性资源上界、自校验 replay evidence 已在 commit
   `827beb8` 固化：两套解释器各 107/107 完整 simulator 测试，三轮独立
   资源放大与伪造攻击终审无阻断项；这些仍只是获准的后续阶段预研，不代表
-  Gate C 通过。
+  Gate C 通过。隔离、raw-byte Git provenance 已在 commit `3820a98`
+  固化：拒绝 repo config/attributes/filter/fsmonitor 派生执行，覆盖
+  SHA-1/SHA-256、linked/split index、递归 gitlink，并对 HEAD commit、
+  当前完整 tree closure 及所有相关 blobs 在 raw scan 前后重算对象哈希；
+  两套解释器各 18/18 且独立攻击复审无模块级阻断项。其 formal caller /
+  build-exception 接入仍在当前 dirty 批次中，不能据此生成正式证据。
 - Active blockers: 尚未完成第二 GPU SKU 的外部预约；从锁重建的干净
   conda base 已成功，但数 GB pip wheelhouse 按高带宽机下载约定待回传后
   完成 offline-install 验证；GPU 0/5/6 被现有进程占用；masked CUDA
-  13.3 probe 还缺独占 GPU 预约、父进程异常/延迟 Xid 的完整 fail-closed
-  lifecycle、跨 trial/bit validator 和经审查的 promotion manifest。
-  runner/native 独立审计还发现 repo-local Git config/attributes 可在只读
-  status 中触发外部 filter，以及 v2 aggregate 先哈希后按路径重读的
-  TOCTOU/canonical-parser 缺口，修复并复审前不得生成 v2 正式证据
+  13.3 probe 还缺独占 GPU 预约、跨 trial/bit validator 和经审查的
+  promotion 授权（artifact pin 已填，但 promotion lock 仍完全关闭）。
+  CLAUDE_HANDOFF 的第 1–4 步已全部完成：native 五项与 Gate v2 七项阻断
+  全部实现，经三轮独立对抗式复审（六个代理）共发现并关闭 6 个 BLOCKING，
+  第三轮两个领域均为零阻断；已按依赖顺序分七批提交，双解释器各
+  301 tests 通过。**Gate A0 仍未通过**：GPU 0/5/6 各缺 3 次 trial，且
+  现有 15 个 accepted cells 属旧 v1 identity，不得与新 v2 identity 拼接。
 - Next three actions:
-  1. 关闭 runner/native 的 repo-local Git 派生执行与 aggregate
-     hash→parse TOCTOU/canonical JSON 缺口，再完成独立安全复审
-  2. 保持 masked promotion lock 关闭；将 native `--eval` pre-guard
-     immediate expansion 与 root-owned Python/stdlib TCB 写入明确边界，
-     完成 parent-death、Xid lifecycle 和跨 trial/bit validator 后再预约 GPU
-  3. 待 GPU 0/5/6 空闲后按卡串行补齐 unmasked baseline；同时等待第二 SKU
-     预约证据与 wheelhouse 回传以关闭 Phase 0
-- Latest run IDs / commit: commit `827beb8`；Gate A0 clean subset 15 runs，
-  代表 run `bs1-f3628358…ba7`（GPU1）至 `bs1-f3679d41…bf2f`
-  （GPU7）；sealed rejection `bs1-81ee41a6…b59` /
-  `bs1-73dbd73a…27d`
+  1. 等 GPU 0/5/6 空闲后，在当前 clean v2 identity 下重跑全部 8 卡 × 3
+     trials 的 unmasked baseline；不得使用 busy override，不得与旧 v1
+     cells 混合
+  2. 用 v2 evidence spec 生成 v2 aggregate，验证 8×3 全矩阵与 v2 sealed
+     rejection 的 schema 配对与 formal identity 一致
+  3. 推进第二 GPU SKU 预约与 offline wheelhouse 重建这两个外部 blocker；
+     masked 模式在独占预约、跨 trial/bit validator 与 Xid monitor 三者
+     齐备并复审前一律不开
+- Latest run IDs / commit: HEAD `5bcc55f`；本批七个提交依次为
+  `c4641da`（provenance fsync fail-closed）、`955fc67`（NVML Xid monitor）、
+  `8caaf60`（sealed native launch + build attestation）、
+  `ec33347`（environment 接入 raw git provenance）、
+  `35f3f7f`（runner v2 formal launch contract + manifest v2）、
+  `8f6b3c4`（Gate v2 evidence 校验，无 schema downgrade）、
+  `5bcc55f`（填入 fresh v2 artifact pin，promotion lock 不变）。
+  最新正式 GPU 证据仍是旧 v1 identity 的 GPU 1/2/3/4/7 各 3 次、
+  15/15 unmasked subset，aggregate input SHA256 仍为 `08ef4053…a188`，
+  report SHA256 仍为 `f35164ab…22bf`（已加回归测试锁定逐字节不变）；
+  代表 run `bs1-f3628358…ba7`（GPU1）至 `bs1-f3679d41…bf2f`（GPU7）；
+  sealed rejection `bs1-81ee41a6…b59` / `bs1-73dbd73a…27d`。
+  clean-commit fresh v2 build identity（仅构建身份，非 GPU 证据）：
+  launcher `81524e3d…8b01`、real probe `b4e6026a…8fcc`、
+  stamp `1dba5e72…4406`、attestation `67c0c921…bb38`
 
 ### 当前阶段 requirement alignment（2026-07-30）
 
@@ -54,7 +73,7 @@
 | 同 seed deterministic correctness | correctness runner | stock/offload same-mode tensor SHA 成对完全一致；专用环境复跑一致 | exact | cross-mode 数值差异继续仅 `report_only` |
 | 隔离环境及 exact lock | `runtime_lock.py`、25 conda + 52 pip lock | 当前专用环境 verification `matches=true` | exact（现有环境） | 离线 wheelhouse 从零重建仍 missing，Phase 0 不关闭 |
 | 第二 GPU SKU 预约 | 无 | 无 SKU、时间窗或预约证明 | missing | Phase 0 硬门；H100 优先，A100/A800 备选 |
-| 所有 8 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | `gate_a0_4090_dd8c927_seed1_partial_20260730.json` | approximate（5/8，15/15 subset） | GPU 0/5/6 空闲后各补 3 次；不得使用 busy override |
+| 所有 8 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | `gate_a0_4090_dd8c927_seed1_partial_20260730.json`（旧 v1 identity） | approximate（5/8，15/15 subset） | GPU 0/5/6 空闲后，在 clean v2 identity 下重跑全部 8×3；不得使用 busy override，不得与旧 v1 cells 拼接 |
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
 | 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 纯模拟测试；GPU7 只读注册 smoke supported bits `61852`、Xid bit `8` | approximate | 修复中断孤儿、有界 reap、真实 quiet window 和 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
@@ -601,8 +620,232 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   `TraceReplayResult` 必须绑定原 `TraceDocument` 并在构造时复验完整
   event → delta → final-state 链。该提交尚不包含 action selector、
   predictor error 或 Gate C 正式实验。
+- 2026-07-30：隔离 raw-byte Git provenance 以 commit `3820a98`
+  固化；formal source 不再允许调用 repo-local clean filter、attributes、
+  hook 或 fsmonitor 来证明 clean。完整对象内容、raw worktree、index 与
+  gitlink 均受有限资源和 A/B 稳定性约束；allowlist 仍是显式 blind spot，
+  formal caller 必须保留 protected roots，并对 in-tree build 产物实施
+  独立、精确、有限的 attestation exception。
+- 2026-07-30：formal ASLE archive policy 固定要求精确 regular file、
+  mode `0644`、size `31479528` 和 SHA256
+  `5c6cba9d…f97d`；现场归档从 `0664` 收紧为 `0644`，前后 inode、size
+  与内容摘要不变。该权限修正只关闭必然 fail-closed 的本地前置条件，不构成
+  fresh build 或正式 evidence。
+- 2026-07-30：为外部 agent 连续执行建立英文临时交接文档
+  `CLAUDE_HANDOFF.md`；接手者必须先启动 `achieve goal`，按 native →
+  Gate → 双解释器/fresh CPU gate → 独立复审/提交/clean v2 identity 的
+  固定顺序持续推进，不得因状态汇报、单次测试失败或提交完成而停止。
+- 2026-07-30：CLAUDE_HANDOFF 的 "empty compute/MPS lists" 要求按以下方式
+  落实并记录偏离：preflight、final launch preflight 与 post-health 的
+  **compute 进程列表必须为空**；host MPS daemon 列表按 2026-07-30 已冻结
+  的决定继续作为 provenance 记录，只校验记录结构精确（`pid`/`command`/
+  `arguments`）并要求 `empty_mps_pipe_bypass_exact`、
+  `host_mps_state_recorded_after_probe` 与 `mps_bypass` 精确记录为真，
+  **不要求 MPS 列表为空**。理由：dd 常驻十余个
+  `nvidia-cuda-mps-control -d`，要求 MPS 列表为空将使任何真实证据永远
+  无法通过，并与"不以 daemon 缺席证明隔离、改用 NVIDIA 文档的空
+  `CUDA_MPS_PIPE_DIRECTORY` bypass 并记录 daemon"的冻结决定直接冲突。
+  该偏离只放宽 provenance 记录，不放宽任何安全判定。
+- 2026-07-30：native attestation 的 TCB 文档按实现如实收敛：`/proc`
+  的 `cmdline`/`environ`/`stat` 只做有界单次快照读取，README 不再声称
+  会检测"变化中的记录"，并显式说明进程可自行改写自己的 argv/environ；
+  `make --eval`/`-E` 明确记为在 parse guard 运行之前就已被 GNU make
+  展开，属 clean-entry 契约之外，只能由 formal runner 自行生成固定
+  argv 关闭，guard 的拒绝只能把已执行的注入转成硬 parse error。
 
 ## 八、Compaction Checkpoints
+
+- 2026-07-30 / handoff step 1–4 完成，七批已提交（HEAD `5bcc55f`）：
+  在下一条 checkpoint 的实现基础上，完成了三轮独立对抗式复审、修复、
+  分批提交与 clean-commit 重建。**三轮共六个复审代理，发现并关闭 6 个
+  BLOCKING**，其中五个是「同类问题第一次没修干净」：
+  (1) R1 native：`/proc/<pid>/stat` 整体按 strict ASCII 解码，而内核把
+  `comm` 按原始字节输出，导致进程名含非 ASCII 字节的**存活**组成员被当作
+  「已退出」跳过——这是证明「组已空」的那个函数本身 fail-open。
+  (2) R2 native：同类残留——线程组 leader 线程先退出时 `/proc/<tgid>/stat`
+  报 `Z`，但其余线程仍在运行，`state != "Z"` 的跳过同样把存活组报告为空。
+  (3) R1 Gate：`_validate_sealed_rejection_v2` 要求 `manifest_policy` 的
+  false 检查**恰好**两项，但对着仓库里真实的 closed manifest 实测产生 20 项，
+  且 `selected_is_v2` 会在缺少合法 v2 rejection 时强制 `rejections_valid=false`
+  ——即**任何真实 v2 矩阵都永远无法完成 Gate A0**。
+  (4) R2 Gate：同类残留——放宽后的 `masked_` 前缀族漏掉 stream 模式的四个
+  offset 授权门与 `runner_masked_health_monitor_is_implemented`，而现有两个
+  真实 sealed rejection 恰好是 global + stream。
+  (5) R1 Gate：v2 基线路径**从不校验** `command.environment_overrides`
+  ——`_validate_baseline_command`（含 `CUDA_MPS_PIPE_DIRECTORY == ""`、
+  `CUDA_VISIBLE_DEVICES == uuid`、`MASK_OFF is None`）只在 v1 被调用，
+  v2 仅查键名且该字段不在必需键内。这直接掏空了 MPS 偏离的补偿控制。
+  (6) R1 Gate：`_validate_source_revalidation` 等多处仍用宽松 `!=`，
+  `1` 可冒充 `True`。
+  两个 Gate 阻断之所以被测试漏掉，根因同为 **fixture 被弯折以迎合校验器**：
+  rejection 的 `manifest_policy` 被硬编码成校验器想要的两键形状，baseline
+  的 `command.json` 只写了 producer 13 个键中的 6 个。两个 fixture 已按
+  producer 真实输出重写（新增 `_child_environment`、`_closed_manifest_policy`，
+  rejection 也写全 13 键并按 mode 参数化）。R3 两个领域均**零阻断**：Gate
+  侧以 345,600 状态扫描确认授权族在「太窄」方向已完整、两个真实 rejection
+  全部落在族内；native 侧确认剩余唯一遗漏模式需要「扫描期间并发 clone」，
+  而扫描前强制的组 SIGKILL 使其不可达。R3 的非阻断项也已修：授权族排除
+  `masked_threads_are_native_canonical`（它是 manifest 正确性检查而非授权门）、
+  libcuda identity 绝对类型钉死、`native_build.found` 精确校验、
+  `_thread_group_has_live_thread` 改为要求两次连续全死快照，并把 docstring 与
+  README 的说法收敛为「先 SIGKILL 再扫描」这一真实保证，不再声称扫描本身
+  自洽。双解释器各 301 tests 通过（provenance 14 / git_provenance 18 /
+  nvml_events 24 / environment 8 / smctrl_runner 139（21 项既有 legacy
+  fake-Popen skip）/ gate_a_results 46 / native_parent_guard 52）。
+  旧 v1 报告在全部改动后仍逐字节相同（`f35164ab…22bf`，input
+  `08ef4053…a188`），并已加回归测试锁定。fresh CPU-only
+  `gate-required-check` 在提交后重跑通过，inventory 精确为 9 个文件 +
+  3 个 `0700` 目录。clean commit 上已填入 fresh v2 artifact pin，但
+  promotion lock 保持完全关闭，三种 masked 模式实测 `permitted=False`。
+  全程未运行任何 GPU kernel，未运行 masked 模式，未产生新的正式 GPU 证据。
+
+- 2026-07-30 / handoff step 1–3 完成（post-`3820a98`，仍未提交）：按
+  `CLAUDE_HANDOFF.md` 逐项推进。开工前逐个核对交接文档的 8 个哈希，全部
+  一致（`smctrl_runner.py` `5fa395b0…18a4`、`environment.py`
+  `41ed0687…05c7e`、`Makefile` `869473d5…a9ba5`、`build_attestation.py`
+  `bfbeeb12…fb7bd`、`test_native_parent_guard.py` `0543a375…98cca`、
+  `gate_a_results.py` `577616fd…1ef87`、`test_gate_a_results.py`
+  `fe568438…97f1c`、native `README.md` `85d46ae4…3bbda9`），HEAD 仍为
+  `3820a98`。**Native 五项**已全部关闭：(1) `run_command()` 现在在直接
+  子进程正常退出的路径上也 `killpg` 整个 session/进程组并有界验证组内无
+  可执行成员（僵尸不计），新增"关闭全部管道后仍存活的孙进程"正向测试与
+  killpg 被拦截时的有界 fail-closed 负向测试；(2) `verify` 改为 canonical
+  精确字节 + 递归精确 JSON 类型双重比对（`exact_json_equal`），并加入
+  `true→1` 端到端替换拒绝测试；(3) JSON node 上界移到解析前的字符串/
+  转义感知词法预算，>100k 扁平数组在建图前即被拒（以 patch `json.loads`
+  证明），且 object key 不计入节点数，不会误拒合法文档；(4) README 写明
+  `make --eval/-E` 在 guard 之前展开、属 clean-entry 契约之外，须由 runner
+  生成固定 argv；(5) 删除 `/proc` "stability-checked" 的不实声明。
+  **Gate v2 七项**已全部关闭：evidence-spec ↔ baseline cell ↔ sealed
+  rejection ↔ report 四者 schema 双向配对，rejection schema 纳入 report
+  版本选择，交接文档指定的完整攻击（8 个 valid v1 cells + v1 spec + 完全
+  合法的 v2 rejection）已验证仅被新配对检查阻断（该 rejection 的唯一错误
+  即 schema pairing，8 cells 全 valid，`gate_a0.complete=false`）；v2
+  config/outcome/native/sealed-rejection 全部改为精确 JSON 类型比较，
+  bool/int/float 互换一律拒绝；`run.started.final_launch_preflight`
+  已与 final-preflight 事件和 outcome 三方 canonical 绑定；baseline
+  final-preflight 与 preflight/post-health 的完整契约（精确键、canonical
+  timestamp、float `0.0` horizon、`required_until==captured_at`、精确 GPU
+  记录、空 compute 列表、null error、精确 check 名集合与全真、
+  reservation 记录）全部校验；事件顺序仍以 sequence 为逻辑序，未引入
+  wall-clock 推断。旧 v1 报告保持逐字节不变，重算 SHA256 仍为
+  `f35164ab…22bf`、aggregate input 仍为 `08ef4053…a188`，并已加入回归
+  测试锁定。两套解释器各 293 tests 通过（provenance 14 / git_provenance 18
+  / nvml_events 24 / environment 8 / smctrl_runner 139（21 项既有 legacy
+  fake-Popen skip）/ gate_a_results 42 / native_parent_guard 48）。
+  fresh CPU-only `CUDA_VISIBLE_DEVICES='' make gate-required-check` 通过，
+  内层 48/48，末行 sentinel 正确；最终 inventory 精确为 9 个文件
+  （0400/0500，全部 euid 所有）+ 3 个 0700 目录（`build`、
+  `build/smctrl_probe`、`build/smctrl_probe/tmp`），无 object、archive、
+  legacy lock、stale tmp leaf、pyc 或任何多余文件，私有锁为 0700 目录 +
+  0600 文件。未运行任何 GPU kernel，未运行 masked 模式。checked-in
+  promotion manifest 仍完全关闭（`experimental_mask_enabled=false`、
+  approved modes/reserved UUIDs 为空、reservation 为 null、四个 approval
+  pin 仍为全零占位），本次 fresh build 的 identity 未写入 pin。GPU 0/6
+  仍由 VLLM 各占 20,650 MiB，GPU 5 仍由 `.kvsim/bin/python` 占 4,838 MiB。
+  下一步：独立攻击复审 → 分批提交 → clean commit 上重建并生成 v2
+  attestation/pins。当前批次未复审、未提交，不得据此生成正式证据。
+
+- 2026-07-30 / fourth post-`3a256e4`, first post-`3820a98` recovery：
+  按恢复协议重新逐段完整读取当前 861 行 `plan.md`，并核对 dirty
+  worktree、最近 8 个提交、最新 run / aggregate、GPU 占用、wheelhouse、
+  第二 SKU 线索和三个并行任务。HEAD 为 `3820a98`；隔离 raw-byte Git
+  provenance 已在该提交验收，系统与专用解释器各 18/18，并经独立攻击
+  复审判定无模块级提交阻断项。其 runner/environment/native caller 接入、
+  exact build exception、ASLE archive binding 和严格 source-metadata
+  contract 仍属于当前 dirty 候选，尚未冻结或形成正式 identity。没有新增
+  raw run、aggregate、正式 GPU 证据或 masked kernel；最新正式 GPU 证据
+  仍为旧 v1 identity 的 GPU 1/2/3/4/7 各 3 次、15/15 unmasked subset，
+  aggregate input SHA256 仍为 `08ef4053…a188`，最近两次运行仍是
+  `Popen` 前 sealed rejection。GPU 0/6 各由 VLLM 占用 20,650 MiB，
+  GPU 5 由 `.kvsim/bin/python` 占用 4,838 MiB；GPU 1/2/3/4/7 虽仅
+  2 MiB，但源码 dirty，禁止生成正式证据。项目 wheelhouse 仍未回传，
+  仅发现外部 67 MiB
+  `/data/zhuoxu/INA-opt/downloads/wheelhouse-cp312`；第二 GPU SKU
+  仍无预约文件、SKU、时间窗或外部证明。runner 候选已接入 safe Git、
+  `-I -S -B`、ASLE 精确 pin、canonical build inventory 与目录身份约束，
+  但完整 `LIBSMCTRL_SOURCE.json` 类型/摘要/commit 绑定、policy
+  adversarial table、native error-histogram 语义、dead legacy 清理和双
+  解释器全回归仍未关闭；native I/O 子任务正在对 build attestation 实施
+  有界 `O_NOFOLLOW|O_NONBLOCK` 读取与有界 subprocess，尚未冻结。
+  Gate v2 frozen-FD/canonical-parser 候选此前两套解释器各 34/34，
+  但仍未纳入 runner 新增的
+  `launch_commit_reservation_revalidation`，因此仅为 provisional，须在
+  runner 冻结后同步 schema、重跑历史 v1 哈希和独立复审。恢复后的
+  read-only 复审还确认 raw `source_revision()` 会因精确 build exception
+  与 pinned `ASLE.tar.gz` 仍出现在 untracked 集中而标成 `+dirty-`，旧
+  `source_tree_is_clean_commit` 检查会错误拒绝所有真实 formal launch；
+  当前修复必须保留 raw 标签，同时只以完整 raw Git、零 tracked drift 和
+  精确 ASLE/build exception 决定 formal eligibility，并加入 extra-untracked
+  负向测试。promotion
+  manifest 继续关闭，不运行 GPU kernel/mask，不使用 busy override，
+  旧 v1 与未来 v2 identity 继续严格隔离。
+
+- 2026-07-30 / third post-`3a256e4` recovery：按恢复协议逐段完整重读当前
+  `plan.md`，并重新核对 dirty worktree、最近 8 个提交、最新 run /
+  aggregate、GPU 占用、wheelhouse、第二 SKU 预约线索和并行任务。HEAD
+  仍为 `3a256e4`；没有新增 raw run、aggregate、正式 GPU 证据或真实
+  masked kernel，最新正式 GPU 证据仍是旧 v1 identity 的 5 卡 15/15
+  unmasked subset，aggregate input SHA256 仍为 `08ef4053…a188`，且
+  两个最新 run 仍是 `Popen` 前 sealed rejection。GPU 0/6 分别由
+  VLLM 占用 20,650 MiB，GPU 5 由 `.kvsim/bin/python` 占用
+  4,838 MiB；GPU 1/2/3/4/7 仅有 2 MiB，但源码 dirty，禁止生成正式
+  证据。项目 wheelhouse 仍未回传，只发现外部 67 MiB
+  `/data/zhuoxu/INA-opt/downloads/wheelhouse-cp312`；第二 GPU SKU
+  仍无预约文件、SKU、时间窗或外部证明。Gate v2 frozen-FD /
+  canonical-parser 候选在冻结版本上已由两套解释器各 34/34 通过，独立
+  复审当时无提交阻断项，但 runner 随后新增
+  `launch_commit_reservation_revalidation`，因此 Gate exact schema 必须
+  在 runner 最终冻结后重新对齐、双解释器回归和独立复审，当前只算
+  provisional。隔离 Git provenance 首轮 12/12 结论已被独立攻击复审
+  推翻：loose-ref fallback、FIFO metadata hang、缺失对象未验证、派生
+  prefix 无界、annotated-tag HEAD、ref grammar、allowlist 隐藏可执行
+  内容和 policy 输入无界共 8 类缺口正在修复；未经再次独立复审不得提交。
+  runner/native 候选已覆盖 durable masked poison、launch-commit
+  reservation horizon、signal terminal downgrade、目录 fsync 故障和
+  有界 Xid drain，但 strict canonical parsers、安全 Git 调用方接入、
+  native 有界 `O_NONBLOCK|O_NOFOLLOW` 读取、TCB 文档及 runner↔Gate
+  schema 同步仍未关闭。三个子任务继续分别处理 Git provenance、
+  runner/native 实现和只读 contract 复审；promotion manifest 保持关闭，
+  不运行 GPU kernel/mask，旧 v1 与未来 v2 identity 继续严格隔离。
+
+- 2026-07-30 / second post-`3a256e4` recovery：按协议分段完整重读当前
+  `plan.md`，并重新核对工作树、最近 8 个提交、最新 run/aggregate、GPU
+  占用、wheelhouse、第二 SKU 预约线索与并行实现状态。HEAD 仍为
+  `3a256e4`；没有新增 raw run、aggregate、正式 GPU 证据或真实 masked
+  kernel，最新正式证据仍是旧 v1 identity 的 5 卡 15/15 unmasked subset
+  与两次 `Popen` 前 sealed rejection。GPU 0/6 仍由 VLLM 占用，GPU 5
+  仍由 `.kvsim/bin/python` 占用；GPU 1/2/3/4/7 虽空闲，但源码 dirty，
+  禁止生成正式证据。项目 wheelhouse 仍缺失，仅有外部 67 MiB
+  `wheelhouse-cp312`；第二 GPU SKU 仍无预约证明。Gate v2 frozen-FD /
+  canonical parser 候选曾达双解释器各 28/28，但独立复审新发现 oversized
+  sparse file 在状态登记顺序及 v1 legacy reopen 路径仍可绕过读取上限，
+  且 public `validate_gate_a0` 未复用严格 spec normalization，因此尚未
+  验收。runner 已有 baseline 无预约 preflight、NVML 最终零时轮询、
+  2 秒总 drain 上限和 first-Xid fail-fast 候选修复；完整 reservation
+  lifecycle、terminal/signal 原子降级及 masked 子进程异常退出后的 durable
+  poison 仍须关闭。隔离 Git provenance 模块首轮 12/12 CPU 测试通过，
+  正在收紧 ignored-root allowlist，尚未接入 runner、environment 和 native
+  attestation。所有候选必须完成资源上限回归、双解释器测试和独立复审后才
+  可提交；promotion manifest 继续关闭，旧 v1 与未来 v2 identity 不混合。
+
+- 2026-07-30 / first post-`3a256e4` recovery：按协议分段完整重读当前
+  783 行 `plan.md`，核对工作树、最近 8 个提交、最新实验产物、GPU
+  占用、wheelhouse、第二 SKU 预约线索与并行任务。HEAD 为 `3a256e4`；
+  `827beb8` 的 deterministic trace 已验收并提交，当前 dirty worktree
+  仅包含尚未验收的 native parent/sealed-exec/build-attestation 与
+  runner/NVML/v2 aggregate 候选。没有新增 raw run、aggregate 或真实
+  masked kernel；最新正式 GPU 证据仍是旧 v1 identity 的 5 卡 15/15
+  unmasked subset 与两次 `Popen` 前 sealed rejection。GPU 0/6 仍由
+  VLLM 占用，GPU 5 仍由 `.kvsim/bin/python` 占用，GPU 1/2/3/4/7
+  空闲但源码 dirty，禁止生成正式 GPU 证据。项目 wheelhouse 仍缺失，
+  仅发现外部 67 MiB `wheelhouse-cp312`；第二 GPU SKU 仍无预约证明。
+  当前三条并行工作分别负责 runner/native 实现、repo-local Git
+  provenance 设计与 Gate v2 单次快照/canonical parser 复核；必须关闭
+  Git clean-filter 派生执行、aggregate hash→path 重读 TOCTOU，并记录
+  `make --eval` immediate expansion 及 root-owned Python/stdlib/loader/
+  libc TCB 边界，独立复审清零后方可提交。promotion manifest 继续关闭，
+  不运行 GPU kernel/mask，也不把旧 v1 evidence 与未来 v2 identity 混合。
 
 - 2026-07-30 / second post-`82a27c4` recovery：按协议分段完整重读当前
   753 行 `plan.md`，核对工作树、最近 8 个提交、最新实验产物、GPU
