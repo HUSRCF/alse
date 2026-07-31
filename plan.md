@@ -2,7 +2,7 @@
 
 ## 执行状态
 
-- Last updated: 2026-07-30
+- Last updated: 2026-07-31
 - Current phase: 第 1 周——工程基线与可复现环境；并行进行 Gate A0
   fail-closed 预研，不视为进入第 2 周
 - Current gate: Phase 0 baseline reproducibility；Gate A0 仅允许 unmasked
@@ -40,14 +40,12 @@
   301 tests 通过。**Gate A0 仍未通过**：GPU 0/5/6 各缺 3 次 trial，且
   现有 15 个 accepted cells 属旧 v1 identity，不得与新 v2 identity 拼接。
 - Next three actions:
-  1. 等 GPU 0/5/6 空闲后，在当前 clean v2 identity 下重跑全部 8 卡 × 3
-     trials 的 unmasked baseline；不得使用 busy override，不得与旧 v1
-     cells 混合
-  2. 用 v2 evidence spec 生成 v2 aggregate，验证 8×3 全矩阵与 v2 sealed
-     rejection 的 schema 配对与 formal identity 一致
-  3. 推进第二 GPU SKU 预约与 offline wheelhouse 重建这两个外部 blocker；
-     masked 模式在独占预约、跨 trial/bit validator 与 Xid monitor 三者
-     齐备并复审前一律不开
+  1. 等 GPU 0/5/6 空闲后，在**完全相同的 v2 identity**（HEAD 与 untracked
+     集都不得变化）下补跑 GPU 0/5/6 各 3 次，再重建 8×3 全矩阵 aggregate；
+     不得使用 busy override，不得与旧 v1 cells 混合
+  2. 推进第二 GPU SKU 预约与 offline wheelhouse 重建这两个外部 blocker
+  3. 在纯 CPU 侧继续 plan.md 已获准的 simulator 预研；masked 模式在独占
+     预约、跨 trial/bit validator 与 Xid monitor 三者齐备并复审前一律不开
 - Latest run IDs / commit: HEAD `5bcc55f`；本批七个提交依次为
   `c4641da`（provenance fsync fail-closed）、`955fc67`（NVML Xid monitor）、
   `8caaf60`（sealed native launch + build attestation）、
@@ -73,7 +71,7 @@
 | 同 seed deterministic correctness | correctness runner | stock/offload same-mode tensor SHA 成对完全一致；专用环境复跑一致 | exact | cross-mode 数值差异继续仅 `report_only` |
 | 隔离环境及 exact lock | `runtime_lock.py`、25 conda + 52 pip lock | 当前专用环境 verification `matches=true` | exact（现有环境） | 离线 wheelhouse 从零重建仍 missing，Phase 0 不关闭 |
 | 第二 GPU SKU 预约 | 无 | 无 SKU、时间窗或预约证明 | missing | Phase 0 硬门；H100 优先，A100/A800 备选 |
-| 所有 8 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | `gate_a0_4090_dd8c927_seed1_partial_20260730.json`（旧 v1 identity） | approximate（5/8，15/15 subset） | GPU 0/5/6 空闲后，在 clean v2 identity 下重跑全部 8×3；不得使用 busy override，不得与旧 v1 cells 拼接 |
+| 所有 8 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | v2：`gate_a0_4090_v2_seed1_partial_20260730.json`（15/15 accepted，report `dfa9a93c…64d8`）；旧 v1：`gate_a0_4090_dd8c927_seed1_partial_20260730.json` | approximate（5/8，15/15 subset） | GPU 0/5/6 由他人多日任务占用；空闲后须在**完全相同的 v2 identity** 下补跑各 3 次；不得使用 busy override，不得与旧 v1 cells 拼接 |
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
 | 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 纯模拟测试；GPU7 只读注册 smoke supported bits `61852`、Xid bit `8` | approximate | 修复中断孤儿、有界 reap、真实 quiet window 和 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
@@ -654,6 +652,52 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   argv 关闭，guard 的拒绝只能把已执行的注入转成硬 parse error。
 
 ## 八、Compaction Checkpoints
+
+- 2026-07-31 / v2 identity 下首批被接受的 Gate A0 证据（HEAD `faa8056`）：
+  按 plan.md 的 next action ① 执行。**前置条件核实**：源码树原本不
+  formal-clean——raw Git scanner 刻意不读 `.gitignore`，5 个
+  `__pycache__`（约 90 个 stale `.pyc`）与 `CLAUDE_HANDOFF.md` 都算额外
+  未跟踪项，`formal_git_build_exception_paths_exact` 因此为 false；清理后
+  `formal_source_tree_policy_clean=True`、零失败检查。**GPU 前提只满足
+  5/8 且不是「等一会」能解决的**：GPU 0/6 是用户 `yitong` 的 VLLM 双卡任务
+  （当时已跑 1 天 19 小时），GPU 5 是用户 `rlwu` 的 kvsim（已跑 8 天 5
+  小时），均为他人多日长任务，不得干预、ETA 未知。经用户批准后在空闲的
+  GPU 1/2/3/4/7 上执行。
+  **真机首跑连续暴露四个只有真实运行才会出现的缺陷，全部已修并加回归**：
+  (1) runner 把 GPU lease 目录建在 build lock 目录内部，创建子目录使父
+  目录 `nlink` 由 2 变 3，而 build attestation 把 `build_lock.directory_nlink`
+  当作被证明的构建身份——**第一次 formal run 就在自己的 preflight 之前
+  永久作废了自己的 attestation**，此后每次 verify 必然失败（`f42b538`）。
+  (2) source identity 快照里含 pinned verifier 的 `/proc/self/fd/<n>`，
+  该编号在 prelaunch 与 preexec 之间必然变化（期间又开了监控与 launcher
+  描述符），使 pre-exec 重校验**永远不可能匹配**（`5219113`）。
+  (3) manifest 的 `runtime_api_version` 写成 13000，实测为 13030；用独立
+  链接 `/usr/local/cuda-13.3` 的 `libcudart` 的程序验证 `cudaRuntimeGetVersion=13030`
+  （toolkit cudart 13.3.29），确认是 manifest 数据错误而非环境不符（`cb05d02`）。
+  (4) v2 sealed rejection 的期望 argv 未包含 producer 在
+  `experimental_allow_unsupported_driver` 为真时追加的 `--allow-unsupported-driver`，
+  使最强形式的拒绝证据反被判为不精确（`c8fe949`）。(1)(2) 与前三轮复审
+  发现的 B1/B1-residual 属同一族：**把瞬时运行状态烘进要求稳定的身份**，
+  或**把期望收得比 producer 真实输出更窄**。
+  另外确认一条操作规律：`source_revision` 的 raw 标签覆盖三个允许根之外的
+  任何未跟踪文件，因此 **evidence spec 与 aggregate 只能在全部 run 完成之后
+  再写**，否则后续 run 的 identity 会与前面的错开（已实际踩到两次）。
+  **结果**：GPU 1/2/3/4/7 × trial 0/1/2 共 15 个 cell 全部 accepted，
+  每个 4096 blocks / 128 of 128 SM / coverage 1.0 / 31 项语义检查全真 /
+  三次 source 重校验全匹配 / post-health 全真 / stderr 空 / 15 个共享同一
+  formal identity 与同一 runner schema；另有 2 个 sealed rejection
+  （global 与 stream，均显式 opt-in 不受支持的驱动，因而唯一可能拦下它们的
+  就是 checked-in promotion manifest），二者均无 `native.json`、事件恰为
+  `run.preflight,run.rejected`、stdout 为空、exit 4、`process_exit_code`
+  为 null，**未启动任何子进程、未执行任何 masked kernel**。
+  evidence spec `ad5f5f5f…e474`、aggregate input `0c2e5ab9…b0de`、
+  report `dfa9a93c…64d8`，落盘于
+  `experiments/aggregates/gate_a0_4090_v2_seed1_partial_20260730.json`。
+  **Gate A0 仍未通过**：报告本身判定 `complete=false`，GPU 0/5/6 各缺 3 次；
+  未使用 busy override；旧 15 个 v1 cells 未与本批拼接。两套解释器各
+  304 tests 通过；旧 v1 报告的 `aggregate_input_sha256` 仍为
+  `08ef4053…a188`。早期四次失败 run 全部保留为原始证据，未被 spec 引用
+  （source_revision 不同，自动落选）。
 
 - 2026-07-30 / handoff step 1–4 完成，七批已提交（HEAD `5bcc55f`）：
   在下一条 checkpoint 的实现基础上，完成了三轮独立对抗式复审、修复、
