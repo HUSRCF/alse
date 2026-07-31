@@ -3538,6 +3538,70 @@ class GateAResultsTest(unittest.TestCase):
                             record["validation_errors"],
                         )
 
+    def test_v2_fleet_scope_is_a_floor_and_v1_keeps_the_old_scope(
+        self,
+    ) -> None:
+        """The v2 programme requires five 4090s; v1 still reports eight."""
+
+        selected = [1, 2, 3, 4, 7]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runs = root / "runs"
+            runs.mkdir()
+            for gpu in selected:
+                for trial in range(3):
+                    _write_baseline_v2(runs, gpu=gpu, trial=trial)
+            rejection = _write_rejection_v2(runs)
+            spec_path = root / "spec.json"
+            spec = _spec_v2(
+                selected=selected,
+                trials=[0, 1, 2],
+                rejections=[rejection.name],
+            )
+            spec["declared_gpus"] = [
+                {"physical_gpu": index, "gpu_uuid": _gpu_uuid(index)}
+                for index in selected
+            ]
+            write_json_atomic(spec_path, spec)
+
+            report = aggregate_from_spec(runs, spec_path)
+
+            self.assertEqual(report["gate_a0"]["required_gpu_count"], 5)
+            self.assertEqual(report["gate_a0"]["declared_gpu_count"], 5)
+            self.assertTrue(report["selected_subset"]["accepted"])
+            self.assertTrue(report["gate_a0"]["complete"])
+            self.assertTrue(report["gate_a0"]["v2_matrix_shape_valid"])
+
+        # Fewer than the floor is still incomplete.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runs = root / "runs"
+            runs.mkdir()
+            for gpu in (1, 2, 3, 4):
+                for trial in range(3):
+                    _write_baseline_v2(runs, gpu=gpu, trial=trial)
+            rejection = _write_rejection_v2(runs)
+            spec_path = root / "spec.json"
+            spec = _spec_v2(
+                selected=[1, 2, 3, 4],
+                trials=[0, 1, 2],
+                rejections=[rejection.name],
+            )
+            spec["declared_gpus"] = [
+                {"physical_gpu": index, "gpu_uuid": _gpu_uuid(index)}
+                for index in (1, 2, 3, 4)
+            ]
+            write_json_atomic(spec_path, spec)
+
+            report = aggregate_from_spec(runs, spec_path)
+
+            self.assertEqual(report["gate_a0"]["declared_gpu_count"], 4)
+            self.assertTrue(report["selected_subset"]["accepted"])
+            self.assertFalse(
+                report["gate_a0"]["complete"],
+                "four declared GPUs are below the five-card floor",
+            )
+
     def test_v2_sealed_rejection_supports_every_masked_mode(self) -> None:
         """Stream-mode locks are authorization gates without the prefix."""
 

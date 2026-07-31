@@ -37,7 +37,14 @@ CELL_SCHEMA_VERSION = "burstserve.smid-probe-cell/v1"
 OUTCOME_SCHEMA_VERSION = "burstserve.smid-probe-outcome/v1"
 NATIVE_SCHEMA_VERSION = "burstserve.smid-probe-native/v1"
 EXPECTED_BLOCKS = 4096
+# The v1 evidence programme was scoped to the box's full eight 4090s. That
+# number is part of the already-published v1 report and is therefore frozen.
 REQUIRED_GATE_A0_GPU_COUNT = 8
+# 2026-07-31 scope change (see plan.md decision log): the paper's main matrix
+# is re-scoped to a four-card fleet plus one spare/clean-control card, so the
+# v2 programme requires those five 4090s rather than all eight. Declaring more
+# than the minimum is allowed and still has to be complete.
+REQUIRED_GATE_A0_GPU_COUNT_V2 = 5
 
 _EVIDENCE_FILES = (
     "manifest.json",
@@ -5219,15 +5226,25 @@ def validate_gate_a0(
     all_contract_schemas_compatible = (
         all_contract_schemas == [expected_contract_schema]
     )
+    # The required fleet size is a property of the evidence programme, not of
+    # a single global constant: the published v1 report was produced under the
+    # eight-card scope and must keep reporting it.  Declaring more than the
+    # minimum stays legal, and every declared GPU still has to be complete, so
+    # this is a floor rather than an exact shape.
+    required_gpu_count = (
+        REQUIRED_GATE_A0_GPU_COUNT_V2
+        if spec_is_v2
+        else REQUIRED_GATE_A0_GPU_COUNT
+    )
     v2_matrix_shape_valid = (
         all_contract_schemas != [CELL_SCHEMA_VERSION_V2]
         or (
-            len(gpu_by_index) == REQUIRED_GATE_A0_GPU_COUNT
+            len(gpu_by_index) >= required_gpu_count
             and required_trials == [0, 1, 2]
         )
     )
     gate_complete = (
-        len(gpu_by_index) == REQUIRED_GATE_A0_GPU_COUNT
+        len(gpu_by_index) >= required_gpu_count
         and not missing_declared_gpus
         and full_consistent
         and all_contract_schemas_compatible
@@ -5331,7 +5348,7 @@ def validate_gate_a0(
             "accepted": selected_accepted,
         },
         "gate_a0": {
-            "required_gpu_count": REQUIRED_GATE_A0_GPU_COUNT,
+            "required_gpu_count": required_gpu_count,
             "declared_gpu_count": len(gpu_by_index),
             "complete_declared_gpus": complete_declared_gpus,
             "missing_declared_gpus": missing_declared_gpus,
