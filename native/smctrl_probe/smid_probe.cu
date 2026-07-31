@@ -1,6 +1,11 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include <signal.h>
+#include <sys/prctl.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -17,7 +22,7 @@
 
 namespace {
 
-constexpr const char* kSchema = "burstserve.smid-probe-native/v1";
+constexpr const char* kSchema = "burstserve.smid-probe-native/v2";
 constexpr int kThreadsPerBlock = 256;
 constexpr int kDefaultIterations = 4096;
 
@@ -56,6 +61,15 @@ struct DeviceInfo {
   int sm_count = -1;
 };
 
+struct ParentGuardInfo {
+  std::string mode = "not_required";
+  std::string status = "not_required";
+  int64_t expected_parent_pid = -1;
+  int64_t observed_parent_pid = -1;
+  int inherited_pdeath_signal = 0;
+  int pdeath_signal = 0;
+};
+
 struct Report {
   std::string status = "configuration_error";
   Mode mode = Mode::kBaseline;
@@ -67,6 +81,7 @@ struct Report {
   int blocks = 0;
   int iterations = 0;
   std::map<uint32_t, uint64_t> histogram;
+  ParentGuardInfo parent_guard;
   std::string error;
 };
 
@@ -142,6 +157,34 @@ void emit_report(const Report& report) {
   } else {
     out << "null";
   }
+  out << ",\"parent_guard\":{\"mode\":\""
+      << json_escape(report.parent_guard.mode) << "\",\"status\":\""
+      << json_escape(report.parent_guard.status)
+      << "\",\"expected_parent_pid\":";
+  if (report.parent_guard.expected_parent_pid > 0) {
+    out << report.parent_guard.expected_parent_pid;
+  } else {
+    out << "null";
+  }
+  out << ",\"observed_parent_pid\":";
+  if (report.parent_guard.observed_parent_pid > 0) {
+    out << report.parent_guard.observed_parent_pid;
+  } else {
+    out << "null";
+  }
+  out << ",\"inherited_pdeath_signal\":";
+  if (report.parent_guard.inherited_pdeath_signal > 0) {
+    out << report.parent_guard.inherited_pdeath_signal;
+  } else {
+    out << "null";
+  }
+  out << ",\"pdeath_signal\":";
+  if (report.parent_guard.pdeath_signal > 0) {
+    out << report.parent_guard.pdeath_signal;
+  } else {
+    out << "null";
+  }
+  out << '}';
   out << ",\"device\":{\"ordinal\":" << report.device.ordinal << ",\"name\":";
   if (!report.device.name.empty()) {
     out << "\"" << json_escape(report.device.name) << "\"";
@@ -250,6 +293,31 @@ bool parse_mode(const char* text, Mode* mode) {
   return false;
 }
 
+bool parse_parent_pid(const char* text, pid_t* output) {
+  if (text == nullptr || *text == '\0') {
+    return false;
+  }
+  uint64_t parsed = 0;
+  for (const unsigned char ch :
+       std::string(reinterpret_cast<const char*>(text))) {
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
+    const uint64_t digit = static_cast<uint64_t>(ch - '0');
+    if (parsed >
+        (static_cast<uint64_t>(std::numeric_limits<pid_t>::max()) - digit) /
+            10) {
+      return false;
+    }
+    parsed = parsed * 10 + digit;
+  }
+  if (parsed == 0) {
+    return false;
+  }
+  *output = static_cast<pid_t>(parsed);
+  return true;
+}
+
 bool parse_options(int argc, char** argv, Options* options, std::string* error) {
   for (int i = 1; i < argc; ++i) {
     const std::string arg(argv[i]);
@@ -325,6 +393,79 @@ bool parse_options(int argc, char** argv, Options* options, std::string* error) 
     *error = "--enabled-tpc is invalid in baseline mode";
     return false;
   }
+  return true;
+}
+
+bool arm_masked_parent_guard(Mode mode, ParentGuardInfo* guard,
+                             std::string* error) {
+  guard->observed_parent_pid = static_cast<int64_t>(getppid());
+  if (!is_masked_mode(mode)) {
+    return true;
+  }
+
+  guard->mode = "linux_pdeathsig_sigkill";
+  const char* expected_text = std::getenv("BURSTSERVE_PARENT_PID");
+  if (expected_text == nullptr || *expected_text == '\0') {
+    guard->status = "missing_env";
+    *error =
+        "masked mode requires BURSTSERVE_PARENT_PID from the supervising runner";
+    return false;
+  }
+
+  pid_t expected_parent = 0;
+  if (!parse_parent_pid(expected_text, &expected_parent)) {
+    guard->status = "invalid_env";
+    *error = "BURSTSERVE_PARENT_PID must be a positive decimal process ID";
+    return false;
+  }
+  guard->expected_parent_pid = static_cast<int64_t>(expected_parent);
+
+  int inherited_signal = 0;
+  errno = 0;
+  if (prctl(PR_GET_PDEATHSIG, &inherited_signal) != 0) {
+    const int saved_errno = errno;
+    guard->status = "prctl_get_failed";
+    std::ostringstream message;
+    message << "prctl(PR_GET_PDEATHSIG) failed: "
+            << std::strerror(saved_errno);
+    *error = message.str();
+    return false;
+  }
+  guard->inherited_pdeath_signal = inherited_signal;
+  if (inherited_signal != SIGKILL) {
+    guard->status = "launcher_guard_missing";
+    *error =
+        "masked mode requires the static launcher to arm SIGKILL before exec";
+    return false;
+  }
+
+  errno = 0;
+  if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0) {
+    const int saved_errno = errno;
+    guard->status = "prctl_failed";
+    std::ostringstream message;
+    message << "prctl(PR_SET_PDEATHSIG, SIGKILL) failed: "
+            << std::strerror(saved_errno);
+    *error = message.str();
+    return false;
+  }
+
+  // This check must immediately follow PR_SET_PDEATHSIG. If the expected
+  // supervisor exited in the race before prctl(), the kernel could not have
+  // delivered the newly installed signal for that already-completed event.
+  const pid_t observed_parent = getppid();
+  guard->pdeath_signal = SIGKILL;
+  guard->observed_parent_pid = static_cast<int64_t>(observed_parent);
+  if (observed_parent != expected_parent) {
+    guard->status = "parent_mismatch";
+    std::ostringstream message;
+    message << "parent changed before the death guard was armed: expected "
+            << expected_parent << ", observed " << observed_parent;
+    *error = message.str();
+    return false;
+  }
+
+  guard->status = "armed";
   return true;
 }
 
@@ -467,6 +608,14 @@ int main(int argc, char** argv) {
   report.device.ordinal = options.device_ordinal;
   report.requested_enabled_tpc = options.enabled_tpc;
   report.iterations = options.iterations;
+
+  std::string parent_guard_error;
+  if (!arm_masked_parent_guard(options.mode, &report.parent_guard,
+                               &parent_guard_error)) {
+    return static_cast<int>(
+        fail(&report, ExitCode::kConfiguration, "configuration_error",
+             parent_guard_error));
+  }
 
   CUresult driver_result = cuDriverGetVersion(&report.driver_version);
   if (driver_result != CUDA_SUCCESS) {
