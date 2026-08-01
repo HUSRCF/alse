@@ -2344,6 +2344,148 @@ def query_gpu(index: int) -> dict[str, Any]:
     }
 
 
+GPU_HARDWARE_IDENTITY_KEYS = frozenset(
+    {
+        "vbios_version",
+        "subsystem_vendor_id",
+        "subsystem_device_id",
+        "numa_node",
+        "power_limit_w",
+        "power_default_limit_w",
+        "power_max_limit_w",
+        "max_sm_clock_mhz",
+        "max_memory_clock_mhz",
+        "max_pcie_link_gen",
+        "max_pcie_link_width",
+    }
+)
+_SYSFS_PCI_ROOT = Path("/sys/bus/pci/devices")
+_MAX_SYSFS_ATTRIBUTE_BYTES = 4096
+# nvidia-smi prints an eight-digit PCI domain and sysfs names use four, so
+# both spellings are accepted and normalized to the sysfs form below.
+_PCI_BUS_ID_PATTERN = re.compile(
+    r"\A[0-9A-Fa-f]{4,8}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-7]\Z"
+)
+
+
+def _read_sysfs_attribute(directory: Path, name: str) -> str:
+    """Read one small sysfs attribute without following a symlink."""
+
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            str(directory / name),
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+        )
+        payload = os.read(descriptor, _MAX_SYSFS_ATTRIBUTE_BYTES + 1)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if len(payload) > _MAX_SYSFS_ATTRIBUTE_BYTES:
+        raise RuntimeError(f"sysfs attribute is too large: {directory / name}")
+    return payload.decode("ascii", errors="strict").strip()
+
+
+def query_gpu_hardware_identity(index: int, pci_bus_id: str) -> dict[str, Any]:
+    """Return the board-level identity that a GPU state query does not carry.
+
+    Two boards can expose the same die, SM count and driver while differing in
+    VBIOS, board vendor, settable power ceiling and NUMA attachment, all of
+    which change sustained clocks or host-transfer bandwidth.  Recording them
+    keeps a profile collected on one card from being silently reused on a
+    board it does not describe.
+    """
+
+    if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+        raise ValueError("physical GPU index must be a non-negative integer")
+    if not _PCI_BUS_ID_PATTERN.fullmatch(pci_bus_id):
+        raise ValueError(f"unexpected PCI bus id: {pci_bus_id!r}")
+    result = subprocess.run(
+        [
+            str(TRUSTED_NVIDIA_SMI_EXECUTABLE),
+            f"--id={index}",
+            "--query-gpu=vbios_version,power.limit,power.default_limit,"
+            "power.max_limit,clocks.max.sm,clocks.max.mem,"
+            "pcie.link.gen.max,pcie.link.width.max",
+            "--format=csv,noheader,nounits",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=dict(TRUSTED_TOOL_ENVIRONMENT),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"nvidia-smi hardware identity query failed: {result.stderr.strip()}"
+        )
+    rows = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if len(rows) != 1:
+        raise RuntimeError(f"expected one hardware identity row, got {rows!r}")
+    fields = [field.strip() for field in rows[0].split(",")]
+    if len(fields) != 8:
+        raise RuntimeError(f"unexpected hardware identity row: {rows[0]!r}")
+
+    # nvidia-smi prints an eight-digit PCI domain; sysfs names use four
+    # lower-case hex digits.
+    domain, bus, rest = pci_bus_id.split(":", 2)
+    device = _SYSFS_PCI_ROOT / f"{int(domain, 16):04x}:{bus.lower()}:{rest.lower()}"
+    return {
+        "vbios_version": fields[0],
+        "subsystem_vendor_id": _read_sysfs_attribute(device, "subsystem_vendor"),
+        "subsystem_device_id": _read_sysfs_attribute(device, "subsystem_device"),
+        "numa_node": int(_read_sysfs_attribute(device, "numa_node"), 10),
+        "power_limit_w": float(fields[1]),
+        "power_default_limit_w": float(fields[2]),
+        "power_max_limit_w": float(fields[3]),
+        "max_sm_clock_mhz": int(fields[4], 10),
+        "max_memory_clock_mhz": int(fields[5], 10),
+        "max_pcie_link_gen": int(fields[6], 10),
+        "max_pcie_link_width": int(fields[7], 10),
+    }
+
+
+def evaluate_gpu_hardware_identity(record: Any) -> dict[str, bool]:
+    """Check the recorded board identity is well formed and undisturbed."""
+
+    identity = record if isinstance(record, Mapping) else {}
+    limit = identity.get("power_limit_w")
+    default = identity.get("power_default_limit_w")
+    return {
+        "gpu_hardware_identity_recorded": (
+            isinstance(record, Mapping)
+            and set(record) == set(GPU_HARDWARE_IDENTITY_KEYS)
+        ),
+        "gpu_vbios_recorded": bool(
+            isinstance(identity.get("vbios_version"), str)
+            and identity.get("vbios_version")
+        ),
+        "gpu_board_subsystem_recorded": all(
+            isinstance(identity.get(name), str) and identity.get(name)
+            for name in ("subsystem_vendor_id", "subsystem_device_id")
+        ),
+        "gpu_numa_node_recorded": (
+            isinstance(identity.get("numa_node"), int)
+            and not isinstance(identity.get("numa_node"), bool)
+        ),
+        # A raised or lowered ceiling changes sustained clocks and would make
+        # a profile collected on this card unusable elsewhere, silently.
+        "gpu_power_limit_is_vendor_default": (
+            isinstance(limit, float)
+            and isinstance(default, float)
+            and math.isfinite(limit)
+            and math.isfinite(default)
+            and limit == default
+        ),
+        "gpu_pcie_ceiling_recorded": all(
+            isinstance(identity.get(name), int)
+            and not isinstance(identity.get(name), bool)
+            and identity.get(name) > 0
+            for name in ("max_pcie_link_gen", "max_pcie_link_width")
+        ),
+    }
+
+
 def query_compute_processes(gpu_uuid: str) -> list[dict[str, Any]]:
     """Return compute processes attached to one GPU UUID."""
 
@@ -6282,6 +6424,11 @@ def _execute_under_leases(
     # The environment snapshot is intentionally comprehensive and can take
     # seconds. Re-run the physical-device checks immediately before launch.
     gpu_launch = query_gpu(physical_gpu)
+    gpu_hardware_identity = query_gpu_hardware_identity(
+        physical_gpu,
+        str(gpu_launch["pci_bus_id"]),
+    )
+    gpu_hardware_checks = evaluate_gpu_hardware_identity(gpu_hardware_identity)
     compute_processes_launch = query_compute_processes(str(gpu_launch["uuid"]))
     mps_processes_launch = query_mps_processes()
     manifest_policy_checks, manifest_policy_permitted = (
@@ -6341,6 +6488,7 @@ def _execute_under_leases(
         "source_tree_is_formal_policy_clean": (
             _formal_source_tree_policy_clean(formal_source_checks)
         ),
+        **gpu_hardware_checks,
         "native_build_stamp_is_present": build_record.get("found") is True,
         **runtime_libcuda_binding_checks,
     }
@@ -6355,6 +6503,7 @@ def _execute_under_leases(
         {
             "selected_gpu_initial_preflight": gpu_preflight,
             "selected_gpu_launch_preflight": gpu_launch,
+            "selected_gpu_hardware_identity": gpu_hardware_identity,
             "selected_gpu_compute_processes_initial": (
                 compute_processes_preflight
             ),
@@ -6431,6 +6580,7 @@ def _execute_under_leases(
         payload={
             "gpu_initial": gpu_preflight,
             "gpu_launch": gpu_launch,
+            "gpu_hardware_identity": gpu_hardware_identity,
             "compute_processes_initial": compute_processes_preflight,
             "compute_processes_launch": compute_processes_launch,
             "mps_processes_initial": mps_processes_preflight,

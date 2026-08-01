@@ -350,6 +350,21 @@ _SEALED_REJECTION_NON_AUTHORIZATION_CHECKS = frozenset(
         "masked_threads_are_native_canonical",
     }
 )
+_V2_GPU_HARDWARE_IDENTITY_KEYS = frozenset(
+    {
+        "vbios_version",
+        "subsystem_vendor_id",
+        "subsystem_device_id",
+        "numa_node",
+        "power_limit_w",
+        "power_default_limit_w",
+        "power_max_limit_w",
+        "max_sm_clock_mhz",
+        "max_memory_clock_mhz",
+        "max_pcie_link_gen",
+        "max_pcie_link_width",
+    }
+)
 _V2_LIBCUDA_BINDING_CHECK_KEYS = frozenset(
     {
         "runtime_libcuda_build_stamp_fields_present",
@@ -392,6 +407,7 @@ _EVENT_PAYLOAD_ALLOWED_KEYS = {
         {
             "gpu_initial",
             "gpu_launch",
+            "gpu_hardware_identity",
             "compute_processes_initial",
             "compute_processes_launch",
             "mps_processes_initial",
@@ -2092,6 +2108,64 @@ def _validate_exact_gpu_record(
             errors.append(f"{field}.{name} is not a non-empty string")
 
 
+def _validate_gpu_hardware_identity(
+    value: Any,
+    *,
+    field: str,
+    errors: list[str],
+) -> None:
+    """Require the board identity a GPU state record does not carry.
+
+    Boards sharing a die, SM count and driver can still differ in VBIOS,
+    vendor, settable power ceiling and NUMA attachment, all of which move
+    sustained clocks or host-transfer bandwidth.  Binding them into the cell
+    stops a profile from being reused on a board it does not describe, and
+    pins the power ceiling to the vendor default so a raised limit cannot
+    silently invalidate a comparison.
+    """
+
+    if not isinstance(value, Mapping):
+        errors.append(f"{field} must be an object")
+        return
+    if set(value) != set(_V2_GPU_HARDWARE_IDENTITY_KEYS):
+        errors.append(f"{field} keys are not exact: {sorted(value)}")
+        return
+    for name in (
+        "vbios_version",
+        "subsystem_vendor_id",
+        "subsystem_device_id",
+    ):
+        text = value.get(name)
+        if not isinstance(text, str) or not text:
+            errors.append(f"{field}.{name} is not a non-empty string")
+    numa = value.get("numa_node")
+    if isinstance(numa, bool) or not isinstance(numa, int):
+        errors.append(f"{field}.numa_node is not an integer")
+    for name in (
+        "max_sm_clock_mhz",
+        "max_memory_clock_mhz",
+        "max_pcie_link_gen",
+        "max_pcie_link_width",
+    ):
+        _require_positive_json_integer(
+            value.get(name), field=f"{field}.{name}", errors=errors
+        )
+    limit = value.get("power_limit_w")
+    default = value.get("power_default_limit_w")
+    ceiling = value.get("power_max_limit_w")
+    for name, number in (
+        ("power_limit_w", limit),
+        ("power_default_limit_w", default),
+        ("power_max_limit_w", ceiling),
+    ):
+        if type(number) is not float or not math.isfinite(number) or number <= 0:
+            errors.append(f"{field}.{name} is not a positive float")
+    if type(limit) is float and type(default) is float and limit != default:
+        errors.append(
+            f"{field} power limit {limit} is not the vendor default {default}"
+        )
+
+
 def _validate_empty_compute_processes(
     value: Any,
     *,
@@ -2884,6 +2958,11 @@ def _validate_baseline_run_v2(
                     errors=errors,
                 )
                 del label
+            _validate_gpu_hardware_identity(
+                environment.get("selected_gpu_hardware_identity"),
+                field="environment.selected_gpu_hardware_identity",
+                errors=errors,
+            )
             for field in (
                 "selected_gpu_compute_processes_initial",
                 "selected_gpu_compute_processes_launch",
@@ -3533,6 +3612,10 @@ def _validate_baseline_run_v2(
             for payload_field, environment_field in (
                 ("gpu_initial", "selected_gpu_initial_preflight"),
                 ("gpu_launch", "selected_gpu_launch_preflight"),
+                (
+                    "gpu_hardware_identity",
+                    "selected_gpu_hardware_identity",
+                ),
                 (
                     "compute_processes_initial",
                     "selected_gpu_compute_processes_initial",

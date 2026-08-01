@@ -2342,6 +2342,24 @@ def _synthetic_cuda_driver_probe() -> dict[str, object]:
     }
 
 
+def _gpu_hardware_identity() -> dict[str, object]:
+    """A well-formed board identity for the integration harness."""
+
+    return {
+        "vbios_version": "95.02.3C.40.40",
+        "subsystem_vendor_id": "0x10de",
+        "subsystem_device_id": "0x16f3",
+        "numa_node": 1,
+        "power_limit_w": 450.0,
+        "power_default_limit_w": 450.0,
+        "power_max_limit_w": 450.0,
+        "max_sm_clock_mhz": 3105,
+        "max_memory_clock_mhz": 10501,
+        "max_pcie_link_gen": 4,
+        "max_pcie_link_width": 16,
+    }
+
+
 def _run_v2_real_child_integration(
     *,
     mode: str = "baseline",
@@ -2747,10 +2765,14 @@ def _run_v2_real_child_integration(
                 "validate_gate_manifest_record",
                 side_effect=lambda value, **_: value["content"],
             ),
-            mock.patch.object(
+            # Merged into one context manager: Python 3.11 caps a with
+            # statement at twenty statically nested blocks.
+            mock.patch.multiple(
                 smctrl_runner,
-                "query_gpu",
-                side_effect=query_gpu,
+                query_gpu=mock.Mock(side_effect=query_gpu),
+                query_gpu_hardware_identity=mock.Mock(
+                    return_value=_gpu_hardware_identity()
+                ),
             ),
             mock.patch.object(
                 smctrl_runner,

@@ -176,6 +176,27 @@ def _gpu_record(index: int) -> dict[str, object]:
     }
 
 
+def _gpu_hardware_identity(index: int) -> dict[str, object]:
+    """Mirrors query_gpu_hardware_identity for a board in this box."""
+
+    gigabyte = index in {0, 1, 3}
+    return {
+        "vbios_version": (
+            "95.02.18.C0.8B" if gigabyte else "95.02.3C.40.40"
+        ),
+        "subsystem_vendor_id": "0x1458" if gigabyte else "0x10de",
+        "subsystem_device_id": "0x40de" if gigabyte else "0x16f3",
+        "numa_node": (3, 2, 1, 0, 7, 6, 5, 4)[index],
+        "power_limit_w": 450.0,
+        "power_default_limit_w": 450.0,
+        "power_max_limit_w": 479.0 if gigabyte else 450.0,
+        "max_sm_clock_mhz": 3105,
+        "max_memory_clock_mhz": 10501,
+        "max_pcie_link_gen": 4,
+        "max_pcie_link_width": 16,
+    }
+
+
 def _mps_processes() -> list[dict[str, object]]:
     """Recorded host MPS daemons; isolation is the empty pipe directory."""
 
@@ -645,6 +666,7 @@ def _write_baseline_v2(
     environment = {
         "selected_gpu_initial_preflight": _gpu_record(gpu),
         "selected_gpu_launch_preflight": _gpu_record(gpu),
+        "selected_gpu_hardware_identity": _gpu_hardware_identity(gpu),
         "selected_gpu_compute_processes_initial": [],
         "selected_gpu_compute_processes_launch": [],
         "host_mps_processes_initial": _mps_processes(),
@@ -917,6 +939,7 @@ def _write_baseline_v2(
             {
                 "gpu_initial": _gpu_record(gpu),
                 "gpu_launch": _gpu_record(gpu),
+                "gpu_hardware_identity": _gpu_hardware_identity(gpu),
                 "compute_processes_initial": [],
                 "compute_processes_launch": [],
                 "mps_processes_initial": _mps_processes(),
@@ -3537,6 +3560,122 @@ class GateAResultsTest(unittest.TestCase):
                             ),
                             record["validation_errors"],
                         )
+
+    def test_v2_requires_a_complete_undisturbed_board_identity(self) -> None:
+        """Board identity is bound so a profile cannot cross boards blind."""
+
+        def drop_key(identity: dict) -> None:
+            del identity["vbios_version"]
+
+        def extra_key(identity: dict) -> None:
+            identity["overclocked"] = True
+
+        def raised_power_ceiling(identity: dict) -> None:
+            identity["power_limit_w"] = 479.0
+
+        def lowered_power_limit(identity: dict) -> None:
+            identity["power_limit_w"] = 300.0
+
+        def integer_power_limit(identity: dict) -> None:
+            identity["power_limit_w"] = 450
+            identity["power_default_limit_w"] = 450
+
+        def blank_vbios(identity: dict) -> None:
+            identity["vbios_version"] = ""
+
+        def boolean_numa(identity: dict) -> None:
+            identity["numa_node"] = False
+
+        attacks = {
+            "missing_field": drop_key,
+            "unknown_field": extra_key,
+            "power_limit_raised_above_default": raised_power_ceiling,
+            "power_limit_lowered_below_default": lowered_power_limit,
+            "power_limit_as_integer": integer_power_limit,
+            "blank_vbios": blank_vbios,
+            "boolean_numa_node": boolean_numa,
+        }
+        for name, mutate in attacks.items():
+            with self.subTest(attack=name):
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    runs = root / "runs"
+                    runs.mkdir()
+                    directory = _write_baseline_v2(runs, gpu=0, trial=0)
+                    rejection = _write_rejection_v2(runs)
+                    manifest_path = directory / "manifest.json"
+                    manifest = json.loads(
+                        manifest_path.read_text(encoding="utf-8")
+                    )
+                    identity = manifest["environment"][
+                        "selected_gpu_hardware_identity"
+                    ]
+                    mutate(identity)
+                    write_json_atomic(manifest_path, manifest)
+                    events_path = directory / "events.jsonl"
+                    events = [
+                        json.loads(line)
+                        for line in events_path.read_text(
+                            encoding="utf-8"
+                        ).splitlines()
+                    ]
+                    events[0]["payload"]["gpu_hardware_identity"] = identity
+                    events_path.write_text(
+                        "".join(
+                            canonical_json(item) + "\n" for item in events
+                        ),
+                        encoding="utf-8",
+                    )
+                    spec_path = root / "spec.json"
+                    write_json_atomic(
+                        spec_path,
+                        _spec_v2(
+                            selected=[0],
+                            trials=[0],
+                            rejections=[rejection.name],
+                        ),
+                    )
+                    report = aggregate_from_spec(runs, spec_path)
+                    self.assertFalse(
+                        report["cells"][0]["runs"][0]["valid"],
+                        report["cells"][0]["runs"][0]["validation_errors"],
+                    )
+                    self.assertFalse(
+                        report["selected_subset"]["accepted"]
+                    )
+
+        # The run.preflight event copy must agree with the manifest.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runs = root / "runs"
+            runs.mkdir()
+            directory = _write_baseline_v2(runs, gpu=0, trial=0)
+            rejection = _write_rejection_v2(runs)
+            events_path = directory / "events.jsonl"
+            events = [
+                json.loads(line)
+                for line in events_path.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            events[0]["payload"]["gpu_hardware_identity"] = (
+                _gpu_hardware_identity(5)
+            )
+            events_path.write_text(
+                "".join(canonical_json(item) + "\n" for item in events),
+                encoding="utf-8",
+            )
+            spec_path = root / "spec.json"
+            write_json_atomic(
+                spec_path,
+                _spec_v2(
+                    selected=[0],
+                    trials=[0],
+                    rejections=[rejection.name],
+                ),
+            )
+            report = aggregate_from_spec(runs, spec_path)
+            self.assertFalse(report["cells"][0]["runs"][0]["valid"])
 
     def test_v2_fleet_scope_is_a_floor_and_v1_keeps_the_old_scope(
         self,
