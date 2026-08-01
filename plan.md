@@ -1492,3 +1492,31 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   的次序，必须先跑完并接受**正式**的 global/next masked 矩阵，才能把
   `global_next_matrix_accepted` 置真并录入 offset 候选。本次全部为
   scratchpad 探针，未产生任何正式证据，promotion lock 未改动。
+- 2026-08-01 / masked-run-uncovers-third-symbol-copy：首次尝试正式 masked
+  矩阵，24 格全部被拒，暴露两个只有真机 masked 运行才能触发的缺陷。
+  第一次尝试（24 格 exit 4，`preflight_permitted=false`）：失败于
+  `formal_git_build_exception_paths_exact`。原因是 `src/burstserve/__pycache__`
+  与 `src/burstserve/sim/__pycache__` —— 复审子代理运行 Python 时未带 `-B`
+  留下的字节码缓存。形式化源码策略要求未跟踪条目**恰好**等于已认证构建清单，
+  多出的 `.pyc` 原则上可遮蔽源码，故 fail closed。这是设计意图而非缺陷；
+  清理缓存后快照恢复为精确的 13 条。运行脚本已加前置检查，并对 runner 传入
+  `PYTHONDONTWRITEBYTECODE=1`。24 个被拒 run 全部保留未删。
+  第二次尝试：第 1 格 `exit 3` 且实际执行了 11 秒，其余 23 格 `exit 1` 秒退。
+  根因是 GPU 1 的 lease 被**隔离**（`auto_clear_permitted=false`，
+  `monitor_status=monitor_failed`），后续每格因此立即拒绝——安全机制按设计工作。
+  监视器本身完全正常：setup 成功、drain 干净、`observed_quiet_ms=1001`、
+  0 Xid、`safe_for_acceptance=true`。真正失败的是 runner 侧**独立校验器**的
+  `required_symbols_exact`：它仍硬编码 `nvmlDeviceGetHandleByUUID_v2`——
+  即 commit `a730731` 已确认**根本不存在**的符号。该常量在仓库里有三份拷贝，
+  上次只修了生产侧一份，另外两份（runner 校验器、`test_smctrl_runner.py` 的
+  monitor provenance fixture）继续携带错误名，而那个 fixture 断言「接受一份
+  任何真实监视器都不可能产出的记录」，等于把 bug 锁死。
+  修复保留「独立校验」的设计意图（不 import 生产侧常量，否则生产侧错误会被
+  镜像而非被抓住），改为把校验器的字面表提为
+  `MASKED_MONITOR_REQUIRED_SYMBOLS`，并新增两项测试：真机导出检查现在覆盖
+  **两张表**，外加 `test_monitor_and_validator_symbol_tables_do_not_diverge`
+  静态断言二者相等——让「独立」不至于变成「分叉」。fixture 改为从
+  `nvml_events._REQUIRED_SYMBOLS` 派生而非手抄。全量 478 tests OK。
+  GPU 1 健康未受影响（1 MiB / 33 °C，内核日志中无该卡 Xid；唯一一次 Xid 31
+  来自 offset 扫描时的 GPU 0，PCI `0000:01:00`）。隔离记录副本留存于
+  scratchpad `streamoff/quarantine_record/` 后再清除。

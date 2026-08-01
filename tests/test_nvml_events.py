@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 import burstserve.nvml_events as nvml_events
+import burstserve.smctrl_runner as smctrl_runner
 from burstserve.nvml_events import (
     NVML_ERROR_NO_PERMISSION,
     NVML_ERROR_TIMEOUT,
@@ -733,16 +734,40 @@ class RealNvmlTest(unittest.TestCase):
         if library is None:
             self.skipTest("no installed NVML library")
         handle = ctypes.CDLL(str(library))
-        missing = [
-            symbol
-            for symbol in sorted(nvml_events._REQUIRED_SYMBOLS.values())
-            if not hasattr(handle, symbol)
-        ]
+        # Check BOTH tables: the monitor binds one, and the runner's
+        # independent validator carries its own copy to check the record
+        # without trusting it.  A name only the validator gets wrong fails
+        # every masked run after the probe already succeeded.
+        for label, table in (
+            ("monitor", nvml_events._REQUIRED_SYMBOLS),
+            ("validator", smctrl_runner.MASKED_MONITOR_REQUIRED_SYMBOLS),
+        ):
+            with self.subTest(label):
+                missing = [
+                    symbol
+                    for symbol in sorted(table.values())
+                    if not hasattr(handle, symbol)
+                ]
+                self.assertEqual(
+                    missing, [],
+                    f"{library} does not export: {missing}. NVML never "
+                    "shipped a _v2 of nvmlDeviceGetHandleByUUID; naming a "
+                    "symbol the driver lacks fails every masked run.",
+                )
+
+    def test_monitor_and_validator_symbol_tables_do_not_diverge(self):
+        """Independence must not become divergence.
+
+        The runner deliberately does not import the monitor's table, so that
+        a producer mistake is caught rather than mirrored.  The cost is that
+        the two can drift apart, and a drift is only discovered by a real
+        masked run on real hardware -- after the probe has already executed
+        and the GPU lease has been quarantined.
+        """
+
         self.assertEqual(
-            missing, [],
-            f"{library} does not export: {missing}. NVML never shipped a _v2 "
-            "of nvmlDeviceGetHandleByUUID; binding a name the driver lacks "
-            "makes every masked run fail setup.",
+            smctrl_runner.MASKED_MONITOR_REQUIRED_SYMBOLS,
+            nvml_events._REQUIRED_SYMBOLS,
         )
 
     def test_real_monitor_registers_and_drains_clean_on_an_idle_gpu(self):

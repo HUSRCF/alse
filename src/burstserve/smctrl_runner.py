@@ -81,6 +81,24 @@ GPU_MASKED_ARMED_POISON_SCHEMA_VERSION = (
 RUNNER_VERSION = "burstserve.smctrl-runner/v2"
 MASKED_HEALTH_MONITOR_IMPLEMENTED = True
 MASKED_XID_DRAIN_TIMEOUT_MS = 1000
+# The symbol table the masked health monitor must have bound, spelled out here
+# rather than imported from the monitor: this validator exists to check the
+# monitor's provenance without trusting it, and importing its table would
+# mirror a producer mistake instead of catching it. A test asserts the two
+# stay identical, so independence does not become divergence -- which is
+# exactly what happened when the monitor's binding was corrected and this copy
+# kept naming nvmlDeviceGetHandleByUUID_v2, a symbol NVML never shipped.
+MASKED_MONITOR_REQUIRED_SYMBOLS = {
+    "init": "nvmlInit_v2",
+    "shutdown": "nvmlShutdown",
+    "system_get_nvml_version": "nvmlSystemGetNVMLVersion",
+    "device_get_handle_by_uuid": "nvmlDeviceGetHandleByUUID",
+    "event_set_create": "nvmlEventSetCreate",
+    "event_set_free": "nvmlEventSetFree",
+    "device_get_supported_event_types": "nvmlDeviceGetSupportedEventTypes",
+    "device_register_events": "nvmlDeviceRegisterEvents",
+    "event_set_wait_v2": "nvmlEventSetWait_v2",
+}
 MASKED_XID_TOTAL_BUDGET_MS = 2000
 FINAL_REAP_TIMEOUT_S = 5.0
 RESERVATION_SAFETY_MARGIN_S = 5.0
@@ -4299,19 +4317,7 @@ def evaluate_masked_health_monitor(
     cleanup_errors = cleanup.get("errors")
     requested_quiet = drain.get("requested_quiet_ms")
     observed_quiet = drain.get("observed_quiet_ms")
-    required_symbols = {
-        "init": "nvmlInit_v2",
-        "shutdown": "nvmlShutdown",
-        "system_get_nvml_version": "nvmlSystemGetNVMLVersion",
-        "device_get_handle_by_uuid": "nvmlDeviceGetHandleByUUID_v2",
-        "event_set_create": "nvmlEventSetCreate",
-        "event_set_free": "nvmlEventSetFree",
-        "device_get_supported_event_types": (
-            "nvmlDeviceGetSupportedEventTypes"
-        ),
-        "device_register_events": "nvmlDeviceRegisterEvents",
-        "event_set_wait_v2": "nvmlEventSetWait_v2",
-    }
+    required_symbols = dict(MASKED_MONITOR_REQUIRED_SYMBOLS)
     symbols = library.get("symbols")
     library_identity = library.get("identity")
     sealed_snapshot = library.get("sealed_snapshot")

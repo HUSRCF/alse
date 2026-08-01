@@ -16,6 +16,7 @@ import time
 import unittest
 from unittest import mock
 
+import burstserve.nvml_events as nvml_events
 import burstserve.provenance as provenance
 import burstserve.smctrl_runner as smctrl_runner
 from burstserve.git_provenance import (
@@ -2331,25 +2332,13 @@ class MaskedMonitorContractTest(unittest.TestCase):
                     ),
                 },
                 "load_path": "/proc/self/fd/17",
-                "symbols": {
-                    "init": "nvmlInit_v2",
-                    "shutdown": "nvmlShutdown",
-                    "system_get_nvml_version": (
-                        "nvmlSystemGetNVMLVersion"
-                    ),
-                    "device_get_handle_by_uuid": (
-                        "nvmlDeviceGetHandleByUUID_v2"
-                    ),
-                    "event_set_create": "nvmlEventSetCreate",
-                    "event_set_free": "nvmlEventSetFree",
-                    "device_get_supported_event_types": (
-                        "nvmlDeviceGetSupportedEventTypes"
-                    ),
-                    "device_register_events": (
-                        "nvmlDeviceRegisterEvents"
-                    ),
-                    "event_set_wait_v2": "nvmlEventSetWait_v2",
-                },
+                # Derived from what the monitor actually binds, never
+                # hand-copied. A hand-copied table here spelled
+                # nvmlDeviceGetHandleByUUID_v2 -- a symbol NVML never
+                # shipped -- and this test asserted the acceptance of a
+                # record no real monitor could ever produce, so it locked
+                # the bug in instead of catching it.
+                "symbols": dict(nvml_events._REQUIRED_SYMBOLS),
             },
             "xid_event_bit": 8,
             "supported_event_bits": 8,
