@@ -302,6 +302,9 @@ $$
 - 测试 `G={1,4,8,16}`、early/middle/late step phase、resident/state-only/cold residency。
 - 加入 compute、HBM 和 PCIe probe co-runner。
 - 常规 cell：5 次 warmup、30 次采样；尾部和切换关键 cell：至少 100 次采样。
+  该数字尚未在本工作负载上验证：2026-08-01 筛查显示 22 请求的
+  `urgent_p50` 单卡 CV 达 5.5%，故每个 cell 必须实测并记录达到的 CV，
+  不满足 `CV ≤ 5%` 时提高采样量或改用 per-step / 遥测指标。
 - 建立 p50 canonical table、p99 deadline table、pairwise externality table 和显存峰值表。
 - 测量 pinned/pageable、local/remote NUMA、单向/双向 PCIe。
 
@@ -422,6 +425,8 @@ $$
 - 扫描 predictor error、profile drift、warm/cold residency、不同 PCIe/NUMA 情况。
 - 消融 canonical ledger、resource debt、deadline guard、externality、SM partition、G 和 I/O model。
 - 验证 overload admission、sleep/wakeup gaming、tenant request splitting 和长期 burst。
+- 复验跨板厂等价性：技嘉卡（GPU 1/3）热余量比公版少 8.2 °C，长压测下
+  可能先热降频；若失效，profile 与主张必须按板厂分组重述。
 - 整理一键 smoke、profile、主实验、聚合和绘图入口。
 - 完成定理、局限和 threat-to-validity 文稿。
 
@@ -638,6 +643,44 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   `CLAUDE_HANDOFF.md`；接手者必须先启动 `achieve goal`，按 native →
   Gate → 双解释器/fresh CPU gate → 独立复审/提交/clean v2 identity 的
   固定顺序持续推进，不得因状态汇报、单次测试失败或提交完成而停止。
+- 2026-08-01：**跨板厂等价性筛查完成：可当同质用，但 profile 必须按单卡建**。
+  设计：2 板厂 × 2 卡 × 4 次重复 = 16 run，按重复次序交错以免机器漂移与
+  板厂对齐；固定 seed 1 的同一到达轨迹、49 帧、30/8 步、120 s；全程 1 Hz
+  采样 SM 时钟/温度/功耗。结果（`board_equivalence_screen_20260801.json`，
+  sha256 `9d5e2b60…765d`）：
+  - **端到端 elapsed 技嘉 147.90 s vs 公版 147.90 s，差 0.00%**，16 run
+    合并 CV 0.46%、极差 2.0 s。
+  - **板厂不是解释变量，单卡个体才是**：GPU 1/2/3 三张卡（跨板厂）稳态
+    时钟极差仅 0.19%，而 GPU 4 比这三张低 1.16%；同板厂内最大差
+    （GPU 2 vs GPU 4，均公版）+1.22%，反而**大于**跨板厂差 +0.54%；剔除
+    GPU 4 后跨板厂差降至 −0.07%。GPU 4 的特征是吃更多电（393.5 W vs
+    385–387 W）跑更低时钟，属芯片体质差异。
+  - **绑定约束是两批卡完全相同的 450 W 功耗墙**：16 个 run 全部
+    `sw_power_cap=Active`、`hw/sw_thermal_slowdown=Not Active`，峰值功耗
+    445.7–453.9 W。散热器差异只体现在结温。
+  - **温度是唯一稳定的板厂签名**：技嘉 73.22 °C vs 公版 65.04 °C，差
+    8.2 °C（目标温度规格 84 °C，当前两批都未降频）。
+  结论与约束：
+  1. 五张编队卡在 Gate A/B 这个负载尺度上可视为性能等价，**但 profile
+     表必须按单卡（physical_gpu + GPU UUID）建，不得按板厂分组** —— 最大
+     系统性偏差来自个体卡而非板厂，按板厂分组反而会掩盖 GPU 4。
+  2. **任何 arm 之间的比较必须在同一张卡上配对**，或在 arm 之间随机化卡
+     分配。1.2% 的单卡系统偏差不会随 seed 平均掉，而论文最小的 claim 阈值
+     是 5%（无 burst 吞吐下降）。
+  3. 该等价性**仅在功耗墙是绑定约束、且两批卡都未热降频时成立**。技嘉卡
+     热余量少 8.2 °C，第 7–8 周的一小时压测与第 11–12 周的长 burst 压测
+     必须重新验证；届时若技嘉先热降频，等价性即失效。
+  4. 未覆盖：GPU 0/5/6 从未在本负载下测过（被他人长任务占用）；GPU 7 只有
+     Gate A0 的 2.3 秒探针，**没有**本负载数据。因此不能声称「8 张卡都
+     差不多」，只能声称「已测的 GPU 1/2/3/4 在本负载下等价」。
+- 2026-08-01：**`urgent_p50_s` 不得用作 profile 或等价性指标（现有采样量下）**。
+  实测单卡内部 CV 高达 5.5%（GPU 1 四次：3.216/2.878/2.903/2.894 s），
+  **大于任何组间效应**；而同批数据里稳态 SM 时钟的 CV 只有 0.05–0.09%。
+  Gate B 要求「稳态 solo cell 的 CV 不超过 5%」，按 22 个请求的 p50 计算
+  达不到该要求。第 3–4 周的 profile 采样因此必须：改用 per-step 计时或
+  遥测量作为主指标，或把每 cell 的采样量提高到使 p50 的 CV ≤ 5% 为止，
+  并在 manifest 中记录实际达到的 CV。原「常规 cell：5 warmup + 30 采样」
+  的数字在本工作负载下未经验证，不得直接沿用。
 - 2026-07-31：**每次 formal run 增记并绑定 GPU 板级身份**。本机 8 张 4090
   实为两种板卡：GPU 0/1/3 为技嘉（VBIOS `95.02.18.C0.8B`，功耗上限 479 W），
   其余为 NVIDIA 公版（`95.02.3C.40.40`，上限 450 W）；同一颗 AD102，故
