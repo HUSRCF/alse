@@ -88,7 +88,7 @@
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
 | 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 纯模拟测试；GPU7 只读注册 smoke supported bits `61852`、Xid bit `8` | approximate | 修复中断孤儿、有界 reap、真实 quiet window 和 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
-| Gate A 动态 SM 功能与性能 | 尚未运行 masked kernel | 无 TPC map、10,000 次重配、更新 p99、overlap 或 correctness 证据 | missing | Gate A 硬门，不能由 A0 或 simulator 替代 |
+| Gate A 动态 SM 功能与性能 | 尚未运行 masked kernel；跨 trial/bit/mode 矩阵 validator 已实现（`validate_masked_tpc_matrix`，纯函数，14 项对抗测试） | 无 TPC map、10,000 次重配、更新 p99、overlap 或 correctness 证据；validator 尚未接入 `validate_gate_a0`（无 masked 证据可消费） | missing | Gate A 硬门，不能由 A0 或 simulator 替代；仍缺 masked 单 cell validator、Xid 真实覆盖、CUDA 13.3 stream offset 政策 |
 
 在上述 hard gaps 关闭前，不正式进入第 2 周。只允许并行开展可逆、纯 CPU
 预研：冻结数据 schema、canonical-service/tenant accounting 纯函数、
@@ -688,6 +688,34 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   4. 未覆盖：GPU 0/5/6 从未在本负载下测过（被他人长任务占用）；GPU 7 只有
      Gate A0 的 2.3 秒探针，**没有**本负载数据。因此不能声称「8 张卡都
      差不多」，只能声称「已测的 GPU 1/2/3/4 在本负载下等价」。
+- 2026-08-01：**masked 跨 trial/bit/mode 矩阵 validator 落地（纯 CPU，先于任何
+  masked 证据）**。此前 `gate_a_results.py` 只有 baseline 与 sealed rejection
+  两个验证器，**没有任何 masked 验证路径** —— 而 decision log 早已规定「单次
+  masked histogram 最多记为 `local_probe_passed`，只有跨 trial/bit 与 leakage
+  validator 才能接收 cell/Gate」，该 validator 一直缺位。
+  核心论点：**单次 masked histogram 不构成证据** —— 它呈现的映射正是由它自己
+  观测出来的，无法被自身证伪。Gate A 的主张是「请求某个 TPC bit 会把 kernel
+  限制在该 bit 所指的 SM 集合」，其证据必然是横截面的。`validate_masked_tpc_matrix`
+  因此检查：
+  1. **跨 trial 确定性** —— 同一 bit 每次必须给出完全相同的 SM 集合；
+  2. **跨机制一致性** —— global/next/stream 三种掩码机制对同一 bit 必须给出
+     相同集合，因为 TPC→SM 映射是硅片属性而非机制属性；
+  3. **跨 bit 不相交** —— 不同 bit 的集合必须互不重叠，这是「bit 在做选择而非
+     仅仅允许」的唯一可得证据（即 leakage 检查）；
+  4. **与硅片一致** —— 每个集合的大小须恰为 `sm_count/expected_tpc_count`
+     （本机 128/64 = 2），且所有 SM id 落在设备范围内；
+  5. **相对 unmasked baseline 确实收窄** —— 掩码集合必须显著小于同卡 baseline
+     的覆盖（128），否则掩码根本没有起作用；
+  6. 矩阵完整性（3 模式 × 4 bit × 3 trial = 36 格，无缺无多无重复）、单一 GPU
+     身份、block 总数与精确 JSON 类型。
+  实现为**纯函数**，消费已验证的单 cell 观测，因此可以在任何 masked kernel
+  获准运行之前就完成实现、测试与复审 —— 这正是 promotion lock 关闭期间应该
+  做的工作。14 项对抗测试覆盖：非确定性单次漂移、模式间分歧、bit 间重叠、
+  掩码覆盖全片、缺失 baseline 参照、矩阵残缺/多余/重复、越界 SM id、
+  半个 TPC、混合 GPU 身份、block 总数篡改、五种类型替换、matrix/硅片声明畸形。
+  **尚未接入 `validate_gate_a0`**：还没有 masked 证据可消费，且接入前需要先写
+  masked 单 cell validator（对应 baseline 的 `_validate_baseline_run_v2`）。
+  promotion lock 保持完全关闭。
 - 2026-08-01（补测 GPU 7 后更正）：**编队并非同质，5 张卡里有 2 张离群；
   板厂等价结论仍成立**。补测编队最后一张无负载数据的卡（GPU 7，同样 4 次
   重复、同一配置），结果推翻了当日早前基于 4 张卡的「等价」判断。完整

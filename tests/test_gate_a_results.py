@@ -15,6 +15,7 @@ from burstserve.gate_a_results import (
     EVIDENCE_SPEC_SCHEMA_VERSION_V2,
     aggregate_from_spec,
     main,
+    validate_masked_tpc_matrix,
 )
 from burstserve.provenance import (
     EventRecord,
@@ -4215,3 +4216,197 @@ class GateAResultsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+_MASKED_MATRIX = {
+    "modes": ["global", "next", "stream"],
+    "tpc_bits": [0, 31, 32, 63],
+    "trials_per_cell": 3,
+    "allowed_observed_sm_count": [1, 2],
+    "iterations": 4096,
+    "blocks": 4096,
+    "threads_per_block": 256,
+}
+_MASKED_HARDWARE = {"sm_count": 128, "expected_tpc_count": 64}
+# A TPC holds two SMs on this die, so bit b denotes {2b, 2b+1}.
+_TRUE_MAPPING = {bit: [2 * bit, 2 * bit + 1] for bit in (0, 31, 32, 63)}
+
+
+def _masked_observations(mapping=None, **overrides):
+    mapping = mapping or _TRUE_MAPPING
+    rows = []
+    for mode in _MASKED_MATRIX["modes"]:
+        for bit in _MASKED_MATRIX["tpc_bits"]:
+            for trial in range(_MASKED_MATRIX["trials_per_cell"]):
+                rows.append(
+                    {
+                        "mode": mode,
+                        "tpc_bit": bit,
+                        "trial": trial,
+                        "physical_gpu": 1,
+                        "gpu_uuid": _gpu_uuid(1),
+                        "blocks": 4096,
+                        "observed_blocks": 4096,
+                        "observed_sms": list(mapping[bit]),
+                    }
+                )
+    for key, value in overrides.items():
+        del key, value
+    return rows
+
+
+class MaskedTpcMatrixTest(unittest.TestCase):
+    def validate(self, observations, **kwargs):
+        kwargs.setdefault("baseline_observed_sm_count", 128)
+        return validate_masked_tpc_matrix(
+            observations,
+            matrix=_MASKED_MATRIX,
+            hardware=_MASKED_HARDWARE,
+            **kwargs,
+        )
+
+    def test_a_consistent_disjoint_matrix_is_accepted(self):
+        report = self.validate(_masked_observations())
+        self.assertTrue(report["accepted"], report["errors"])
+        self.assertEqual(report["errors"], [])
+        self.assertTrue(all(report["checks"].values()), report["checks"])
+        self.assertEqual(
+            report["tpc_sm_mapping"],
+            {str(b): sorted(v) for b, v in _TRUE_MAPPING.items()},
+        )
+        self.assertEqual(report["declared_matrix"]["expected_cell_count"], 36)
+        self.assertEqual(report["declared_matrix"]["observed_cell_count"], 36)
+
+    def test_a_single_nondeterministic_trial_is_rejected(self):
+        rows = _masked_observations()
+        # one trial of one cell drifts to a neighbouring TPC's SMs
+        for row in rows:
+            if row["mode"] == "next" and row["tpc_bit"] == 31 and row["trial"] == 2:
+                row["observed_sms"] = [64, 65]
+        report = self.validate(rows)
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["deterministic_across_trials"])
+
+    def test_modes_must_agree_on_the_same_bit(self):
+        rows = _masked_observations()
+        for row in rows:
+            if row["mode"] == "stream" and row["tpc_bit"] == 0:
+                row["observed_sms"] = [10, 11]
+        report = self.validate(rows)
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["consistent_across_modes"])
+
+    def test_overlapping_bits_are_rejected_as_leakage(self):
+        leaky = dict(_TRUE_MAPPING)
+        leaky[32] = [62, 63]  # collides with bit 31 -> {62, 63}
+        report = self.validate(_masked_observations(leaky))
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["disjoint_across_bits"])
+
+    def test_a_mask_covering_the_whole_die_is_rejected(self):
+        wide = {bit: list(range(128)) for bit in _TRUE_MAPPING}
+        report = self.validate(_masked_observations(wide))
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["observed_sm_count_within_allowed"])
+        self.assertFalse(
+            report["checks"]["restricts_relative_to_unmasked_baseline"]
+        )
+
+    def test_missing_baseline_coverage_cannot_be_accepted(self):
+        report = validate_masked_tpc_matrix(
+            _masked_observations(),
+            matrix=_MASKED_MATRIX,
+            hardware=_MASKED_HARDWARE,
+            baseline_observed_sm_count=None,
+        )
+        self.assertFalse(report["accepted"])
+        self.assertFalse(
+            report["checks"]["restricts_relative_to_unmasked_baseline"]
+        )
+
+    def test_incomplete_and_undeclared_cells_are_rejected(self):
+        short = [r for r in _masked_observations() if r["trial"] != 2]
+        report = self.validate(short)
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["matrix_complete"])
+
+        extra = _masked_observations()
+        extra.append({**extra[0], "tpc_bit": 7})
+        report = self.validate(extra)
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["no_unexpected_cells"])
+
+    def test_duplicate_cells_are_rejected(self):
+        rows = _masked_observations()
+        rows.append(dict(rows[0]))
+        report = self.validate(rows)
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["observation_records_well_formed"])
+
+    def test_sm_ids_outside_the_device_are_rejected(self):
+        bad = dict(_TRUE_MAPPING)
+        bad[63] = [126, 128]
+        report = self.validate(_masked_observations(bad))
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["observed_sms_within_device_range"])
+
+    def test_a_partial_tpc_is_allowed_by_count_but_not_by_the_die(self):
+        half = dict(_TRUE_MAPPING)
+        half[0] = [0]
+        report = self.validate(_masked_observations(half))
+        # one SM is inside allowed_observed_sm_count ...
+        self.assertTrue(report["checks"]["observed_sm_count_within_allowed"])
+        # ... but this die has exactly two SMs per TPC, so it still fails
+        self.assertFalse(report["checks"]["mapping_matches_die_sms_per_tpc"])
+        self.assertFalse(report["accepted"])
+
+    def test_mixed_gpu_identities_are_rejected(self):
+        rows = _masked_observations()
+        rows[-1]["gpu_uuid"] = _gpu_uuid(2)
+        report = self.validate(rows)
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["single_gpu_identity"])
+
+    def test_block_totals_must_match_the_declared_matrix(self):
+        for field in ("blocks", "observed_blocks"):
+            with self.subTest(field=field):
+                rows = _masked_observations()
+                rows[5][field] = 2048
+                report = self.validate(rows)
+                self.assertFalse(report["accepted"])
+                self.assertFalse(
+                    report["checks"]["observation_records_well_formed"]
+                )
+
+    def test_type_substitutions_in_observations_are_rejected(self):
+        for field, value in (
+            ("tpc_bit", True),
+            ("trial", False),
+            ("blocks", 4096.0),
+            ("observed_blocks", True),
+            ("physical_gpu", 1.0),
+        ):
+            with self.subTest(field=field):
+                rows = _masked_observations()
+                rows[0][field] = value
+                report = self.validate(rows)
+                self.assertFalse(report["accepted"])
+
+    def test_malformed_matrix_or_die_is_rejected(self):
+        report = validate_masked_tpc_matrix(
+            _masked_observations(),
+            matrix={**_MASKED_MATRIX, "extra": 1},
+            hardware=_MASKED_HARDWARE,
+            baseline_observed_sm_count=128,
+        )
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["matrix_section_keys_exact"])
+
+        report = validate_masked_tpc_matrix(
+            _masked_observations(),
+            matrix=_MASKED_MATRIX,
+            hardware={"sm_count": 127, "expected_tpc_count": 64},
+            baseline_observed_sm_count=128,
+        )
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["die_sms_per_tpc_is_integral"])

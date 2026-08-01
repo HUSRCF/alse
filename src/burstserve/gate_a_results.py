@@ -4767,6 +4767,336 @@ def _sealed_rejection_validator(
     return _validate_sealed_rejection, evidence
 
 
+_MASKED_OBSERVATION_KEYS = frozenset(
+    {
+        "mode",
+        "tpc_bit",
+        "trial",
+        "physical_gpu",
+        "gpu_uuid",
+        "blocks",
+        "observed_blocks",
+        "observed_sms",
+    }
+)
+_MASKED_MATRIX_KEYS = frozenset(
+    {
+        "modes",
+        "tpc_bits",
+        "trials_per_cell",
+        "allowed_observed_sm_count",
+        "iterations",
+        "blocks",
+        "threads_per_block",
+    }
+)
+
+
+def validate_masked_tpc_matrix(
+    observations: Sequence[Mapping[str, Any]],
+    *,
+    matrix: Mapping[str, Any],
+    hardware: Mapping[str, Any],
+    baseline_observed_sm_count: int | None = None,
+) -> dict[str, Any]:
+    """Decide whether a masked matrix establishes a real TPC->SM mapping.
+
+    A single masked histogram proves nothing: the mapping it appears to show
+    is derived from that same observation, so it cannot be contradicted.  The
+    Gate-A claim is that a requested TPC bit confines the kernel to the SM set
+    that bit denotes, and the evidence for it is cross-sectional rather than
+    per run:
+
+    * the same bit must yield the identical SM set on every trial, otherwise
+      the mask is not deterministic;
+    * the same bit must yield the identical SM set under every masking
+      mechanism, because a TPC-to-SM mapping is a property of the die and not
+      of the mechanism that programs it;
+    * distinct bits must yield disjoint SM sets, which is the only available
+      evidence that the bit selects rather than merely permits;
+    * each set must hold exactly the die's SMs-per-TPC, and every SM must lie
+      inside the device's range;
+    * and the sets must be far smaller than the unmasked baseline's coverage
+      on the same card, which is what shows the mask restricts at all.
+
+    This function is deliberately pure and takes already validated per-cell
+    observations, so it can be reviewed and tested long before any masked
+    kernel is authorized to run.
+    """
+
+    errors: list[str] = []
+    checks: dict[str, bool] = {}
+
+    if not isinstance(matrix, Mapping) or set(matrix) != set(
+        _MASKED_MATRIX_KEYS
+    ):
+        errors.append("masked matrix section keys are not exact")
+        return {
+            "checks": {"matrix_section_keys_exact": False},
+            "tpc_sm_mapping": {},
+            "errors": errors,
+            "accepted": False,
+        }
+    checks["matrix_section_keys_exact"] = True
+
+    modes = matrix.get("modes")
+    bits = matrix.get("tpc_bits")
+    trials = matrix.get("trials_per_cell")
+    allowed_counts = matrix.get("allowed_observed_sm_count")
+    expected_blocks = matrix.get("blocks")
+    sm_count = hardware.get("sm_count")
+    tpc_count = hardware.get("expected_tpc_count")
+
+    def positive_int(value: Any) -> bool:
+        return (
+            not isinstance(value, bool)
+            and isinstance(value, int)
+            and value > 0
+        )
+
+    shape_ok = (
+        isinstance(modes, list)
+        and modes
+        and all(isinstance(m, str) and m for m in modes)
+        and isinstance(bits, list)
+        and bits
+        and all(positive_int(b) or b == 0 for b in bits)
+        and len(set(bits)) == len(bits)
+        and positive_int(trials)
+        and isinstance(allowed_counts, list)
+        and allowed_counts
+        and all(positive_int(c) for c in allowed_counts)
+        and positive_int(expected_blocks)
+        and positive_int(sm_count)
+        and positive_int(tpc_count)
+    )
+    checks["matrix_declaration_well_formed"] = shape_ok
+    if not shape_ok:
+        errors.append("masked matrix declaration is malformed")
+        return {
+            "checks": checks,
+            "tpc_sm_mapping": {},
+            "errors": errors,
+            "accepted": False,
+        }
+
+    if sm_count % tpc_count:
+        checks["die_sms_per_tpc_is_integral"] = False
+        errors.append(
+            f"sm_count {sm_count} is not a multiple of tpc_count {tpc_count}"
+        )
+        sms_per_tpc = None
+    else:
+        checks["die_sms_per_tpc_is_integral"] = True
+        sms_per_tpc = sm_count // tpc_count
+
+    # --- shape of the supplied observations -----------------------------
+    parsed: dict[tuple[str, int, int], frozenset[int]] = {}
+    identities: set[tuple[int, str]] = set()
+    keys_exact = True
+    for index, item in enumerate(observations):
+        if not isinstance(item, Mapping) or set(item) != set(
+            _MASKED_OBSERVATION_KEYS
+        ):
+            errors.append(f"masked observation[{index}] keys are not exact")
+            keys_exact = False
+            continue
+        mode = item["mode"]
+        bit = item["tpc_bit"]
+        trial = item["trial"]
+        sms = item["observed_sms"]
+        blocks = item["blocks"]
+        observed_blocks = item["observed_blocks"]
+        gpu = item["physical_gpu"]
+        uuid = item["gpu_uuid"]
+        if (
+            not isinstance(mode, str)
+            or isinstance(bit, bool)
+            or not isinstance(bit, int)
+            or isinstance(trial, bool)
+            or not isinstance(trial, int)
+            or isinstance(gpu, bool)
+            or not isinstance(gpu, int)
+            or not isinstance(uuid, str)
+            or not uuid
+            or not isinstance(sms, (list, tuple, set, frozenset))
+            or not _exact_scalar(blocks, expected_blocks)
+            or not _exact_scalar(observed_blocks, expected_blocks)
+        ):
+            errors.append(f"masked observation[{index}] fields are invalid")
+            keys_exact = False
+            continue
+        members = list(sms)
+        if any(
+            isinstance(s, bool) or not isinstance(s, int) for s in members
+        ):
+            errors.append(f"masked observation[{index}] SM ids are not integers")
+            keys_exact = False
+            continue
+        if len(set(members)) != len(members):
+            errors.append(f"masked observation[{index}] repeats an SM id")
+            keys_exact = False
+            continue
+        cell = (mode, bit, trial)
+        if cell in parsed:
+            errors.append(
+                f"masked matrix has a duplicate cell: mode={mode} "
+                f"bit={bit} trial={trial}"
+            )
+            keys_exact = False
+            continue
+        parsed[cell] = frozenset(members)
+        identities.add((gpu, uuid))
+    checks["observation_records_well_formed"] = keys_exact
+
+    checks["single_gpu_identity"] = len(identities) == 1
+    if len(identities) != 1:
+        errors.append(
+            "masked matrix must describe exactly one GPU identity, "
+            f"observed {len(identities)}"
+        )
+
+    # --- completeness ----------------------------------------------------
+    expected_cells = {
+        (mode, bit, trial)
+        for mode in modes
+        for bit in bits
+        for trial in range(trials)
+    }
+    missing = sorted(expected_cells - set(parsed))
+    extra = sorted(set(parsed) - expected_cells)
+    checks["matrix_complete"] = not missing
+    checks["no_unexpected_cells"] = not extra
+    if missing:
+        errors.append(f"masked matrix is missing cells: {missing[:8]}")
+    if extra:
+        errors.append(f"masked matrix has undeclared cells: {extra[:8]}")
+
+    # --- per observation --------------------------------------------------
+    counts_ok = True
+    range_ok = True
+    for (mode, bit, trial), sms in sorted(parsed.items()):
+        if len(sms) not in set(allowed_counts):
+            counts_ok = False
+            errors.append(
+                f"mode={mode} bit={bit} trial={trial} observed "
+                f"{len(sms)} SMs, allowed {sorted(set(allowed_counts))}"
+            )
+        if any(s < 0 or s >= sm_count for s in sms):
+            range_ok = False
+            errors.append(
+                f"mode={mode} bit={bit} trial={trial} observed an SM id "
+                f"outside 0..{sm_count - 1}"
+            )
+    checks["observed_sm_count_within_allowed"] = counts_ok
+    checks["observed_sms_within_device_range"] = range_ok
+
+    # --- determinism across trials ---------------------------------------
+    per_mode_bit: dict[tuple[str, int], frozenset[int]] = {}
+    deterministic = True
+    for mode in modes:
+        for bit in bits:
+            sets = {
+                parsed[(mode, bit, trial)]
+                for trial in range(trials)
+                if (mode, bit, trial) in parsed
+            }
+            if not sets:
+                continue
+            if len(sets) != 1:
+                deterministic = False
+                errors.append(
+                    f"mode={mode} bit={bit} is not deterministic across "
+                    f"trials: {[sorted(s) for s in sorted(sets, key=sorted)]}"
+                )
+                continue
+            per_mode_bit[(mode, bit)] = next(iter(sets))
+    checks["deterministic_across_trials"] = deterministic
+
+    # --- agreement across masking mechanisms ------------------------------
+    mapping: dict[int, frozenset[int]] = {}
+    consistent = True
+    for bit in bits:
+        sets = {
+            per_mode_bit[(mode, bit)]
+            for mode in modes
+            if (mode, bit) in per_mode_bit
+        }
+        if not sets:
+            continue
+        if len(sets) != 1:
+            consistent = False
+            errors.append(
+                f"bit={bit} maps to different SM sets under different "
+                f"modes: {[sorted(s) for s in sorted(sets, key=sorted)]}"
+            )
+            continue
+        mapping[bit] = next(iter(sets))
+    checks["consistent_across_modes"] = consistent
+
+    # --- disjointness between bits ----------------------------------------
+    disjoint = True
+    ordered = sorted(mapping)
+    for left_index, left in enumerate(ordered):
+        for right in ordered[left_index + 1 :]:
+            shared = mapping[left] & mapping[right]
+            if shared:
+                disjoint = False
+                errors.append(
+                    f"bits {left} and {right} share SMs {sorted(shared)}"
+                )
+    checks["disjoint_across_bits"] = disjoint
+
+    # --- mapping matches the die ------------------------------------------
+    if sms_per_tpc is None:
+        checks["mapping_matches_die_sms_per_tpc"] = False
+    else:
+        exact = all(len(sms) == sms_per_tpc for sms in mapping.values())
+        checks["mapping_matches_die_sms_per_tpc"] = bool(mapping) and exact
+        if mapping and not exact:
+            errors.append(
+                f"every TPC should hold {sms_per_tpc} SMs on this die: "
+                + ", ".join(
+                    f"bit {bit}->{len(sms)}"
+                    for bit, sms in sorted(mapping.items())
+                    if len(sms) != sms_per_tpc
+                )
+            )
+
+    # --- the mask must actually restrict ----------------------------------
+    if baseline_observed_sm_count is None:
+        checks["restricts_relative_to_unmasked_baseline"] = False
+        errors.append(
+            "no unmasked baseline SM coverage was supplied for comparison"
+        )
+    else:
+        restricts = bool(mapping) and all(
+            len(sms) < baseline_observed_sm_count for sms in mapping.values()
+        )
+        checks["restricts_relative_to_unmasked_baseline"] = restricts
+        if not restricts:
+            errors.append(
+                "masked observations do not cover fewer SMs than the "
+                f"unmasked baseline ({baseline_observed_sm_count})"
+            )
+
+    return {
+        "checks": checks,
+        "tpc_sm_mapping": {
+            str(bit): sorted(sms) for bit, sms in sorted(mapping.items())
+        },
+        "declared_matrix": {
+            "modes": list(modes),
+            "tpc_bits": list(bits),
+            "trials_per_cell": trials,
+            "expected_cell_count": len(expected_cells),
+            "observed_cell_count": len(parsed),
+        },
+        "errors": errors,
+        "accepted": not errors and all(checks.values()),
+    }
+
+
 def _excluded_record(
     run_root: Path,
     *,
