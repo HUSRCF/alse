@@ -1455,3 +1455,40 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   是死字段；且 driver 13030 不在 `PINNED_VALIDATED_DRIVER_VERSIONS` 内，
   masked 运行必须显式带 `--experimental-allow-unsupported-driver`，与
   manifest 文本声明的 fail_closed 姿态存在措辞落差。
+- 2026-08-01 / cuda133-stream-offset-discovered：按「接受版本锁定 hack 的代价」
+  的决定执行 stream offset 逆向，**在 GPU 0（非编队卡、全程无他人进程）上完成
+  Phase 1 扫描与 Phase 2 证伪**。原始记录固化于
+  `experiments/probes/cuda133-stream-offset/`（非正式证据，无 provenance
+  绑定，不授权任何东西）。
+  结论：CUDA 13.3 的 `CUstream` 结构里 per-stream SM mask 位于**偏移
+  `0x5fc`**，即相对 libsmctrl 的 `CU_12_2_MASK_OFF`（`0x4e4`）基址
+  `MASK_OFF=+280`。upstream 已验证表最高到 CUDA 12.8 的 `0x4fc`。
+  `280 % 8 == 0`，满足既有的 `stream_offset_is_8byte_aligned` 门；总偏移
+  `0x5fc % 8 == 4`，与全部已知 x86_64 偏移（`0x49c/0x4ac/0x4cc/0x4e4/0x4ec/
+  0x4fc`）同余，未出现新的对齐族。
+  Phase 1（`phase1_sweep.json`，sha256 `b5b8c03a…8dae`）：delta −256…+512
+  步长 4，每次尝试在短命子进程中隔离，NVML Xid 监视器在子进程**存活期间**
+  保持打开（事后再注册会漏掉故障事件）。188 次尝试 → 命中 1、静默空转 141、
+  SIGSEGV 43、超时 2、Xid 1。**`MASK_OFF=+492`（`0x6d0`）触发 Xid 31**：
+  `MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x7f1c_fffff000,
+  FAULT_PDE ACCESS_TYPE_VIRT_WRITE`，故障进程为密封的 `memfd:burstserv`
+  子进程。扫描按规则当场中止，因此 **delta +496…+512 从未扫描——本次扫描是
+  截断的，不是穷尽的**。中止后 GPU 0 立刻跑出 128/128 SM baseline，完全恢复。
+  Phase 2（`phase2_verdict.json`，sha256 `363db8fc…1173d`）：证伪判据不是
+  「候选能跑出 2 个 SM」，而是「stream 必须与两个 callback 模式在每个 bit 上
+  给出完全相同的映射」——后者根本不依赖这个偏移，是独立见证。3 模式 × 4 bit
+  × 3 trial = 36 格全部成功，`validate_masked_tpc_matrix` 15 项全 PASS、
+  `accepted=true`、0 失败格、0 Xid。
+  补全上次的过度外推（`stream_sweep64.json`，sha256 `5162f594…72fff`）：
+  不重复「4 个 bit 就下全 die 结论」的错误，stream 在 `0x5fc` 上逐一跑完
+  **全部 64 个 bit**，每个都恰好落在 `{2N, 2N+1}`，并集恰为 `{0..127}`，
+  即对整块 die 双射覆盖，零失败。
+  性质声明：这是一个**逆向得到、锁定于本驱动版本**的常量，靠向不透明驱动
+  结构体盲写发现，不是文档化接口。论文中必须如实写成 reverse-engineered、
+  version-locked hack，**不得描述为稳定机制**；驱动一升级即失效。
+  尚未晋级：promoted manifest 仍为 `approved_mask_modes ["global","next"]`、
+  `stream_offset_search_enabled=false`、`global_next_matrix_accepted=false`、
+  `stream_mask_off_candidates=[]`。按 manifest 自身 promotion_requirements
+  的次序，必须先跑完并接受**正式**的 global/next masked 矩阵，才能把
+  `global_next_matrix_accepted` 置真并录入 offset 候选。本次全部为
+  scratchpad 探针，未产生任何正式证据，promotion lock 未改动。

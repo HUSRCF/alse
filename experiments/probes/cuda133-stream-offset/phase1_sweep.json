@@ -1,0 +1,1914 @@
+{
+  "sweep": {
+    "start": -256,
+    "end": 512,
+    "step": 4,
+    "base": "0x4e4",
+    "probe_bit": 0
+  },
+  "counts": {
+    "no-op": 141,
+    "signal": 43,
+    "timeout": 2,
+    "hit": 1,
+    "xid": 1
+  },
+  "candidates": [
+    280
+  ],
+  "records": [
+    {
+      "delta": -256,
+      "total_offset": "0x3e4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -252,
+      "total_offset": "0x3e8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -248,
+      "total_offset": "0x3ec",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -244,
+      "total_offset": "0x3f0",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -240,
+      "total_offset": "0x3f4",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -236,
+      "total_offset": "0x3f8",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -232,
+      "total_offset": "0x3fc",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -228,
+      "total_offset": "0x400",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -224,
+      "total_offset": "0x404",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -220,
+      "total_offset": "0x408",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -216,
+      "total_offset": "0x40c",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -212,
+      "total_offset": "0x410",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -208,
+      "total_offset": "0x414",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -204,
+      "total_offset": "0x418",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -200,
+      "total_offset": "0x41c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -196,
+      "total_offset": "0x420",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -192,
+      "total_offset": "0x424",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -188,
+      "total_offset": "0x428",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -184,
+      "total_offset": "0x42c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -180,
+      "total_offset": "0x430",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -176,
+      "total_offset": "0x434",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -172,
+      "total_offset": "0x438",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -168,
+      "total_offset": "0x43c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -164,
+      "total_offset": "0x440",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -160,
+      "total_offset": "0x444",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -156,
+      "total_offset": "0x448",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -152,
+      "total_offset": "0x44c",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -148,
+      "total_offset": "0x450",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -144,
+      "total_offset": "0x454",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -140,
+      "total_offset": "0x458",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -136,
+      "total_offset": "0x45c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -132,
+      "total_offset": "0x460",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -128,
+      "total_offset": "0x464",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -124,
+      "total_offset": "0x468",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -120,
+      "total_offset": "0x46c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -116,
+      "total_offset": "0x470",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -112,
+      "total_offset": "0x474",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -108,
+      "total_offset": "0x478",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -104,
+      "total_offset": "0x47c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -100,
+      "total_offset": "0x480",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -96,
+      "total_offset": "0x484",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -92,
+      "total_offset": "0x488",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -88,
+      "total_offset": "0x48c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -84,
+      "total_offset": "0x490",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -80,
+      "total_offset": "0x494",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -76,
+      "total_offset": "0x498",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -72,
+      "total_offset": "0x49c",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -68,
+      "total_offset": "0x4a0",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -64,
+      "total_offset": "0x4a4",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -60,
+      "total_offset": "0x4a8",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -56,
+      "total_offset": "0x4ac",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -52,
+      "total_offset": "0x4b0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -48,
+      "total_offset": "0x4b4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -44,
+      "total_offset": "0x4b8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -40,
+      "total_offset": "0x4bc",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -36,
+      "total_offset": "0x4c0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -32,
+      "total_offset": "0x4c4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -28,
+      "total_offset": "0x4c8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -24,
+      "total_offset": "0x4cc",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -20,
+      "total_offset": "0x4d0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -16,
+      "total_offset": "0x4d4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -12,
+      "total_offset": "0x4d8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -8,
+      "total_offset": "0x4dc",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": -4,
+      "total_offset": "0x4e0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 0,
+      "total_offset": "0x4e4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 4,
+      "total_offset": "0x4e8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 8,
+      "total_offset": "0x4ec",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 12,
+      "total_offset": "0x4f0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 16,
+      "total_offset": "0x4f4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 20,
+      "total_offset": "0x4f8",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 24,
+      "total_offset": "0x4fc",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 28,
+      "total_offset": "0x500",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 32,
+      "total_offset": "0x504",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 36,
+      "total_offset": "0x508",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 40,
+      "total_offset": "0x50c",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 44,
+      "total_offset": "0x510",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 48,
+      "total_offset": "0x514",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 52,
+      "total_offset": "0x518",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 56,
+      "total_offset": "0x51c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 60,
+      "total_offset": "0x520",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 64,
+      "total_offset": "0x524",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 68,
+      "total_offset": "0x528",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 72,
+      "total_offset": "0x52c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 76,
+      "total_offset": "0x530",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 80,
+      "total_offset": "0x534",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 84,
+      "total_offset": "0x538",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 88,
+      "total_offset": "0x53c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 92,
+      "total_offset": "0x540",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 96,
+      "total_offset": "0x544",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 100,
+      "total_offset": "0x548",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 104,
+      "total_offset": "0x54c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 108,
+      "total_offset": "0x550",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 112,
+      "total_offset": "0x554",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 116,
+      "total_offset": "0x558",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 120,
+      "total_offset": "0x55c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 124,
+      "total_offset": "0x560",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 128,
+      "total_offset": "0x564",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 132,
+      "total_offset": "0x568",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 136,
+      "total_offset": "0x56c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 140,
+      "total_offset": "0x570",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 144,
+      "total_offset": "0x574",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 148,
+      "total_offset": "0x578",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 152,
+      "total_offset": "0x57c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 156,
+      "total_offset": "0x580",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 160,
+      "total_offset": "0x584",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 164,
+      "total_offset": "0x588",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 168,
+      "total_offset": "0x58c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 172,
+      "total_offset": "0x590",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 176,
+      "total_offset": "0x594",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 180,
+      "total_offset": "0x598",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 184,
+      "total_offset": "0x59c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 188,
+      "total_offset": "0x5a0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 192,
+      "total_offset": "0x5a4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 196,
+      "total_offset": "0x5a8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 200,
+      "total_offset": "0x5ac",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 204,
+      "total_offset": "0x5b0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 208,
+      "total_offset": "0x5b4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 212,
+      "total_offset": "0x5b8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 216,
+      "total_offset": "0x5bc",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 220,
+      "total_offset": "0x5c0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 224,
+      "total_offset": "0x5c4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 228,
+      "total_offset": "0x5c8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 232,
+      "total_offset": "0x5cc",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 236,
+      "total_offset": "0x5d0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 240,
+      "total_offset": "0x5d4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 244,
+      "total_offset": "0x5d8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 248,
+      "total_offset": "0x5dc",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 252,
+      "total_offset": "0x5e0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 256,
+      "total_offset": "0x5e4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 260,
+      "total_offset": "0x5e8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 264,
+      "total_offset": "0x5ec",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 268,
+      "total_offset": "0x5f0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 272,
+      "total_offset": "0x5f4",
+      "class": "timeout",
+      "outcome": "timeout",
+      "exit": null,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 276,
+      "total_offset": "0x5f8",
+      "class": "timeout",
+      "outcome": "timeout",
+      "exit": null,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 280,
+      "total_offset": "0x5fc",
+      "class": "hit",
+      "outcome": "ok",
+      "exit": 0,
+      "signal": null,
+      "sms": [
+        0,
+        1
+      ],
+      "xid_events": []
+    },
+    {
+      "delta": 284,
+      "total_offset": "0x600",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 288,
+      "total_offset": "0x604",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 292,
+      "total_offset": "0x608",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 296,
+      "total_offset": "0x60c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 300,
+      "total_offset": "0x610",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 304,
+      "total_offset": "0x614",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 308,
+      "total_offset": "0x618",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 312,
+      "total_offset": "0x61c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 316,
+      "total_offset": "0x620",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 320,
+      "total_offset": "0x624",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 324,
+      "total_offset": "0x628",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 328,
+      "total_offset": "0x62c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 332,
+      "total_offset": "0x630",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 336,
+      "total_offset": "0x634",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 340,
+      "total_offset": "0x638",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 344,
+      "total_offset": "0x63c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 348,
+      "total_offset": "0x640",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 352,
+      "total_offset": "0x644",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 356,
+      "total_offset": "0x648",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 360,
+      "total_offset": "0x64c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 364,
+      "total_offset": "0x650",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 368,
+      "total_offset": "0x654",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 372,
+      "total_offset": "0x658",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 376,
+      "total_offset": "0x65c",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 380,
+      "total_offset": "0x660",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 384,
+      "total_offset": "0x664",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 388,
+      "total_offset": "0x668",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 392,
+      "total_offset": "0x66c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 396,
+      "total_offset": "0x670",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 400,
+      "total_offset": "0x674",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 404,
+      "total_offset": "0x678",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 408,
+      "total_offset": "0x67c",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 412,
+      "total_offset": "0x680",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 416,
+      "total_offset": "0x684",
+      "class": "signal",
+      "outcome": "signal",
+      "exit": null,
+      "signal": 11,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 420,
+      "total_offset": "0x688",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 424,
+      "total_offset": "0x68c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 428,
+      "total_offset": "0x690",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 432,
+      "total_offset": "0x694",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 436,
+      "total_offset": "0x698",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 440,
+      "total_offset": "0x69c",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 444,
+      "total_offset": "0x6a0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 448,
+      "total_offset": "0x6a4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 452,
+      "total_offset": "0x6a8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 456,
+      "total_offset": "0x6ac",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 460,
+      "total_offset": "0x6b0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 464,
+      "total_offset": "0x6b4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 468,
+      "total_offset": "0x6b8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 472,
+      "total_offset": "0x6bc",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 476,
+      "total_offset": "0x6c0",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 480,
+      "total_offset": "0x6c4",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 484,
+      "total_offset": "0x6c8",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 488,
+      "total_offset": "0x6cc",
+      "class": "no-op",
+      "outcome": "rejected",
+      "exit": 7,
+      "signal": null,
+      "sms": null,
+      "xid_events": []
+    },
+    {
+      "delta": 492,
+      "total_offset": "0x6d0",
+      "class": "xid",
+      "outcome": "rejected",
+      "exit": 5,
+      "signal": null,
+      "sms": null,
+      "xid_events": [
+        {
+          "timestamp_utc": "2026-08-01T16:41:42.776583Z",
+          "timestamp_monotonic_s": 1158184.915150258,
+          "device_handle": 139831821830368,
+          "event_type_bits": 8,
+          "xid_code": 31,
+          "gpu_instance_id": 4294967295,
+          "compute_instance_id": 4294967295
+        }
+      ]
+    }
+  ]
+}

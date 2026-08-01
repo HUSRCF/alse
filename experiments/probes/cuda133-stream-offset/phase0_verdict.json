@@ -1,0 +1,53 @@
+{
+  "checks": {
+    "matrix_section_keys_exact": true,
+    "matrix_declaration_well_formed": true,
+    "die_sms_per_tpc_is_integral": true,
+    "observation_records_well_formed": true,
+    "single_gpu_identity": true,
+    "matrix_complete": true,
+    "no_unexpected_cells": true,
+    "observed_sm_count_within_allowed": true,
+    "observed_sms_within_device_range": true,
+    "deterministic_across_trials": true,
+    "consistent_across_modes": true,
+    "disjoint_across_bits": true,
+    "mapping_matches_die_sms_per_tpc": true,
+    "restricts_relative_to_unmasked_baseline": true
+  },
+  "tpc_sm_mapping": {
+    "0": [
+      0,
+      1
+    ],
+    "31": [
+      62,
+      63
+    ],
+    "32": [
+      64,
+      65
+    ],
+    "63": [
+      126,
+      127
+    ]
+  },
+  "declared_matrix": {
+    "modes": [
+      "global",
+      "next"
+    ],
+    "tpc_bits": [
+      0,
+      31,
+      32,
+      63
+    ],
+    "trials_per_cell": 3,
+    "expected_cell_count": 24,
+    "observed_cell_count": 24
+  },
+  "errors": [],
+  "accepted": true
+}
