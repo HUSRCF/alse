@@ -37,8 +37,20 @@
   但 promotion lock 完全关闭，三种 masked 模式实测 `permitted=False`）。
   **Gate A0 已不再是 blocker**：2026-07-31 编队缩为 5 张后，GPU 1/2/3/4/7
   各 3 次共 15/15 accepted，加 2 个有效 sealed rejection，报告判定
-  `complete=true`。GPU 0/5/6 仍被他人长任务占用，但已不在编队内，
-  只作为可选的编队外补充证据。
+  `complete=true`。
+  **但编队卡的可用性会被同机用户抢占，这是一个已实际发生的前向风险**：
+  2026-08-01 观测到 `yitong` 把 VLLM 双卡服务从 GPU 0+6 迁到 GPU 6+7，
+  **占用了编队内的 GPU 7**（在其 A0 与等价性数据采集完成约 20 分钟后）；
+  同时 GPU 0 反而空出。已固化的 Gate A0 证据不受影响（一次性测量、
+  identity 已锁、证据不可变），矩阵卡 GPU 1/2/3/4 亦未受影响，丢失的仅是
+  备用卡。**风险在于重跑**：Gate A0 的门槛是编队 5 张全过，若日后任何源码
+  改动导致 identity 变化而需重采，且届时 GPU 7 仍被占用，则只能凑出 4 张、
+  达不到 `REQUIRED_GATE_A0_GPU_COUNT_V2 = 5`，Gate A0 将由 complete 退回
+  incomplete。即：**当前的通过状态依赖「重跑时 GPU 7 恰好可用」这一不可控
+  条件**。已决定按 A 方案处理——不因此改动编队或阈值，仅记录风险；待真正
+  需要重采时再依当时的卡况做一次范围决策。第 13–14 周主实验须为「某张矩阵
+  卡中途被抢占」准备预案；已冻结的「arm 比较必须同卡配对」规则正好兜住这
+  一情形：单卡中断只损失该卡的 cell，不污染其他卡的结果。
 - Next three actions:
   1. 进入第 2 周 masked Gate A 的前置准备：跨 trial/bit validator、Xid
      monitor 真实覆盖、CUDA 13.3 stream offset 政策；在三者齐备并经独立
