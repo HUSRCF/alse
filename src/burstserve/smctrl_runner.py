@@ -23,6 +23,7 @@ import signal
 import stat
 import subprocess
 import sys
+import traceback
 import threading
 import time
 from typing import Any, Mapping, Sequence
@@ -1144,12 +1145,27 @@ class _GpuLease(_FlockLease):
         super().__enter__()
         assert self.descriptor is not None
         fallback_size = os.fstat(self.descriptor).st_size
-        if self._quarantine_entry_exists() or fallback_size != 0:
+        marker_present = self._quarantine_entry_exists()
+        if marker_present or fallback_size != 0:
             self.close()
+            # Two independent pieces of state poison a lease, and clearing
+            # only the marker leaves the lock's armed-poison payload behind,
+            # which then rejects every subsequent run with the same message.
+            # Name both, and say which one is actually still set.
+            steps = []
+            if marker_present:
+                steps.append(
+                    f"remove the quarantine marker {self.quarantine_path}"
+                )
+            if fallback_size != 0:
+                steps.append(
+                    f"truncate the {fallback_size}-byte armed-poison payload "
+                    f"in the lock file {self.path}"
+                )
             raise RuntimeError(
-                "GPU is persistently quarantined; manual investigation and "
-                "explicit marker removal/lock truncation are required: "
-                f"{self.quarantine_path}"
+                "GPU is persistently quarantined; manual investigation is "
+                "required, then clear the state that is still set: "
+                + "; ".join(steps)
             )
         assert self.record is not None
         self.record.update(
@@ -5142,6 +5158,12 @@ def _formal_build_untracked_policy(
         "actual_entries": {
             path: entry.to_dict() for path, entry in sorted(actual.items())
         },
+        # The check is a bare boolean, so a rejection said only that the set
+        # was wrong. Name the difference: the common cause is a stray
+        # __pycache__ from running Python without -B, which is invisible to
+        # `git status` because it is gitignored.
+        "unexpected_untracked_paths": sorted(set(actual) - expected_paths),
+        "missing_expected_paths": sorted(expected_paths - set(actual)),
         "record_checks": record_checks,
         "file_checks": file_checks,
         "directory_metadata": directory_metadata,
@@ -6773,11 +6795,46 @@ def _execute_under_leases(
     write_json_atomic(run_directory / "command.json", command_record)
 
     if not preflight_permitted:
+        # Say which gates refused and, where the record knows it, why. A bare
+        # "rejected" forced every diagnosis to start by hand-reading
+        # outcome.json for the one boolean that flipped.
+        refusals = [
+            f"{group}.{name}"
+            for group, group_checks in (
+                ("driver_policy", driver_policy_checks),
+                ("manifest_policy", manifest_policy_checks),
+                ("safety_policy", safety_policy_checks),
+                ("formal_source", formal_source_checks),
+            )
+            if isinstance(group_checks, Mapping)
+            for name, passed in sorted(group_checks.items())
+            if passed is False
+        ]
+        detail = ["probe rejected by fail-closed preflight policy"]
+        detail += [f"  failing check: {name}" for name in refusals]
+        formal_git = (
+            source_binding.get("formal_git")
+            if isinstance(source_binding, Mapping)
+            else None
+        )
+        build_record = (
+            formal_git.get("build_untracked_exception")
+            if isinstance(formal_git, Mapping)
+            else None
+        )
+        if isinstance(build_record, Mapping):
+            for label in (
+                "unexpected_untracked_paths",
+                "missing_expected_paths",
+            ):
+                paths = build_record.get(label)
+                if paths:
+                    detail.append(f"  {label}: {sorted(paths)}")
         write_text_atomic(run_directory / "stdout.log", "")
         write_text_atomic(
-            run_directory / "stderr.log",
-            "probe rejected by fail-closed preflight policy\n",
+            run_directory / "stderr.log", "\n".join(detail) + "\n"
         )
+        print("\n".join(detail), file=sys.stderr)
         outcome = {
             "schema_version": OUTCOME_SCHEMA_VERSION,
             "completed_at_utc": _utc_now(),
@@ -8894,6 +8951,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             "burstserve_run_directory",
             None,
         )
+        # stdout stays exactly one line -- callers parse it as the run
+        # directory -- but the reason must reach stderr. Discarding it made a
+        # rejection indistinguishable from every other rejection, and each
+        # diagnosis cost a full matrix and an externally injected traceback.
+        print(
+            f"formal run rejected: {type(error).__name__}: {error}",
+            file=sys.stderr,
+        )
+        if not isinstance(run_directory, Path):
+            traceback.print_exc(file=sys.stderr)
         print(
             str(run_directory)
             if isinstance(run_directory, Path)

@@ -16,6 +16,9 @@ import time
 import unittest
 from unittest import mock
 
+import contextlib
+import io
+
 import burstserve.nvml_events as nvml_events
 import burstserve.provenance as provenance
 import burstserve.smctrl_runner as smctrl_runner
@@ -1644,6 +1647,87 @@ class BoundProcessGroupSafetyTest(unittest.TestCase):
 
 
 class LifecycleLeaseTest(unittest.TestCase):
+    def test_quarantine_message_names_the_state_that_is_still_set(self):
+        """Clearing the marker alone leaves the lock's poison behind.
+
+        Both pieces of state reject a lease with the same message, so an
+        operator who clears only the marker sees an identical rejection and
+        has no way to tell that a second step remains.  Every subsequent run
+        then fails for a reason the message already refused to name.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lease = smctrl_runner._GpuLease(root, "GPU-test")
+            lease.__enter__()
+            try:
+                lease.arm_masked_poison(run_id=f"bs1-{'e' * 64}")
+                lease.quarantine(["xid_observed"], xid=79)
+                lease.mark_terminal()
+            finally:
+                lease.close()
+            self.assertTrue(lease.quarantine_path.is_file())
+            self.assertGreater(lease.path.stat().st_size, 0)
+
+            # Both set: the message must name both steps.
+            with self.assertRaises(RuntimeError) as both:
+                with smctrl_runner._GpuLease(root, "GPU-test"):
+                    self.fail("a quarantined GPU was leased")
+            self.assertIn("quarantine marker", str(both.exception))
+            self.assertIn("armed-poison payload", str(both.exception))
+
+            # After the obvious half is cleared, the message must change to
+            # point at the half that is left rather than repeat itself.
+            lease.quarantine_path.unlink()
+            with self.assertRaises(RuntimeError) as remaining:
+                with smctrl_runner._GpuLease(root, "GPU-test"):
+                    self.fail("a poisoned lock was leased")
+            self.assertNotIn("quarantine marker", str(remaining.exception))
+            self.assertIn("armed-poison payload", str(remaining.exception))
+            self.assertIn(str(lease.path), str(remaining.exception))
+
+            # Doing what the message says must actually clear it.
+            with lease.path.open("r+b") as handle:
+                handle.truncate(0)
+            with smctrl_runner._GpuLease(root, "GPU-test"):
+                pass
+
+    def test_cli_reports_why_a_run_was_rejected(self):
+        """stdout keeps its one-line contract; the reason goes to stderr.
+
+        The handler printed only the run directory, or "<no-run-directory>"
+        when the failure happened before one existed.  A rejection was then
+        indistinguishable from every other rejection, and diagnosing one
+        meant injecting a traceback from outside the program.
+        """
+
+        marker = "synthetic rejection for diagnostics"
+        with mock.patch.object(
+            smctrl_runner,
+            "execute",
+            side_effect=RuntimeError(marker),
+        ):
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                with contextlib.redirect_stderr(stderr):
+                    code = smctrl_runner.main([
+                        "run",
+                        "--physical-gpu", "1",
+                        "--mode", "baseline",
+                        "--gate-manifest",
+                        "experiments/manifests/gate_a_4090.json",
+                    ])
+
+        self.assertNotEqual(code, 0)
+        self.assertEqual(
+            stdout.getvalue().splitlines(), ["<no-run-directory>"]
+        )
+        self.assertIn(marker, stderr.getvalue())
+        self.assertIn("RuntimeError", stderr.getvalue())
+        # No run directory means no outcome.json to read the reason from, so
+        # the traceback is the only record of where it came from.
+        self.assertIn("Traceback", stderr.getvalue())
+
     def test_dangling_quarantine_symlink_blocks_lease_acquisition(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

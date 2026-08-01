@@ -1545,3 +1545,21 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   按 manifest 自身 promotion_requirements 的次序，本次 global/next 矩阵被接受
   正是置 `global_next_matrix_accepted=true` 的前提，下一步方可录入
   `MASK_OFF=+280`（总偏移 `0x5fc`）并产出 stream 的正式证据。
+- 2026-08-01 / masked-run-diagnostics：修复三处让每次排查都要烧掉一整轮
+  24 格矩阵的可用性缺陷。三者都不改变任何判据，只让拒绝说出理由。
+  (1) `main()` 的 `except BaseException` 原先把异常文本整个丢弃，stdout 只
+  打印 run 目录或 `<no-run-directory>`。现改为把 `类型: 消息` 写入 **stderr**，
+  并在没有 run 目录（因而没有 outcome.json 可读）时附完整 traceback；stdout
+  仍严格保持单行契约，调用方解析不受影响。
+  (2) 形式化源码策略被拒时只有一个布尔量。现在 stderr 逐条列出失败的检查名
+  （含所属检查组），并在构建例外记录中新增 `unexpected_untracked_paths` /
+  `missing_expected_paths` 一并打印。今天那次真实故障现在直接显示
+  `src/burstserve/__pycache__/...`——该目录被 gitignore，`git status` 看不见，
+  是脚本预检也漏掉它的原因。
+  (3) lease 的两种毒化状态（quarantine marker 与 lock 内的 armed-poison 载荷）
+  原先抛出**同一句**消息，清掉 marker 后再运行会看到一模一样的报错，无从得知
+  还剩一步。现按实际仍然置位的状态分别列出所需动作与确切路径。
+  新增测试三项：`test_quarantine_message_names_the_state_that_is_still_set`
+  逐步验证「两者都置位 → 只剩 lock → 照消息做完即可获取 lease」；
+  `test_cli_reports_why_a_run_was_rejected` 走真实 CLI 断言 stdout 仍为单行
+  而 stderr 含类型、消息与 traceback。全量 480 tests OK（21 skipped）。
