@@ -392,6 +392,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--physical-gpu", type=int, required=True)
     parser.add_argument("--arm", choices=_SUPPORTED_ARMS, default="stepswap")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument(
+        "--trial",
+        type=int,
+        default=0,
+        help=(
+            "repetition index within one cell; the run ID is content "
+            "addressed, so repeating a cell needs an explicit trial"
+        ),
+    )
     parser.add_argument("--horizon-s", type=float, default=10.0)
     parser.add_argument("--arrival-rate", type=float, default=0.1)
     parser.add_argument("--frames", type=int, default=9)
@@ -424,6 +433,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "arm": args.arm,
         "arrival": "poisson",
         "seed": args.seed,
+        "trial": args.trial,
         "horizon_s": args.horizon_s,
         "arrival_rate": args.arrival_rate,
         "long_model": "cog2b",
