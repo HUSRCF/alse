@@ -6,7 +6,7 @@
 - Current phase: 第 1 周——工程基线与可复现环境；并行进行 Gate A0
   fail-closed 预研，不视为进入第 2 周
 - Current gate: Phase 0 baseline reproducibility；**Gate A0 已在 5 张编队
-  （GPU 1/2/3/4/7）下通过**（2026-07-31，report `46b8bfca…a4e9`）；
+  （GPU 1/2/3/4/7）下通过**（2026-07-31，report `683c0ca1…8f0e`）；
   masked Gate A 仍未开始，promotion lock 保持关闭
 - Status: in_progress
 - Last accepted evidence: Phase-0 baseline 与 same-mode correctness 均通过；
@@ -72,7 +72,7 @@
 | 同 seed deterministic correctness | correctness runner | stock/offload same-mode tensor SHA 成对完全一致；专用环境复跑一致 | exact | cross-mode 数值差异继续仅 `report_only` |
 | 隔离环境及 exact lock | `runtime_lock.py`、25 conda + 52 pip lock | 当前专用环境 verification `matches=true` | exact（现有环境） | 离线 wheelhouse 从零重建仍 missing，Phase 0 不关闭 |
 | 第二 GPU SKU 预约 | 无 | 无 SKU、时间窗或预约证明 | missing | Phase 0 硬门；H100 优先，A100/A800 备选 |
-| 编队 5 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | `gate_a0_4090_v2_seed1_fleet5_20260731.json`：15/15 accepted、2 个 sealed rejection 有效、`gate_a0.complete=true`，report `46b8bfca…a4e9` | **exact** | 编队 2026-07-31 由 8 张缩为 5 张（见 Decision Log）；GPU 0/5/6 若释放可作编队外补充证据，但届时须整批重跑 |
+| 编队 5 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | `gate_a0_4090_v2_seed1_fleet5_20260731.json`：15/15 accepted、2 个 sealed rejection 有效、`gate_a0.complete=true`，report `683c0ca1…8f0e`，每格绑定 VBIOS/板厂/NUMA/功耗上限 | **exact** | 编队 2026-07-31 由 8 张缩为 5 张（见 Decision Log）；GPU 0/5/6 若释放可作编队外补充证据，但届时须整批重跑 |
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
 | 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 纯模拟测试；GPU7 只读注册 smoke supported bits `61852`、Xid bit `8` | approximate | 修复中断孤儿、有界 reap、真实 quiet window 和 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
@@ -638,6 +638,22 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   `CLAUDE_HANDOFF.md`；接手者必须先启动 `achieve goal`，按 native →
   Gate → 双解释器/fresh CPU gate → 独立复审/提交/clean v2 identity 的
   固定顺序持续推进，不得因状态汇报、单次测试失败或提交完成而停止。
+- 2026-07-31：**每次 formal run 增记并绑定 GPU 板级身份**。本机 8 张 4090
+  实为两种板卡：GPU 0/1/3 为技嘉（VBIOS `95.02.18.C0.8B`，功耗上限 479 W），
+  其余为 NVIDIA 公版（`95.02.3C.40.40`，上限 450 W）；同一颗 AD102，故
+  SM/TPC 拓扑一致，A0 测量不受影响（15 格全部 128/128 SM、直方图相同）。
+  但持续负载下的散热与 boost 行为可能不同，而矩阵四张卡（1/2/3/4）恰好
+  横跨两种板卡。原 `query_gpu` 只采集 index/name/uuid/bus/显存/利用率/驱动，
+  **板级差异完全无记录**，一条 `nvidia-smi -pl` 就能静默改变某张卡的持续
+  时钟并污染跨卡复用的 profile。现每次 run 记录 VBIOS、板卡 subsystem ID、
+  NUMA 节点、当前/默认/最大功耗限制、SM 与显存最高频率、PCIe 上限，聚合器
+  以精确键与类型校验并绑定到 `run.preflight`；且要求**当前功耗限制必须等于
+  厂商默认值**，被调高或调低即在 preflight fail-closed。附带查明：8 张卡各
+  挂一个独立 NUMA 节点、卡间全为 `SYS` 路径、链路空闲降为 Gen1 加载后回到
+  Gen4——这些对 I/O 模型的实测 H2D/D2H 带宽有直接影响，已记录，但 NUMA
+  绑定测量属 Gate B 范围，本次未做。证据已在新 identity 下整批重采：
+  15 cells + 2 sealed rejections，spec `1fcbdd5f…7dbe`、aggregate input
+  `bad63883…c4e5`、report `683c0ca1…8f0e`。
 - 2026-07-31：**主线 GPU 编队由 8 张 4090 缩为 5 张（范围变更，非降低门槛）**。
   - 旧值：排期与验收按本机全部 8 张 4090；第 13–14 周 6 张跑矩阵 + 1 张
     开发复查 + 1 张 clean control；Gate A/A0 要求 8 张全部通过；
@@ -702,7 +718,7 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   15 个 cell。结果：`gate_a0_4090_v2_seed1_fleet5_20260731.json` 判定
   **`gate_a0.complete = true`**，5/5 卡、15/15 cells、2 个 sealed rejection
   有效，evidence spec `655ceaa1…8b52`、aggregate input `956488e0…679d`、
-  report `46b8bfca…a4e9`。上一版 8 卡口径的 partial 报告
+  report `683c0ca1…8f0e`。上一版 8 卡口径的 partial 报告
   （`…partial_20260730.json`，report `dfa9a93c…64d8`）保留不删，其对应 spec
   可在 commit `faa8056` 取回。两套解释器各 305 tests 通过。Carry-over：
   GPU 0/5/6 释放后可作编队外补充证据，但 HEAD 此后已推进，届时须整批重跑。
