@@ -1692,6 +1692,43 @@ class LifecycleLeaseTest(unittest.TestCase):
             with smctrl_runner._GpuLease(root, "GPU-test"):
                 pass
 
+    def test_vendor_banner_is_removed_exactly_and_nothing_else_is(self):
+        """Stream cells always carry libsmctrl's offset announcement.
+
+        Accepting nonempty stderr for stream mode would throw the purity
+        check away.  Only the exact bytes the vendored source produces for
+        the cell's own declared offset may be removed, so a different
+        offset, an extra warning, or a truncated line all still fail.
+        """
+
+        banner = (
+            "libsmctrl: Attempting offset 280 on CUDA 12.2 base 0x4e4 "
+            "(total off: 0x5fc)"
+        )
+        residual = smctrl_runner.residual_native_stderr
+
+        # The probe arms and clears the mask, so the banner appears twice.
+        self.assertEqual(
+            residual(f"{banner}\n{banner}\n", experimental_mask_off=280),
+            "",
+        )
+        for label, text, mask_off in (
+            ("real warning alongside", f"{banner}\nCUDA warning\n", 280),
+            ("banner for a different offset", banner, 288),
+            ("banner with no offset declared", banner, None),
+            ("truncated banner", "libsmctrl: Attempting offset 280", 280),
+            ("unrelated output", "boom", None),
+            ("non-integer offset", banner, "280"),
+            ("boolean offset", banner, True),
+            ("offset below the base", banner, -0x4E4 - 1),
+        ):
+            with self.subTest(label):
+                self.assertNotEqual(
+                    residual(text, experimental_mask_off=mask_off).strip(),
+                    "",
+                    "unexplained stderr survived the filter",
+                )
+
     def test_cli_reports_why_a_run_was_rejected(self):
         """stdout keeps its one-line contract; the reason goes to stderr.
 

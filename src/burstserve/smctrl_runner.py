@@ -82,6 +82,10 @@ GPU_MASKED_ARMED_POISON_SCHEMA_VERSION = (
 RUNNER_VERSION = "burstserve.smctrl-runner/v2"
 MASKED_HEALTH_MONITOR_IMPLEMENTED = True
 MASKED_XID_DRAIN_TIMEOUT_MS = 1000
+# The base the vendored libsmctrl applies MASK_OFF to, mirrored here only
+# to reconstruct the exact banner it prints. Keep in sync with
+# CU_12_2_MASK_OFF in vendor/libsmctrl/libsmctrl.c.
+LIBSMCTRL_CU_12_2_MASK_OFF = 0x4E4
 # The symbol table the masked health monitor must have bound, spelled out here
 # rather than imported from the monitor: this validator exists to check the
 # monitor's provenance without trusting it, and importing its table would
@@ -3885,6 +3889,53 @@ def normalize_histogram(value: Any) -> dict[int, int]:
     if not result:
         raise NativeOutputError("observed_histogram must not be empty")
     return result
+
+
+def residual_native_stderr(
+    stderr: str,
+    *,
+    experimental_mask_off: int | None,
+) -> str:
+    """Strip the one stderr line the vendored libsmctrl is known to emit.
+
+    ``libsmctrl_set_stream_mask_ext`` unconditionally announces the offset it
+    is about to use whenever ``MASK_OFF`` is set, and the probe calls it twice
+    per run (once to arm the mask, once to clear it), so a stream cell always
+    carries that banner.  Blanket-accepting nonempty stderr for stream mode
+    would discard the check entirely; instead reconstruct the exact bytes the
+    vendored source produces for the manifest-declared offset and remove only
+    those.  Anything else -- a different offset, a warning, a partial line --
+    survives into the residual and still fails.
+
+    This is deliberately a pre-filter rather than a new acceptance check: the
+    aggregate validator recomputes :func:`evaluate_probe` and compares the
+    result key-for-key against what each cell recorded, so adding or renaming
+    a key would invalidate every cell already accepted.
+
+    The banner exists only because the offset is passed as an experiment
+    variable. The properly engineered end state is a CUDA 13.3 case compiled
+    into the offset table, which prints nothing -- but that means carrying a
+    patch on pinned upstream source, which is a provenance decision of its
+    own and is not taken here.
+    """
+
+    if experimental_mask_off is None or not stderr:
+        return stderr
+    if isinstance(experimental_mask_off, bool) or not isinstance(
+        experimental_mask_off, int
+    ):
+        return stderr
+    total = LIBSMCTRL_CU_12_2_MASK_OFF + experimental_mask_off
+    if total < 0:
+        return stderr
+    banner = (
+        f"libsmctrl: Attempting offset {experimental_mask_off} on CUDA 12.2 "
+        f"base {LIBSMCTRL_CU_12_2_MASK_OFF:#x} (total off: {total:#x})"
+    )
+    residual = [
+        line for line in stderr.split("\n") if line != banner
+    ]
+    return "\n".join(residual)
 
 
 def evaluate_probe(
@@ -8073,7 +8124,9 @@ def _execute_under_leases(
                 else None
             ),
             expected_parent_pid=expected_parent_pid,
-            stderr=stderr,
+            stderr=residual_native_stderr(
+                stderr, experimental_mask_off=experimental_mask_off
+            ),
             allowed_observed_sm_counts=tuple(
                 gate_manifest[
                     "single_tpc_matrix_after_explicit_promotion"

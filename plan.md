@@ -1563,3 +1563,25 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   逐步验证「两者都置位 → 只剩 lock → 照消息做完即可获取 lease」；
   `test_cli_reports_why_a_run_was_rejected` 走真实 CLI 断言 stdout 仍为单行
   而 stderr 含类型、消息与 traceback。全量 480 tests OK（21 skipped）。
+- 2026-08-01 / stream-vendor-banner-prefilter：stream 正式格在语义上完全正确
+  （观测 2 SM `{0,1}`、0 Xid、监视器干净），唯一失败的是
+  `successful_native_stderr_empty`。原因是 vendored libsmctrl 在
+  `libsmctrl_set_stream_mask_ext` 里**无条件** `fprintf(stderr, ...)` 公布
+  它将要使用的 offset，而探针每次运行调用它两次（设置 mask、发射后清除），
+  所以任何 stream 格必然带两行横幅。
+  处理方式**不是放宽该检查**。硬约束有两条：(a) 交接文档禁止削弱接受阈值；
+  (b) 聚合校验器用**当前代码**重算 `evaluate_probe` 并对记录逐键做
+  `_exact_json_equal`，因此**新增或重命名任何检查名都会让已接受的 24 格作废**。
+  实现为送入 `evaluate_probe` 之前的**精确前置过滤**
+  `residual_native_stderr(stderr, experimental_mask_off=...)`：按本格自己声明的
+  offset 逐字节重建 vendored 源码会打印的那一行，只删除完全相同的行，其余
+  一律留下继续判失败。实测：不同 offset 的横幅、未声明 offset 时的横幅、
+  截断的横幅、附带的真实 warning、非整数/布尔 offset 全部不被吸收。
+  `experimental_mask_off is None` 时该函数是恒等映射，故 baseline/global/next
+  的行为与检查键集完全不变——已接受的 24 格重新校验仍
+  `accepted=true`、0 拒绝。新增常量 `LIBSMCTRL_CU_12_2_MASK_OFF = 0x4E4`
+  须与 `vendor/libsmctrl/libsmctrl.c` 的 `CU_12_2_MASK_OFF` 保持同步。
+  **记为技术债**：横幅存在的根本原因是 offset 以「实验环境变量 MASK_OFF」的
+  身份传入，而它现在已是一个已知常量。工程上正确的终局是把 CUDA 13.3 的
+  case 编进 offset 表（那条路径不打印任何东西），但这意味着在已 pin 的 upstream
+  源码上携带补丁，属于独立的 provenance 决策，本次未做。

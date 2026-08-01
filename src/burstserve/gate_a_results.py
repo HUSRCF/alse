@@ -27,6 +27,7 @@ from .smctrl_runner import (
     NATIVE_SCHEMA_VERSION as NATIVE_SCHEMA_VERSION_V2,
     OUTCOME_SCHEMA_VERSION as OUTCOME_SCHEMA_VERSION_V2,
     evaluate_probe,
+    residual_native_stderr,
 )
 
 
@@ -3358,7 +3359,15 @@ def _validate_baseline_run_v2(
                 expected_device_ordinal=0,
                 expected_tpc_count=None,
                 expected_parent_pid=None,
-                stderr=stderr_text,
+                # Remove exactly the banner the vendored libsmctrl emits for
+                # this cell's declared offset before judging stderr purity;
+                # anything else survives and still fails.
+                stderr=residual_native_stderr(
+                    stderr_text,
+                    experimental_mask_off=config.get(
+                        "experimental_mask_off"
+                    ),
+                ),
                 allowed_observed_sm_counts=(1, 2),
                 minimum_sm_coverage=float(
                     baseline["minimum_sm_coverage_fraction"]
