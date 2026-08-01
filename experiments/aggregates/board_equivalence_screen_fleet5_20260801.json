@@ -1,0 +1,711 @@
+{
+  "conclusion": {
+    "arm_comparisons_must_be_paired_on_one_card": true,
+    "board_type_is_not_the_explanatory_variable": true,
+    "fleet_is_NOT_homogeneous": true,
+    "must_be_revalidated_under_sustained_load": true,
+    "outlier_cards": {
+      "4": "-1.16% clock, most stable card (elapsed cv 0.22%)",
+      "7": "-3.49% clock, peak clock ceiling 2610 MHz vs 2730-2760 elsewhere, least stable (elapsed cv 1.28%)"
+    },
+    "per_card_silicon_dominates": true,
+    "profiles_must_be_keyed_by_individual_card": true,
+    "urgent_p50_unusable_as_a_profiling_metric_at_this_sample_size": true
+  },
+  "design": {
+    "cards": [
+      1,
+      2,
+      3,
+      4,
+      7
+    ],
+    "gpu_1_2_3_4_interleaved_by_repetition": true,
+    "gpu_7_added_afterwards": true,
+    "repetitions_per_card": 4,
+    "steady_state": "final two thirds of the loaded window",
+    "telemetry_hz": 1,
+    "total_runs": 20
+  },
+  "findings": {
+    "board_type_is_not_explanatory": true,
+    "gpu2_and_gpu7_identical_board_identity_but_differ_percent": 3.662,
+    "gpu4_clock_deficit_percent": 1.16,
+    "gpu7_clock_deficit_percent": 3.488,
+    "gpu7_elapsed_penalty_percent": 3.039,
+    "gpu7_peak_clock_ceiling_mhz": 2610,
+    "main_group_cards": [
+      1,
+      2,
+      3
+    ],
+    "main_group_peak_clock_mhz": 2715,
+    "main_group_steady_clock_spread_percent": 0.192,
+    "steady_temperature_delta_c": 7.55,
+    "urgent_p50_within_card_max_cv_percent": 5.466
+  },
+  "fleet_roles_20260801": {
+    "drift_reference": {
+      "card": 4,
+      "method": "fixed reference cell re-run periodically",
+      "rationale": "most stable card measured: elapsed cv 0.22%, clock cv 0.09%"
+    },
+    "given_up": "a permanently idle clean-control card; the fleet has only five cards",
+    "matrix": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "spare": [
+      7
+    ]
+  },
+  "hardware": {
+    "gigabyte": {
+      "power_limit_w": 450.0,
+      "power_max_limit_w": 479.0,
+      "vbios_version": "95.02.18.C0.8B"
+    },
+    "nvidia": {
+      "power_limit_w": 450.0,
+      "power_max_limit_w": 450.0,
+      "vbios_version": "95.02.3C.40.40"
+    }
+  },
+  "not_measured": {
+    "cards": [
+      0,
+      5,
+      6
+    ],
+    "reason": "held by other users' multi-day jobs; never run under this workload"
+  },
+  "per_board_type": {
+    "gigabyte": {
+      "elapsed_s": {
+        "cv_percent": 0.471,
+        "mean": 147.9,
+        "n": 8
+      },
+      "peak_sm_clock_mhz": {
+        "cv_percent": 0.295,
+        "mean": 2722.5,
+        "n": 8
+      },
+      "steady_power_w": {
+        "cv_percent": 0.663,
+        "mean": 386.2375,
+        "n": 8
+      },
+      "steady_sm_clock_mhz": {
+        "cv_percent": 0.113,
+        "mean": 2662.15,
+        "n": 8
+      },
+      "steady_temp_c": {
+        "cv_percent": 0.637,
+        "mean": 73.2212,
+        "n": 8
+      },
+      "urgent_p50_s": {
+        "cv_percent": 5.223,
+        "mean": 3.0796,
+        "n": 8
+      }
+    },
+    "nvidia": {
+      "elapsed_s": {
+        "cv_percent": 1.638,
+        "mean": 149.3583,
+        "n": 12
+      },
+      "peak_sm_clock_mhz": {
+        "cv_percent": 1.66,
+        "mean": 2670,
+        "n": 12
+      },
+      "steady_power_w": {
+        "cv_percent": 1.23,
+        "mean": 388.0917,
+        "n": 12
+      },
+      "steady_sm_clock_mhz": {
+        "cv_percent": 1.56,
+        "mean": 2621.9083,
+        "n": 12
+      },
+      "steady_temp_c": {
+        "cv_percent": 2.495,
+        "mean": 65.6708,
+        "n": 12
+      },
+      "urgent_p50_s": {
+        "cv_percent": 3.379,
+        "mean": 3.1581,
+        "n": 12
+      }
+    }
+  },
+  "per_card": {
+    "1": {
+      "elapsed_s": {
+        "cv_percent": 0.194,
+        "mean": 147.925,
+        "n": 4
+      },
+      "peak_sm_clock_mhz": {
+        "cv_percent": 0.0,
+        "mean": 2730,
+        "n": 4
+      },
+      "steady_power_w": {
+        "cv_percent": 0.474,
+        "mean": 387.2,
+        "n": 4
+      },
+      "steady_sm_clock_mhz": {
+        "cv_percent": 0.055,
+        "mean": 2659.6,
+        "n": 4
+      },
+      "steady_temp_c": {
+        "cv_percent": 0.518,
+        "mean": 72.9225,
+        "n": 4
+      },
+      "urgent_p50_s": {
+        "cv_percent": 5.466,
+        "mean": 2.9728,
+        "n": 4
+      }
+    },
+    "2": {
+      "elapsed_s": {
+        "cv_percent": 0.571,
+        "mean": 147.55,
+        "n": 4
+      },
+      "peak_sm_clock_mhz": {
+        "cv_percent": 0.0,
+        "mean": 2700,
+        "n": 4
+      },
+      "steady_power_w": {
+        "cv_percent": 1.103,
+        "mean": 384.975,
+        "n": 4
+      },
+      "steady_sm_clock_mhz": {
+        "cv_percent": 0.052,
+        "mean": 2663.975,
+        "n": 4
+      },
+      "steady_temp_c": {
+        "cv_percent": 0.177,
+        "mean": 63.4875,
+        "n": 4
+      },
+      "urgent_p50_s": {
+        "cv_percent": 3.46,
+        "mean": 3.2075,
+        "n": 4
+      }
+    },
+    "3": {
+      "elapsed_s": {
+        "cv_percent": 0.693,
+        "mean": 147.875,
+        "n": 4
+      },
+      "peak_sm_clock_mhz": {
+        "cv_percent": 0.0,
+        "mean": 2715,
+        "n": 4
+      },
+      "steady_power_w": {
+        "cv_percent": 0.798,
+        "mean": 385.275,
+        "n": 4
+      },
+      "steady_sm_clock_mhz": {
+        "cv_percent": 0.05,
+        "mean": 2664.7,
+        "n": 4
+      },
+      "steady_temp_c": {
+        "cv_percent": 0.485,
+        "mean": 73.52,
+        "n": 4
+      },
+      "urgent_p50_s": {
+        "cv_percent": 1.858,
+        "mean": 3.1865,
+        "n": 4
+      }
+    },
+    "4": {
+      "elapsed_s": {
+        "cv_percent": 0.224,
+        "mean": 148.25,
+        "n": 4
+      },
+      "peak_sm_clock_mhz": {
+        "cv_percent": 0.0,
+        "mean": 2700,
+        "n": 4
+      },
+      "steady_power_w": {
+        "cv_percent": 0.366,
+        "mean": 393.475,
+        "n": 4
+      },
+      "steady_sm_clock_mhz": {
+        "cv_percent": 0.09,
+        "mean": 2631.875,
+        "n": 4
+      },
+      "steady_temp_c": {
+        "cv_percent": 0.285,
+        "mean": 66.595,
+        "n": 4
+      },
+      "urgent_p50_s": {
+        "cv_percent": 3.607,
+        "mean": 3.1408,
+        "n": 4
+      }
+    },
+    "7": {
+      "elapsed_s": {
+        "cv_percent": 1.277,
+        "mean": 152.275,
+        "n": 4
+      },
+      "peak_sm_clock_mhz": {
+        "cv_percent": 0.0,
+        "mean": 2610,
+        "n": 4
+      },
+      "steady_power_w": {
+        "cv_percent": 0.579,
+        "mean": 385.825,
+        "n": 4
+      },
+      "steady_sm_clock_mhz": {
+        "cv_percent": 0.196,
+        "mean": 2569.875,
+        "n": 4
+      },
+      "steady_temp_c": {
+        "cv_percent": 0.651,
+        "mean": 66.93,
+        "n": 4
+      },
+      "urgent_p50_s": {
+        "cv_percent": 3.443,
+        "mean": 3.126,
+        "n": 4
+      }
+    }
+  },
+  "purpose": "Screen whether the fleet's cards are interchangeable for the paper's workload, before profiles are reused across cards.",
+  "runs": [
+    {
+      "board": "gigabyte",
+      "elapsed_s": 147.6,
+      "mean_util_percent": 93.9,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2715,
+      "peak_power_w": 449.6,
+      "peak_sm_clock_mhz": 2730,
+      "physical_gpu": 1,
+      "run_id": "bs1-af76f700e252e3e9fdbbed0c609d5f1ee910b915c571dbd89e6d92436f823ad6",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 389.7,
+      "steady_sm_clock_mhz": 2659.0,
+      "steady_temp_c": 73.28,
+      "trial": 1,
+      "urgent_p50_s": 3.216,
+      "urgent_p95_s": 4.857
+    },
+    {
+      "board": "gigabyte",
+      "elapsed_s": 148.3,
+      "mean_util_percent": 90.5,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2715,
+      "peak_power_w": 446.3,
+      "peak_sm_clock_mhz": 2730,
+      "physical_gpu": 1,
+      "run_id": "bs1-38370a43bce01aa68c3a5a4ce50fe3389676bf92fdb69df95d0c4ac0563242e5",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 386.7,
+      "steady_sm_clock_mhz": 2657.9,
+      "steady_temp_c": 73.04,
+      "trial": 2,
+      "urgent_p50_s": 2.878,
+      "urgent_p95_s": 5.043
+    },
+    {
+      "board": "gigabyte",
+      "elapsed_s": 147.9,
+      "mean_util_percent": 93.1,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2730,
+      "peak_power_w": 447.9,
+      "peak_sm_clock_mhz": 2730,
+      "physical_gpu": 1,
+      "run_id": "bs1-17ae207fd2bf76214086c320efae452067d284aeafdcc96127fbfcbc0707d222",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 387.1,
+      "steady_sm_clock_mhz": 2660.2,
+      "steady_temp_c": 72.39,
+      "trial": 3,
+      "urgent_p50_s": 2.903,
+      "urgent_p95_s": 5.089
+    },
+    {
+      "board": "gigabyte",
+      "elapsed_s": 147.9,
+      "mean_util_percent": 94.2,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2715,
+      "peak_power_w": 446.0,
+      "peak_sm_clock_mhz": 2730,
+      "physical_gpu": 1,
+      "run_id": "bs1-cb581440dd197262ac1bdb72be01c60b08875d7be64a78d07d7a510eb3d9cd39",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 385.3,
+      "steady_sm_clock_mhz": 2661.3,
+      "steady_temp_c": 72.98,
+      "trial": 4,
+      "urgent_p50_s": 2.894,
+      "urgent_p95_s": 5.015
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 147.3,
+      "mean_util_percent": 90.8,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 446.1,
+      "peak_sm_clock_mhz": 2700,
+      "physical_gpu": 2,
+      "run_id": "bs1-1ff1895aedfc36e76275b88250bfa6d99a90aea8972f2acdfebc02350536dd85",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 379.7,
+      "steady_sm_clock_mhz": 2663.0,
+      "steady_temp_c": 63.33,
+      "trial": 1,
+      "urgent_p50_s": 3.2,
+      "urgent_p95_s": 4.857
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 148.8,
+      "mean_util_percent": 94.4,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 447.9,
+      "peak_sm_clock_mhz": 2700,
+      "physical_gpu": 2,
+      "run_id": "bs1-f251b1573d2d4d22ebbabf65e7286c175b3e5576d11655695e822d89aa372ff3",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 383.4,
+      "steady_sm_clock_mhz": 2664.5,
+      "steady_temp_c": 63.49,
+      "trial": 2,
+      "urgent_p50_s": 3.059,
+      "urgent_p95_s": 5.46
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 147.0,
+      "mean_util_percent": 91.9,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 448.8,
+      "peak_sm_clock_mhz": 2700,
+      "physical_gpu": 2,
+      "run_id": "bs1-2b4cc9ceae8b56f8d70a5c58e8fee9781f32234b0fb2d0d56d159e2f3dc75f05",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 388.8,
+      "steady_sm_clock_mhz": 2662.7,
+      "steady_temp_c": 63.59,
+      "trial": 3,
+      "urgent_p50_s": 3.249,
+      "urgent_p95_s": 5.309
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 147.1,
+      "mean_util_percent": 93.4,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 448.9,
+      "peak_sm_clock_mhz": 2700,
+      "physical_gpu": 2,
+      "run_id": "bs1-3c1247117114f07dfef0b5739bf1e166f6a9728fd7c42f632921441c51a725ac",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 388.0,
+      "steady_sm_clock_mhz": 2665.7,
+      "steady_temp_c": 63.54,
+      "trial": 4,
+      "urgent_p50_s": 3.322,
+      "urgent_p95_s": 4.961
+    },
+    {
+      "board": "gigabyte",
+      "elapsed_s": 146.8,
+      "mean_util_percent": 91.7,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 447.2,
+      "peak_sm_clock_mhz": 2715,
+      "physical_gpu": 3,
+      "run_id": "bs1-504a865b0444b6ecaf4ebad4f30842f9fead418696b0964f770e104c03cbbcb9",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 389.0,
+      "steady_sm_clock_mhz": 2664.0,
+      "steady_temp_c": 74.05,
+      "trial": 1,
+      "urgent_p50_s": 3.168,
+      "urgent_p95_s": 4.823
+    },
+    {
+      "board": "gigabyte",
+      "elapsed_s": 148.8,
+      "mean_util_percent": 94.1,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 445.7,
+      "peak_sm_clock_mhz": 2715,
+      "physical_gpu": 3,
+      "run_id": "bs1-ec3021751d51ac564c8ef7b0703ed1870e9151eda13a04b4e3c8e4c5ce96f0af",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 383.4,
+      "steady_sm_clock_mhz": 2663.6,
+      "steady_temp_c": 73.31,
+      "trial": 2,
+      "urgent_p50_s": 3.209,
+      "urgent_p95_s": 5.288
+    },
+    {
+      "board": "gigabyte",
+      "elapsed_s": 148.7,
+      "mean_util_percent": 91.8,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 445.8,
+      "peak_sm_clock_mhz": 2715,
+      "physical_gpu": 3,
+      "run_id": "bs1-7812ddda0e2e27dd07dba256b26b866605e247dcd67e8fb6659eae28bdcf217f",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 382.2,
+      "steady_sm_clock_mhz": 2666.6,
+      "steady_temp_c": 73.31,
+      "trial": 3,
+      "urgent_p50_s": 3.115,
+      "urgent_p95_s": 5.213
+    },
+    {
+      "board": "gigabyte",
+      "elapsed_s": 147.2,
+      "mean_util_percent": 94.0,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 447.4,
+      "peak_sm_clock_mhz": 2715,
+      "physical_gpu": 3,
+      "run_id": "bs1-43edcefbff681617aad6226614046e334553e68b1c846f54eeea74528a4f1219",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 386.5,
+      "steady_sm_clock_mhz": 2664.6,
+      "steady_temp_c": 73.41,
+      "trial": 4,
+      "urgent_p50_s": 3.254,
+      "urgent_p95_s": 5.036
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 148.2,
+      "mean_util_percent": 93.0,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 451.0,
+      "peak_sm_clock_mhz": 2700,
+      "physical_gpu": 4,
+      "run_id": "bs1-19a19a45cefec34245fa1319cd1761781dea422b008684b6cada1dd8764364c2",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 393.6,
+      "steady_sm_clock_mhz": 2635.3,
+      "steady_temp_c": 66.65,
+      "trial": 1,
+      "urgent_p50_s": 3.04,
+      "urgent_p95_s": 4.955
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 148.5,
+      "mean_util_percent": 94.3,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 449.5,
+      "peak_sm_clock_mhz": 2700,
+      "physical_gpu": 4,
+      "run_id": "bs1-e81dfc71225854152ca63803319184b99c36ab3b246905e89a07f86f9b0b2980",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 392.9,
+      "steady_sm_clock_mhz": 2631.6,
+      "steady_temp_c": 66.44,
+      "trial": 2,
+      "urgent_p50_s": 3.271,
+      "urgent_p95_s": 5.057
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 147.8,
+      "mean_util_percent": 94.1,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 449.8,
+      "peak_sm_clock_mhz": 2700,
+      "physical_gpu": 4,
+      "run_id": "bs1-1129d3e6a07b7cbcba40621b8b28810e7dd4b7d194c1e7b37d9552a11cb5ed46",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 395.4,
+      "steady_sm_clock_mhz": 2630.6,
+      "steady_temp_c": 66.45,
+      "trial": 3,
+      "urgent_p50_s": 3.2,
+      "urgent_p95_s": 4.835
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 148.5,
+      "mean_util_percent": 93.8,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2700,
+      "peak_power_w": 453.9,
+      "peak_sm_clock_mhz": 2700,
+      "physical_gpu": 4,
+      "run_id": "bs1-7d776ddc9aacced334c86b31cf55edb2259ad4635529a5bb7b5effc18d2594a5",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-d5cfb56e1fbdfb649b30188a807c2ede35c3b533",
+      "steady_power_w": 392.0,
+      "steady_sm_clock_mhz": 2630,
+      "steady_temp_c": 66.84,
+      "trial": 4,
+      "urgent_p50_s": 3.052,
+      "urgent_p95_s": 4.88
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 152.8,
+      "mean_util_percent": 91.4,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2595,
+      "peak_power_w": 448.4,
+      "peak_sm_clock_mhz": 2610,
+      "physical_gpu": 7,
+      "run_id": "bs1-fe18c8fde5aab9c71c23c7bb50340235a52441858dc39a1bccd00928cb22609e",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-a129613c636ae843e172c986220de634bddf189e",
+      "steady_power_w": 383.4,
+      "steady_sm_clock_mhz": 2573.0,
+      "steady_temp_c": 66.41,
+      "trial": 1,
+      "urgent_p50_s": 3.108,
+      "urgent_p95_s": 5.523
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 150.6,
+      "mean_util_percent": 93.4,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2595,
+      "peak_power_w": 450.8,
+      "peak_sm_clock_mhz": 2610,
+      "physical_gpu": 7,
+      "run_id": "bs1-64b59750122943fb31d9c4b5f772e35db31ec13fb856cc1fbd2529efb34c9787",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-a129613c636ae843e172c986220de634bddf189e",
+      "steady_power_w": 388.1,
+      "steady_sm_clock_mhz": 2565.4,
+      "steady_temp_c": 67.27,
+      "trial": 2,
+      "urgent_p50_s": 3.035,
+      "urgent_p95_s": 4.4
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 150.9,
+      "mean_util_percent": 93.7,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2595,
+      "peak_power_w": 449.8,
+      "peak_sm_clock_mhz": 2610,
+      "physical_gpu": 7,
+      "run_id": "bs1-490cc4c532ffc14c5178a9ae0487295c9b7ebf83d66f0bda7b15cdb462956328",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-a129613c636ae843e172c986220de634bddf189e",
+      "steady_power_w": 387.3,
+      "steady_sm_clock_mhz": 2565.8,
+      "steady_temp_c": 67.31,
+      "trial": 3,
+      "urgent_p50_s": 3.08,
+      "urgent_p95_s": 4.59
+    },
+    {
+      "board": "nvidia",
+      "elapsed_s": 154.8,
+      "mean_util_percent": 91.6,
+      "n_urgent": 22,
+      "n_video": 2,
+      "p95_sm_clock_mhz": 2595,
+      "peak_power_w": 448.8,
+      "peak_sm_clock_mhz": 2610,
+      "physical_gpu": 7,
+      "run_id": "bs1-567db7efc9787be1ac799f82c3f9e50220553d0df2c32c780960911ac010c01b",
+      "source_revision": "asle-5c6cba9d8c0537216b582016ac385398bf4e638d8d2205694a0cf80c1326f97d;burstserve-a129613c636ae843e172c986220de634bddf189e",
+      "steady_power_w": 384.5,
+      "steady_sm_clock_mhz": 2575.3,
+      "steady_temp_c": 66.73,
+      "trial": 4,
+      "urgent_p50_s": 3.281,
+      "urgent_p95_s": 4.687
+    }
+  ],
+  "schema_version": "burstserve.board-equivalence-screen/v2",
+  "screen_id": "board-equivalence-4090-stepswap-seed1-fleet5-20260801",
+  "supersedes": "board_equivalence_screen_20260801.json (four cards only)",
+  "workload": {
+    "arm": "stepswap",
+    "arrival": "poisson",
+    "arrival_rate": 0.18,
+    "frames": 49,
+    "horizon_s": 120.0,
+    "long_model": "cog2b",
+    "seed": 1,
+    "tiles": 8,
+    "urgent_model": "sdxl",
+    "urgent_steps": 8,
+    "video_steps": 30
+  }
+}
