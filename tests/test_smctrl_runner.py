@@ -425,6 +425,98 @@ class DriverPolicyTest(unittest.TestCase):
             )
         self.assertFalse(undeclared_allowed)
 
+    def test_matrix_may_narrow_modes_but_must_cover_every_approved_mode(
+        self,
+    ) -> None:
+        """A driver-specific subset is legal; an uncovered approval is not.
+
+        CUDA 13.3 supports the global/next callback but has no validated
+        stream-struct offset, so a manifest must be able to declare a
+        two-mode matrix.  What must stay impossible is approving a mode for
+        launch while the declared matrix omits it: that mode's cells would
+        never be demanded, and the cross-mode agreement that makes a
+        TPC->SM mapping falsifiable would silently disappear.
+        """
+
+        gpu = {"name": "GPU", "uuid": "uuid"}
+        base = _gate_manifest(promoted=True)["content"]
+
+        def evaluate(manifest, mode):
+            with mock.patch(
+                "burstserve.smctrl_runner.MASKED_HEALTH_MONITOR_IMPLEMENTED",
+                True,
+            ):
+                return evaluate_gate_manifest_policy(
+                    manifest,
+                    mode=mode,
+                    physical_gpu=3,
+                    gpu=gpu,
+                    driver_version=13030,
+                    experimental_mask_off=-16 if mode == "stream" else None,
+                    timeout_s=10,
+                    maximum_used_mib=1024,
+                    iterations=100,
+                    blocks=4096,
+                    threads_per_block=256,
+                    trial=0,
+                    enabled_tpc=0,
+                )
+
+        narrowed = json.loads(json.dumps(base))
+        narrowed["single_tpc_matrix_after_explicit_promotion"]["modes"] = [
+            "global",
+            "next",
+        ]
+        narrowed["safety"]["approved_mask_modes"] = ["global", "next"]
+        narrowed["safety"]["stream_offset_search_enabled"] = False
+        narrowed["safety"]["stream_mask_off_candidates"] = []
+        for mode in ("global", "next"):
+            with self.subTest(narrowed=mode):
+                checks, allowed = evaluate(narrowed, mode)
+                self.assertTrue(allowed, sorted(
+                    name for name, ok in checks.items() if not ok
+                ))
+                self.assertTrue(
+                    checks["single_tpc_matrix_modes_are_canonical"]
+                )
+        # Narrowing the matrix must also close stream mode.
+        _, stream_allowed = evaluate(narrowed, "stream")
+        self.assertFalse(stream_allowed)
+
+        # An approval the matrix never demands must be refused, including for
+        # the modes the matrix does cover: the manifest is incoherent.
+        uncovered = json.loads(json.dumps(base))
+        uncovered["single_tpc_matrix_after_explicit_promotion"]["modes"] = [
+            "global",
+            "next",
+        ]
+        for mode in ("global", "next", "stream"):
+            with self.subTest(uncovered=mode):
+                checks, allowed = evaluate(uncovered, mode)
+                self.assertFalse(allowed)
+                self.assertFalse(
+                    checks["single_tpc_matrix_modes_cover_approved_modes"]
+                )
+
+        # Ordering, repetition and unknown names stay rejected.
+        for label, modes in (
+            ("reordered", ["next", "global"]),
+            ("repeated", ["global", "global", "next"]),
+            ("unknown", ["global", "next", "partition"]),
+            ("empty", []),
+        ):
+            with self.subTest(malformed=label):
+                broken = json.loads(json.dumps(base))
+                broken["single_tpc_matrix_after_explicit_promotion"][
+                    "modes"
+                ] = modes
+                broken["safety"]["approved_mask_modes"] = ["global"]
+                checks, allowed = evaluate(broken, "global")
+                self.assertFalse(allowed)
+                self.assertFalse(
+                    checks["single_tpc_matrix_modes_are_canonical"]
+                )
+
     def test_masked_matrix_rejects_unregistered_tpc_trial_and_duplicates(
         self,
     ) -> None:

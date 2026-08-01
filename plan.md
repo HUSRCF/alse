@@ -1317,3 +1317,71 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   build 成功，系统和 `burstserve-phase0` 解释器各 64 tests passed；
   pre-commit GPU7 baseline 为 128/128 SM，只能算探索性证据。尚未运行
   post-commit formal baseline，也未运行任何 masked probe。
+- 2026-08-01 / cuda133-mask-mechanism-probe：在 GPU 0（非编队卡、探测时
+  无他人进程）上执行 stream-offset 探测方案的 Phase 0，结论是**整个
+  stream offset 探测不必要**，Phase 1 的盲写扫描取消。
+  事实一：`global` 与 `next` 两种 masking 在本机 CUDA 13.3 / driver API
+  `13030` 上**可用**。它们不写不透明结构体，而是经 `cuGetExportTable`
+  订阅 QMD `PRE_UPLOAD` 调试回调改写 launch descriptor，所以不受 upstream
+  stream offset 表（最高 `12080`）的版本限制；`driver_is_validated_by_upstream`
+  对 `13030` 无条目一事只反映 upstream 未在此版本验证过，不代表机制失效。
+  事实二：oracle 矩阵 `{global,next}` × TPC bit `{0,31,32,63}` × 3 trials
+  共 24 格全部成功，`validate_masked_tpc_matrix` 14 项检查全 PASS、
+  `accepted=true`，映射为 bit N → SM `{2N, 2N+1}`（64 TPC × 2 SM = 128 SM，
+  与 AD102 拓扑一致），unmasked baseline 同卡 128/128 SM。
+  事实三：`g_next_sm_mask` 是 `__thread` 线程局部变量，两个 host 线程各设
+  自己的 next-mask 并发提交，实测得到并发的、不相交的 SM 分区：urgent 臂
+  bits 0..7 → SM 0..15，video 臂 bits 32..39 → SM 64..79，时间窗完全重叠
+  150 ms，3 次重复完全一致。即 `next` 已能提供 per-stream masking 所要的
+  并发空间分区能力，无需任何盲写。
+  对照与自我纠正：**不加 mask 的对照组两臂同样不相交**（各 64 个 SM，分别
+  占据全部偶数 / 奇数 SM），因为块调度器把两个并发 kernel 平分到整块 die。
+  所以"SM 集合不相交"本身不是 masking 生效的证据；判别证据是"被约束到
+  oracle 预测的那一组 SM"。测试的判据已相应改为与 oracle 逐一比对，对照组
+  在该判据下正确判为 FAILED。
+  已知边界：`global`/`next` 的 mask 是 `uint64`，只能覆盖 TPC bit 0..63。
+  RTX 4090 恰为 64 TPC 故全覆盖；若将来上 >64 TPC 的卡（如 132 SM / 66 TPC
+  的 H100），bit 64+ 只能经 `uint128` 的 stream ext API 触及，届时 stream
+  offset 问题会重新出现。
+  边界与状态：本次全程未做任何盲写、未出现 Xid、未修改 promotion lock、
+  未产生任何正式证据。所有运行在 scratchpad 的隔离子进程中进行，未写入
+  `experiments/runs`。promotion lock 仍完全关闭，masked 正式证据仍未授权。
+  原始数据：scratchpad `streamoff/{phase0_raw.json,phase0_verdict.json,
+  concurrency_test.cu}`。
+- 2026-08-01 / masked-promotion-manifest：为 masked Gate A 准备晋级 manifest
+  与配套门禁修正，**未运行任何 masked kernel**。
+  分离式晋级：新建 `experiments/manifests/gate_a_4090_masked_global_next.json`
+  （`manifest_id` = `gate-a-4090-cuda133-20260801-promoted-global-next-gpu1`），
+  原 `gate_a_4090.json` 一字未动。理由是 manifest 内容参与形式化身份派生，
+  就地改会改变未来 run 的 run_id；而已接受的 A0 证据把 manifest 内容逐 run
+  内嵌、SHA256 对内嵌副本校验，故分离后两边都保持可验证，两条 checked-in
+  sealed rejection 仍绑定在未晋级 manifest 上继续有效。
+  卡的选择：GPU 1（UUID `GPU-4cc58bdd…4bb`）。它在 A0 已接受的编队
+  {1,2,3,4,7} 内、当前空闲、且不是漂移参照卡 GPU 4；masked 矩阵测的是 SM
+  身份而非性能，per-card 硅片差异与之无关。
+  Xid 监视器身份实测固化：在 GPU 0 上真机运行 `NvmlXidMonitor`，
+  `libnvidia-ml.so.610.43.02`、SHA256 `2dc828b3…c172`、NVML 版本
+  `13.610.43.02`、method `nvmlEventSetWait_v2_exact_xid`、Xid bit（8）
+  受支持且注册成功、drain 干净 `safe_for_acceptance=true`、observed quiet
+  1001 ms。四个 source approval pin 与当前构建产物逐一比对完全一致。
+  stream 永久封死：`approved_mask_modes` 仅 `["global","next"]`，
+  `stream_offset_search_enabled` 与 `global_next_matrix_accepted` 均保持
+  false。实测该 manifest 下 stream 被 5 条独立检查拒绝
+  （`masked_mode_approved`、`masked_mode_is_registered_in_single_tpc_matrix`、
+  `stream_offset_is_declared`、`stream_offset_search_promoted`、
+  `stream_prerequisites_accepted`），global/next `permitted=True`。
+  代码修正（收紧而非放宽）：`single_tpc_matrix_modes_are_canonical` 原先
+  硬编码要求矩阵模式恰为 `["global","next","stream"]`，导致合法的
+  driver-specific 子集连同 baseline 一起被拒。改为「必须是
+  `CANONICAL_MASKED_MODE_ORDER` 的规范序子集」，并新增
+  `single_tpc_matrix_modes_cover_approved_modes` 要求
+  `approved_mask_modes ⊆ matrix modes`——否则某模式可被批准放行而矩阵里
+  根本没有它的 cell，跨模式一致性这条证伪依据会静默消失。乱序、重复、
+  未知名、空列表仍全部拒绝。新测试对修改前的代码为 2 failures + 3 errors，
+  修改后通过；全量 474 tests OK（21 skipped）。未晋级 manifest 行为逐模式
+  复核不变：baseline 放行、三种 masked 分别 20/20/24 项检查失败。
+  仍未满足的前置条件：`exclusive_reservation_evidence` 的时间窗
+  （`2026-08-01T15:42:52Z` → `2026-08-02T00:00:00Z`）必须在正式运行前刷新并
+  以干净提交状态存在——`load_gate_manifest_record` 要求 manifest 已提交且
+  head/index/worktree 三者一致，且预约时窗参与形式化身份，因此 24 格矩阵
+  必须落在同一个预约窗内完成，否则各 cell 形式化身份不一致。

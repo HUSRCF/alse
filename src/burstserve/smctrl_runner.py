@@ -433,6 +433,11 @@ BUILD_SOURCE_PATHS = {
 
 PROBE_MODES = ("baseline", "global", "next", "stream")
 MASKED_MODES = frozenset({"global", "next", "stream"})
+# The only order a declared single-TPC matrix may list masked modes in. A
+# manifest may declare a subset -- masking mechanisms are not all available on
+# every driver -- but never a reordering, a repetition, or an unknown name,
+# because the declaration participates in the formal run identity.
+CANONICAL_MASKED_MODE_ORDER = ("global", "next", "stream")
 BASELINE_MIN_SM_COVERAGE = 0.75
 PINNED_VALIDATED_DRIVER_VERSIONS = frozenset(
     {
@@ -3203,8 +3208,24 @@ def evaluate_gate_manifest_policy(
         ),
         "baseline_trials_meet_minimum": baseline_trials_valid,
         "baseline_coverage_meets_minimum": minimum_coverage_valid,
+        # A manifest may narrow the declared matrix to the mechanisms this
+        # driver actually supports, but the declaration must stay canonically
+        # ordered and must cover every mode the manifest approves; otherwise a
+        # mode could be approved for launch while no matrix cell demands the
+        # cross-mode agreement that makes a TPC->SM mapping falsifiable.
         "single_tpc_matrix_modes_are_canonical": (
-            matrix_modes == ["global", "next", "stream"]
+            matrix_modes_valid
+            and matrix_modes
+            == [
+                item
+                for item in CANONICAL_MASKED_MODE_ORDER
+                if item in set(matrix_modes)
+            ]
+        ),
+        "single_tpc_matrix_modes_cover_approved_modes": (
+            matrix_modes_valid
+            and approved_modes_valid
+            and set(approved_modes) <= set(matrix_modes)
         ),
         "single_tpc_matrix_tpc_bits_are_canonical": (
             matrix_tpc_bits == canonical_tpc_bits
