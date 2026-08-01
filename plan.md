@@ -1585,3 +1585,26 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   身份传入，而它现在已是一个已知常量。工程上正确的终局是把 CUDA 13.3 的
   case 编进 offset 表（那条路径不打印任何东西），但这意味着在已 pin 的 upstream
   源码上携带补丁，属于独立的 provenance 决策，本次未做。
+- 2026-08-01 / masked-gate-a-all-modes-accepted：**三模式完整 masked 矩阵通过**。
+  在 GPU 1 上以 promoted manifest
+  `gate-a-4090-cuda133-20260801-promoted-all-modes-gpu1` 跑完
+  `{global,next,stream}` × TPC bit `{0,31,32,63}` × 3 trials = **36 格**，
+  全部 exit 0，每格约 10–11 s；另有同 manifest 身份下的 unmasked baseline
+  一格（`bs1-2279b0f0…6ec0`，128 SM）。stream 格使用
+  `--experimental-mask-off 280`（总偏移 `0x5fc`），即今日逆向所得常量。
+  校验：36 格逐一通过 `validate_masked_cell_contract`（0 拒绝），
+  `validate_masked_tpc_matrix` 15 项检查全 PASS、`accepted=true`。
+  映射 bit N → SM `{2N, 2N+1}`：跨 3 trial 确定、**跨 3 种机制一致**、
+  bit 间两两不相交、每个集合都是同卡 baseline 128 SM 的真子集。
+  这是 stream 的关键证据：写入不透明结构体得到的映射，与两个**根本不依赖
+  该偏移**的 callback 机制逐 bit 完全一致——正是今天新增的
+  `single_tpc_matrix_corroborates_stream_with_callback_modes` 所要求的佐证
+  结构。聚合结果存于
+  `experiments/aggregates/gate_a_masked_all_modes_gpu1_20260801.json`
+  （sha256 `a9ae898d…f9a0`）。
+  安全：36 格中每格的 NVML 监视器均记录 0 Xid，GPU 1 运行后 1 MiB / 34 °C。
+  盲写在正式路径上首次执行，未出现任何故障。此前 12 个 stream 格因 vendor
+  横幅被拒的 run 目录全部保留未删。
+  边界：该结论锁定于驱动 610.43.02。`0x5fc` 是逆向常量而非接口，驱动升级
+  后可能静默失效（写入填充字节、mask 空转）或触发 Xid。论文中必须如实写成
+  reverse-engineered、version-locked。
