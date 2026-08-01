@@ -21,6 +21,7 @@ from typing import Any, Mapping, Sequence
 
 from .provenance import EventRecord, RunManifest, canonical_json, write_json_atomic
 from .smctrl_runner import (
+    MASKED_MODES,
     CELL_SCHEMA_VERSION as CELL_SCHEMA_VERSION_V2,
     GATE_MANIFEST_SCHEMA_VERSION as GATE_MANIFEST_SCHEMA_VERSION_V2,
     NATIVE_SCHEMA_VERSION as NATIVE_SCHEMA_VERSION_V2,
@@ -4765,6 +4766,243 @@ def _sealed_rejection_validator(
     if schema == CELL_SCHEMA_VERSION_V2:
         return _validate_sealed_rejection_v2, evidence
     return _validate_sealed_rejection, evidence
+
+
+_V2_MASKED_MONITOR_KEYS = frozenset(
+    {"status", "post_probe_drain_timeout_ms", "provenance"}
+)
+
+
+def validate_masked_cell_contract(
+    *,
+    config: Mapping[str, Any],
+    outcome: Mapping[str, Any],
+    native: Mapping[str, Any],
+    gate_content: Mapping[str, Any],
+    command: Mapping[str, Any],
+    expected_gpu: int,
+    expected_uuid: str,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Check the masked-specific half of one cell and extract its observation.
+
+    A masked cell can never be an accepted Gate result on its own: the runner
+    computes ``accepted`` as ``local_probe_passed and mode == "baseline"``, so
+    the strongest verdict a masked run can carry is ``local_probe_passed``.
+    This function enforces exactly that, checks the parts of the contract that
+    only exist for masked modes, and returns the observation in the shape
+    :func:`validate_masked_tpc_matrix` consumes, so a cell can only reach the
+    matrix through the per-cell checks.
+
+    The shared launcher, libcuda, source-revalidation and board-identity
+    checks are not repeated here; callers run them for every v2 cell.
+    """
+
+    errors: list[str] = []
+    matrix = gate_content.get("single_tpc_matrix_after_explicit_promotion")
+    safety = gate_content.get("safety")
+    hardware = gate_content.get("hardware")
+    if not all(
+        isinstance(value, Mapping) for value in (matrix, safety, hardware)
+    ):
+        return None, ["Gate-A manifest masked sections are malformed"]
+
+    mode = config.get("mode")
+    bit = config.get("enabled_tpc")
+    trial = config.get("trial")
+
+    # A masked cell only exists if the checked-in manifest actually promoted
+    # this mode.  Without that it is a sealed rejection, not a cell.
+    if safety.get("experimental_mask_enabled") is not True:
+        errors.append(
+            "masked cell requires an explicitly promoted Gate-A manifest"
+        )
+    approved = safety.get("approved_mask_modes")
+    if not isinstance(approved, list) or mode not in approved:
+        errors.append(f"masked mode {mode!r} is not an approved mask mode")
+    if mode not in MASKED_MODES:
+        errors.append(f"mode {mode!r} is not a masked mode")
+
+    bits = matrix.get("tpc_bits")
+    if not isinstance(bits, list) or not any(
+        _exact_scalar(bit, candidate) for candidate in bits
+    ):
+        errors.append(f"enabled_tpc {bit!r} is outside the declared matrix")
+    trials = matrix.get("trials_per_cell")
+    if (
+        isinstance(trial, bool)
+        or not isinstance(trial, int)
+        or isinstance(trials, bool)
+        or not isinstance(trials, int)
+        or not 0 <= trial < trials
+    ):
+        errors.append(f"trial {trial!r} is outside the declared matrix")
+    for field in ("iterations", "blocks", "threads_per_block"):
+        if not _exact_scalar(config.get(field), matrix.get(field)):
+            errors.append(f"config.{field} does not match the masked matrix")
+
+    # The frozen rule: a masked run is never an accepted Gate result.
+    _check_exact_scalars(
+        outcome,
+        {
+            "accepted": False,
+            "local_probe_passed": True,
+            "requires_matrix_validation": True,
+            "masked_health_monitor_status": "clean",
+            "quarantine_required": False,
+            "quarantine_reasons": [],
+            "native_status": "ok",
+            "timed_out": False,
+        },
+        field="outcome",
+        errors=errors,
+    )
+    monitor = outcome.get("masked_health_monitor")
+    if not isinstance(monitor, Mapping) or set(monitor) != set(
+        _V2_MASKED_MONITOR_KEYS
+    ):
+        errors.append("outcome.masked_health_monitor keys are not exact")
+    elif monitor.get("status") != "clean":
+        errors.append("masked health monitor did not report a clean drain")
+    _all_true_checks(
+        outcome.get("masked_health_monitor_checks"),
+        field="outcome.masked_health_monitor_checks",
+        errors=errors,
+    )
+
+    # Masked execution must hold a reservation for the whole run horizon.
+    preflight = outcome.get("final_launch_preflight")
+    if not isinstance(preflight, Mapping):
+        errors.append("outcome.final_launch_preflight must be an object")
+    else:
+        horizon = preflight.get("required_horizon_s")
+        if (
+            type(horizon) is not float
+            or not math.isfinite(horizon)
+            or horizon <= 0.0
+        ):
+            errors.append(
+                "masked final preflight must reserve a positive horizon"
+            )
+        captured = preflight.get("captured_at_utc")
+        until = preflight.get("required_until_utc")
+        if not _is_canonical_utc_microsecond(
+            captured
+        ) or not _is_canonical_utc_microsecond(until):
+            errors.append("masked final preflight timestamps are not canonical")
+        elif not until > captured:
+            errors.append(
+                "masked final preflight required_until must follow captured_at"
+            )
+        if preflight.get("passed") is not True:
+            errors.append("masked final preflight did not pass")
+    commit = outcome.get("launch_commit_reservation_revalidation")
+    if not isinstance(commit, Mapping):
+        errors.append("masked launch-commit reservation must be an object")
+    else:
+        if commit.get("required_for_mode") is not True:
+            errors.append(
+                "masked launch-commit must declare a required reservation"
+            )
+        if commit.get("passed") is not True or commit.get("error") is not None:
+            errors.append("masked launch-commit reservation did not pass")
+        _all_true_checks(
+            commit.get("checks"),
+            field="outcome.launch_commit_reservation_revalidation.checks",
+            errors=errors,
+        )
+    post = outcome.get("post_health")
+    reservation = (
+        post.get("reservation_revalidation")
+        if isinstance(post, Mapping)
+        else None
+    )
+    if not isinstance(reservation, Mapping):
+        errors.append("masked post-health reservation must be an object")
+    else:
+        if reservation.get("required_for_mode") is not True:
+            errors.append(
+                "masked post-health reservation must be required for the mode"
+            )
+        if reservation.get("passed") is not True:
+            errors.append("masked post-health reservation did not pass")
+
+    # The parent-death guard is mandatory for masked execution.
+    guard = native.get("parent_guard")
+    if not isinstance(guard, Mapping):
+        errors.append("native parent_guard must be an object")
+    else:
+        _check_exact_scalars(
+            guard,
+            {
+                "mode": "linux_pdeathsig_sigkill",
+                "status": "armed",
+                "inherited_pdeath_signal": 9,
+                "pdeath_signal": 9,
+            },
+            field="native.parent_guard",
+            errors=errors,
+        )
+        expected_pid = guard.get("expected_parent_pid")
+        observed_pid = guard.get("observed_parent_pid")
+        if (
+            isinstance(expected_pid, bool)
+            or not isinstance(expected_pid, int)
+            or expected_pid <= 0
+            or not _exact_scalar(observed_pid, expected_pid)
+        ):
+            errors.append("native parent_guard PIDs are not a matching pair")
+
+    # Native must report the mask that was requested.
+    if not _exact_scalar(native.get("requested_enabled_tpc"), bit):
+        errors.append("native requested_enabled_tpc differs from the config")
+    if not _exact_scalar(
+        native.get("tpc_count"), hardware.get("expected_tpc_count")
+    ):
+        errors.append("native tpc_count differs from the declared die")
+
+    argv = command.get("argv")
+    if not isinstance(argv, list) or "--enabled-tpc" not in argv:
+        errors.append("masked command argv does not request a TPC bit")
+    elif argv[argv.index("--enabled-tpc") + 1 :][:1] != [str(bit)]:
+        errors.append("masked command argv requests a different TPC bit")
+    environment = command.get("environment_overrides")
+    if not isinstance(environment, Mapping):
+        errors.append("masked command.environment_overrides must be an object")
+    else:
+        parent = environment.get("BURSTSERVE_PARENT_PID")
+        if not isinstance(parent, str) or not parent.isdigit():
+            errors.append(
+                "masked child environment must carry the expected parent PID"
+            )
+        if ("MASK_OFF" in environment) != (mode == "stream"):
+            errors.append(
+                "MASK_OFF must be present for stream mode and absent otherwise"
+            )
+
+    histogram = native.get("observed_histogram")
+    observation: dict[str, Any] | None = None
+    if not isinstance(histogram, Mapping) or not histogram:
+        errors.append("native observed_histogram is missing or empty")
+    else:
+        try:
+            sms = sorted(int(key, 10) for key in histogram)
+            observed_blocks = sum(int(value) for value in histogram.values())
+        except (TypeError, ValueError):
+            errors.append("native observed_histogram is malformed")
+        else:
+            observation = {
+                "mode": mode,
+                "tpc_bit": bit,
+                "trial": trial,
+                "physical_gpu": expected_gpu,
+                "gpu_uuid": expected_uuid,
+                "blocks": config.get("blocks"),
+                "observed_blocks": observed_blocks,
+                "observed_sms": sms,
+            }
+    if errors:
+        return None, errors
+    return observation, errors
 
 
 _MASKED_OBSERVATION_KEYS = frozenset(

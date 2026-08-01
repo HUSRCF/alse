@@ -16,6 +16,7 @@ from burstserve.gate_a_results import (
     aggregate_from_spec,
     main,
     validate_masked_tpc_matrix,
+    validate_masked_cell_contract,
 )
 from burstserve.provenance import (
     EventRecord,
@@ -4410,3 +4411,230 @@ class MaskedTpcMatrixTest(unittest.TestCase):
         )
         self.assertFalse(report["accepted"])
         self.assertFalse(report["checks"]["die_sms_per_tpc_is_integral"])
+
+
+_PROMOTED_GATE = {
+    "safety": {
+        "experimental_mask_enabled": True,
+        "approved_mask_modes": ["global", "next", "stream"],
+    },
+    "hardware": {"sm_count": 128, "expected_tpc_count": 64},
+    "single_tpc_matrix_after_explicit_promotion": _MASKED_MATRIX,
+}
+
+
+def _masked_cell(mode="global", bit=31, trial=0):
+    config = {
+        "mode": mode,
+        "enabled_tpc": bit,
+        "trial": trial,
+        "iterations": 4096,
+        "blocks": 4096,
+        "threads_per_block": 256,
+    }
+    outcome = {
+        "accepted": False,
+        "local_probe_passed": True,
+        "requires_matrix_validation": True,
+        "masked_health_monitor_status": "clean",
+        "quarantine_required": False,
+        "quarantine_reasons": [],
+        "native_status": "ok",
+        "timed_out": False,
+        "masked_health_monitor": {
+            "status": "clean",
+            "post_probe_drain_timeout_ms": 250,
+            "provenance": {"setup": {}, "drain": {}},
+        },
+        "masked_health_monitor_checks": _all_true(),
+        "final_launch_preflight": {
+            "captured_at_utc": "2026-01-01T00:00:00.400000Z",
+            "required_horizon_s": 95.5,
+            "required_until_utc": "2026-01-01T00:01:35.900000Z",
+            "passed": True,
+        },
+        "launch_commit_reservation_revalidation": {
+            "required_for_mode": True,
+            "checks": _all_true(),
+            "passed": True,
+            "error": None,
+        },
+        "post_health": {
+            "reservation_revalidation": {
+                "required_for_mode": True,
+                "passed": True,
+            }
+        },
+    }
+    native = {
+        "parent_guard": {
+            "mode": "linux_pdeathsig_sigkill",
+            "status": "armed",
+            "expected_parent_pid": 4242,
+            "observed_parent_pid": 4242,
+            "inherited_pdeath_signal": 9,
+            "pdeath_signal": 9,
+        },
+        "requested_enabled_tpc": bit,
+        "tpc_count": 64,
+        "observed_histogram": {str(2 * bit): 2048, str(2 * bit + 1): 2048},
+    }
+    environment = {"BURSTSERVE_PARENT_PID": "4242"}
+    if mode == "stream":
+        environment["MASK_OFF"] = "-16"
+    command = {
+        "argv": [
+            "/synthetic/smid_probe", "--mode", mode,
+            "--enabled-tpc", str(bit),
+            "--iterations", "4096", "--blocks", "4096",
+        ],
+        "environment_overrides": environment,
+    }
+    return config, outcome, native, command
+
+
+class MaskedCellContractTest(unittest.TestCase):
+    def check(self, config, outcome, native, command, gate=None):
+        return validate_masked_cell_contract(
+            config=config, outcome=outcome, native=native,
+            gate_content=gate or _PROMOTED_GATE, command=command,
+            expected_gpu=1, expected_uuid=_gpu_uuid(1),
+        )
+
+    def test_a_clean_masked_cell_yields_a_matrix_observation(self):
+        obs, errors = self.check(*_masked_cell())
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(obs)
+        self.assertEqual(
+            set(obs),
+            {
+                "mode", "tpc_bit", "trial", "physical_gpu",
+                "gpu_uuid", "blocks", "observed_blocks",
+                "observed_sms",
+            },
+        )
+        self.assertEqual(obs["observed_sms"], [62, 63])
+        self.assertEqual(obs["observed_blocks"], 4096)
+        self.assertEqual(obs["tpc_bit"], 31)
+
+    def test_an_unpromoted_manifest_cannot_produce_a_cell(self):
+        gate = json.loads(json.dumps(_PROMOTED_GATE))
+        gate["safety"]["experimental_mask_enabled"] = False
+        obs, errors = self.check(*_masked_cell(), gate=gate)
+        self.assertIsNone(obs)
+        self.assertTrue(any("explicitly promoted" in e for e in errors), errors)
+
+    def test_an_unapproved_mode_cannot_produce_a_cell(self):
+        gate = json.loads(json.dumps(_PROMOTED_GATE))
+        gate["safety"]["approved_mask_modes"] = ["global"]
+        obs, errors = self.check(*_masked_cell(mode="stream"), gate=gate)
+        self.assertIsNone(obs)
+        self.assertTrue(any("not an approved" in e for e in errors), errors)
+
+    def test_a_masked_run_claiming_acceptance_is_rejected(self):
+        config, outcome, native, command = _masked_cell()
+        outcome["accepted"] = True
+        obs, errors = self.check(config, outcome, native, command)
+        self.assertIsNone(obs)
+        self.assertTrue(any("outcome.accepted" in e for e in errors), errors)
+
+    def test_matrix_validation_may_not_be_waived(self):
+        config, outcome, native, command = _masked_cell()
+        outcome["requires_matrix_validation"] = False
+        obs, errors = self.check(config, outcome, native, command)
+        self.assertIsNone(obs)
+
+    def test_an_unarmed_or_mismatched_parent_guard_is_rejected(self):
+        for field, value in (
+            ("status", "not_required"),
+            ("mode", "not_required"),
+            ("pdeath_signal", 15),
+            ("inherited_pdeath_signal", None),
+            ("observed_parent_pid", 4243),
+            ("expected_parent_pid", 0),
+        ):
+            with self.subTest(field=field):
+                config, outcome, native, command = _masked_cell()
+                native["parent_guard"][field] = value
+                obs, errors = self.check(config, outcome, native, command)
+                self.assertIsNone(obs, errors)
+
+    def test_a_masked_run_without_a_reservation_horizon_is_rejected(self):
+        for mutate in (
+            lambda o: o["final_launch_preflight"].__setitem__("required_horizon_s", 0.0),
+            lambda o: o["final_launch_preflight"].__setitem__("required_horizon_s", 95),
+            lambda o: o["launch_commit_reservation_revalidation"].__setitem__("required_for_mode", False),
+            lambda o: o["post_health"]["reservation_revalidation"].__setitem__("required_for_mode", False),
+            lambda o: o["launch_commit_reservation_revalidation"]["checks"].__setitem__("reservation_not_expired", False),
+        ):
+            with self.subTest(mutate=mutate):
+                config, outcome, native, command = _masked_cell()
+                mutate(outcome)
+                obs, errors = self.check(config, outcome, native, command)
+                self.assertIsNone(obs, errors)
+
+    def test_a_dirty_health_monitor_is_rejected(self):
+        for mutate in (
+            lambda o: o.__setitem__("masked_health_monitor_status", "xid_observed"),
+            lambda o: o["masked_health_monitor"].__setitem__("status", "monitor_failed"),
+            lambda o: o["masked_health_monitor_checks"].__setitem__("drain_succeeded", False),
+            lambda o: o.__setitem__("masked_health_monitor", None),
+        ):
+            with self.subTest(mutate=mutate):
+                config, outcome, native, command = _masked_cell()
+                mutate(outcome)
+                obs, errors = self.check(config, outcome, native, command)
+                self.assertIsNone(obs, errors)
+
+    def test_native_must_report_the_bit_that_was_requested(self):
+        config, outcome, native, command = _masked_cell(bit=31)
+        native["requested_enabled_tpc"] = 32
+        obs, errors = self.check(config, outcome, native, command)
+        self.assertIsNone(obs)
+
+    def test_argv_and_child_environment_must_match_the_mode(self):
+        config, outcome, native, command = _masked_cell(bit=31)
+        command["argv"][4] = "32"
+        obs, _ = self.check(config, outcome, native, command)
+        self.assertIsNone(obs)
+
+        config, outcome, native, command = _masked_cell(mode="global")
+        command["environment_overrides"]["MASK_OFF"] = "-16"
+        obs, errors = self.check(config, outcome, native, command)
+        self.assertIsNone(obs, errors)
+
+        config, outcome, native, command = _masked_cell(mode="stream")
+        del command["environment_overrides"]["MASK_OFF"]
+        obs, errors = self.check(config, outcome, native, command)
+        self.assertIsNone(obs, errors)
+
+        config, outcome, native, command = _masked_cell()
+        del command["environment_overrides"]["BURSTSERVE_PARENT_PID"]
+        obs, errors = self.check(config, outcome, native, command)
+        self.assertIsNone(obs, errors)
+
+    def test_a_bit_or_trial_outside_the_matrix_is_rejected(self):
+        for config_key, value in (("enabled_tpc", 7), ("trial", 3), ("blocks", 2048)):
+            with self.subTest(key=config_key):
+                config, outcome, native, command = _masked_cell()
+                config[config_key] = value
+                obs, errors = self.check(config, outcome, native, command)
+                self.assertIsNone(obs, errors)
+
+    def test_cells_feed_the_matrix_validator_end_to_end(self):
+        rows = []
+        for mode in _MASKED_MATRIX["modes"]:
+            for bit in _MASKED_MATRIX["tpc_bits"]:
+                for trial in range(_MASKED_MATRIX["trials_per_cell"]):
+                    obs, errors = self.check(*_masked_cell(mode, bit, trial))
+                    self.assertEqual(errors, [])
+                    rows.append(obs)
+        report = validate_masked_tpc_matrix(
+            rows, matrix=_MASKED_MATRIX, hardware=_MASKED_HARDWARE,
+            baseline_observed_sm_count=128,
+        )
+        self.assertTrue(report["accepted"], report["errors"])
+        self.assertEqual(
+            report["tpc_sm_mapping"],
+            {str(b): [2 * b, 2 * b + 1] for b in (0, 31, 32, 63)},
+        )

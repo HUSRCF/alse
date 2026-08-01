@@ -88,7 +88,7 @@
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
 | 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 纯模拟测试；GPU7 只读注册 smoke supported bits `61852`、Xid bit `8` | approximate | 修复中断孤儿、有界 reap、真实 quiet window 和 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
-| Gate A 动态 SM 功能与性能 | 尚未运行 masked kernel；跨 trial/bit/mode 矩阵 validator 已实现（`validate_masked_tpc_matrix`，纯函数，14 项对抗测试） | 无 TPC map、10,000 次重配、更新 p99、overlap 或 correctness 证据；validator 尚未接入 `validate_gate_a0`（无 masked 证据可消费） | missing | Gate A 硬门，不能由 A0 或 simulator 替代；仍缺 masked 单 cell validator、Xid 真实覆盖、CUDA 13.3 stream offset 政策 |
+| Gate A 动态 SM 功能与性能 | 尚未运行 masked kernel；masked 单 cell validator（`validate_masked_cell_contract`）与跨 trial/bit/mode 矩阵 validator（`validate_masked_tpc_matrix`）均已实现，纯函数、26 项对抗测试、端到端串联已验证 | 无 TPC map、10,000 次重配、更新 p99、overlap 或 correctness 证据；两个 validator 尚未接入 `validate_gate_a0`（无 masked 证据可消费） | missing | Gate A 硬门，不能由 A0 或 simulator 替代；仍缺 Xid 真实覆盖与 CUDA 13.3 stream offset 政策 |
 
 在上述 hard gaps 关闭前，不正式进入第 2 周。只允许并行开展可逆、纯 CPU
 预研：冻结数据 schema、canonical-service/tenant accounting 纯函数、
@@ -688,6 +688,39 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   4. 未覆盖：GPU 0/5/6 从未在本负载下测过（被他人长任务占用）；GPU 7 只有
      Gate A0 的 2.3 秒探针，**没有**本负载数据。因此不能声称「8 张卡都
      差不多」，只能声称「已测的 GPU 1/2/3/4 在本负载下等价」。
+- 2026-08-01：**masked 单 cell validator 落地，与矩阵 validator 串联**。
+  `validate_masked_cell_contract` 校验 masked 模式独有的那半个契约，并把通过
+  的 cell 转成矩阵 validator 所需的观测记录 —— 即**一个 cell 只能经由单 cell
+  检查才能进入矩阵**，两者串联在测试中已端到端验证（36 格 → 正确 TPC→SM 映射）。
+  关键约束（均来自 producer 实测，非臆测）：
+  - **masked run 在构造上永远不可能被接受**：runner 的
+    `accepted = local_probe_passed and mode == "baseline" and not allow_busy_gpu`，
+    因此 masked 最多得到 `local_probe_passed=True` + `accepted=False`；
+    validator 精确要求这个组合，并要求 `requires_matrix_validation=True`
+    不可被豁免。这把 7/30 冻结的「单次 masked histogram 最多记为
+    local_probe_passed」从文字变成了代码。
+  - **未经 promotion 的 manifest 不能产出 cell**：要求
+    `safety.experimental_mask_enabled is True` 且 mode 在 `approved_mask_modes`
+    内——否则该 run 是 sealed rejection 而非 cell。这条使 masked cell 与
+    sealed rejection 在验证层面互斥，无法混淆。
+  - **masked 必须持有覆盖整个运行窗口的预约**：final preflight 的
+    `required_horizon_s` 必须为正 float 且 `required_until > captured_at`，
+    launch-commit 与 post-health 的 reservation 均须 `required_for_mode=True`
+    且 checks 全真（baseline 恰恰相反，是精确的零预约契约）。
+  - **parent-death guard 强制**：native `parent_guard` 必须
+    `mode=linux_pdeathsig_sigkill`、`status=armed`、两个死亡信号均为 9、
+    expected/observed PID 为同一正整数。
+  - **Xid 监视器必须干净**：`masked_health_monitor_status="clean"`、记录键精确、
+    checks 全真；`xid_observed`/`monitor_failed` 一律拒绝。
+  - native 报告的 `requested_enabled_tpc` 必须等于 config 的 bit、`tpc_count`
+    等于声明的 die；argv 必须请求同一个 bit；子进程环境必须携带
+    `BURSTSERVE_PARENT_PID`，且 `MASK_OFF` **当且仅当** stream 模式存在。
+  12 项对抗测试覆盖：未 promotion 的 manifest、未批准的模式、伪称 accepted、
+  豁免矩阵校验、六种 parent guard 破坏、五种预约缺失、四种监视器不洁、
+  native 与 config 的 bit 不符、argv/环境不匹配（含 MASK_OFF 双向错配）、
+  矩阵外的 bit/trial/blocks，以及 36 格端到端串联。
+  两个 validator 仍**未接入 `validate_gate_a0`**（无 masked 证据可消费）；
+  promotion lock 完全关闭，实测三种 masked 模式 `permitted=False`。
 - 2026-08-01：**masked 跨 trial/bit/mode 矩阵 validator 落地（纯 CPU，先于任何
   masked 证据）**。此前 `gate_a_results.py` 只有 baseline 与 sealed rejection
   两个验证器，**没有任何 masked 验证路径** —— 而 decision log 早已规定「单次
