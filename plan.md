@@ -1356,7 +1356,7 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   就地改会改变未来 run 的 run_id；而已接受的 A0 证据把 manifest 内容逐 run
   内嵌、SHA256 对内嵌副本校验，故分离后两边都保持可验证，两条 checked-in
   sealed rejection 仍绑定在未晋级 manifest 上继续有效。
-  卡的选择：GPU 1（UUID `GPU-4cc58bdd…4bb`）。它在 A0 已接受的编队
+  卡的选择：GPU 1（UUID `GPU-4cc58bdd…abfb`）。它在 A0 已接受的编队
   {1,2,3,4,7} 内、当前空闲、且不是漂移参照卡 GPU 4；masked 矩阵测的是 SM
   身份而非性能，per-card 硅片差异与之无关。
   Xid 监视器身份实测固化：在 GPU 0 上真机运行 `NvmlXidMonitor`，
@@ -1385,3 +1385,73 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   以干净提交状态存在——`load_gate_manifest_record` 要求 manifest 已提交且
   head/index/worktree 三者一致，且预约时窗参与形式化身份，因此 24 格矩阵
   必须落在同一个预约窗内完成，否则各 cell 形式化身份不一致。
+- 2026-08-01 / next-mask-refuted-for-serving：**撤回 2026-08-01
+  `cuda133-mask-mechanism-probe` 条目里的结论 (D)「stream offset 探测不必要」。
+  该结论是错的。** 独立复审提出三条失效路径，我用自己重写的测试
+  （scratchpad `streamoff/next_limits.cu`，未复用复审的探针以免共用同一个 bug）
+  在 GPU 0 上全部复现：
+  (1) **CUDA graph 击穿 `next`**：把 4 个 kernel capture 成 graph、设一次
+  next-mask 再 `cudaGraphLaunch`，只有 1 个节点被 mask，而且是**节点 3**
+  （执行序最后一个），无法预测落在哪个节点。vLLM / TensorRT-LLM 的 decode
+  路径都是 graph capture 的，因此 `next` 在真实服务系统里不可用。
+  (2) **mask 被窃取**：设好 mask 后，中间插入的任何一次 launch 会把它吃掉；
+  实测中间那个 kernel 拿到 SM {6,7}，本来的目标 kernel 全裸跑 32 SM。真实
+  引擎里 cuBLAS/cuDNN/NCCL 内部发射就坐在这个缝里。
+  (3) **陈旧 mask 泄漏**：设了但未被消费的 mask 会静默作用到该线程之后一次
+  **无关**的 launch（实测拿到 SM {40,41}）。这是 ambient authority，
+  per-stream mask 没有这个失效模式。
+  修正后的准确表述：`global`/`next` 对**我们自己完全掌控每一次 launch 的
+  受控 microbenchmark**（即 masked Gate A 的 TPC→SM 映射矩阵）是充分的；
+  对**真实 serving 系统**不充分。因此 masked Gate A 可以按 global/next 推进，
+  而 BurstServe 服务路径的空间分区仍然需要 per-stream masking——CUDA 13.3
+  stream offset 问题重新打开，先前「Phase 1 取消」的决定作废。
+  同时纠正两处我的过度表述：(a) 4 个 bit 不足以支撑「bit N → SM {2N,2N+1}」
+  这个全 die 结论，复审补跑了全部 64 个 bit（128/128 格、并集恰为 {0..127}）
+  才使该结论成立；(b) 我说「validate_masked_tpc_matrix 全 PASS」时暗示了
+  该 validator 认可这个映射，**它不认可**——它检查确定性、跨模式一致、
+  两两不相交、基数与 in-range，但从不检验映射本身，喂给它编造的
+  bit0→{100,101} 同样会 accepted。`phase0_verdict.json` 里的
+  `tpc_sm_mapping` 是输入的回显，不是发现。
+  另记两个尚未处理的隐患：libsmctrl 的 `setup_sm_control_callback()` 用
+  `__atomic_test_and_set` 选举安装线程，但**落败线程立即返回而不等待
+  subscribe/enable 完成**，该窗口内的 launch 静默无 mask（复审在拷贝副本里
+  插 50 ms sleep 证明窗口真实存在；实机 25/25 未触发，说明窗口亚微秒级）。
+  任何多线程用法必须先由单线程调用一次 `libsmctrl_set_global_mask(0)`
+  强制安装完成。以及 H100（132 SM / 66 TPC）上 `uint64` 不够用，且 Hopper
+  分支会无条件把 `tmd+312/316` 写 -1 永久禁用 TPC 64..127，libsmctrl 自己
+  也打印 "untested on Hopper"。
+- 2026-08-01 / masked-gate-review-fixes：两轮对抗性复审对 commit `d5d4e59`
+  提出的缺陷已全部修复，全量 477 tests OK（21 skipped）。
+  R1-SEVERE-1（已复现）：把 `single_tpc_matrix_modes_are_canonical` 放宽成
+  「规范序子集」后没有基数下限，**单模式矩阵被放行**（实测
+  `permitted=True, failing=[]`），而 `validate_masked_tpc_matrix` 的
+  `consistent_across_modes` 在单模式下是空真（实测 `accepted=True`）。
+  我的补偿检查堵的是另一个方向的洞（批准了但矩阵没有），提交信息因此
+  过度声称。修复：runner 增 `single_tpc_matrix_declares_at_least_two_modes`；
+  validator 的 `shape_ok` 增 modes≥2 / bits≥2 / trials≥2 下限并在模式数<2 时
+  显式让 `consistent_across_modes` 失败。
+  R1-SEVERE-2（已复现）：**stream-only 矩阵被放行**，原先的精确三元组 pin
+  隐含「promote stream 就必须同时声明 global+next」这一结构耦合被我删掉了，
+  而 `stream_prerequisites_accepted` 只读同一文件里自声明的布尔量，替代不了
+  它。修复：增 `single_tpc_matrix_corroborates_stream_with_callback_modes`，
+  声明 stream 必须同时声明 global 与 next。
+  R1-MINOR-5：矩阵模式多于已批准模式时 runner 全过但 `matrix_complete`
+  永不可满足，代价是把 run 跑完才发现。修复：增
+  `single_tpc_matrix_modes_match_approved_modes_when_promoted`，仅在
+  `experimental_mask_enabled` 为真时要求两者相等，未晋级 manifest 不受影响。
+  R1-MODERATE-3：我的负例表里 `repeated`/`unknown`/`empty` 其实由既有的
+  `single_tpc_matrix_modes_are_valid_unique_strings` 拦下，删掉新表达式它们
+  照样被拒——测试在实现出错的那条轴（基数）上恰好没有覆盖。已删除充数用例，
+  补上基数与 stream 耦合的真实负例。
+  R2-2/R2-3：`validate_masked_tpc_matrix` 接受 1×1×1 退化矩阵
+  （`disjoint_across_bits` 因内层循环从不执行而空真），且
+  `restricts_relative_to_unmasked_baseline` 近乎空转——它只比较基数、
+  baseline 是未校验的调用方整数、不绑定 GPU、无子集检验，因此「masked 2 个 SM
+  对 baseline 3 个 SM」算作限制成功。修复：新增
+  `baseline_is_from_the_same_gpu`，要求传入 baseline 的**实际 SM 集合**与
+  UUID，并把判据改成**真子集**（mask 若把 kernel 挪到 unmasked 从未触及的 SM
+  上，不算限制而算搬家），同时校验传入基数与集合自洽。
+  R1-MINOR-4 记录不修：`safety.unknown_driver_policy` 在 `src/` 中从未被读取，
+  是死字段；且 driver 13030 不在 `PINNED_VALIDATED_DRIVER_VERSIONS` 内，
+  masked 运行必须显式带 `--experimental-allow-unsupported-driver`，与
+  manifest 文本声明的 fail_closed 姿态存在措辞落差。

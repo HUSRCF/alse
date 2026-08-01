@@ -5036,6 +5036,8 @@ def validate_masked_tpc_matrix(
     matrix: Mapping[str, Any],
     hardware: Mapping[str, Any],
     baseline_observed_sm_count: int | None = None,
+    baseline_observed_sms: Sequence[int] | None = None,
+    baseline_gpu_uuid: str | None = None,
 ) -> dict[str, Any]:
     """Decide whether a masked matrix establishes a real TPC->SM mapping.
 
@@ -5092,15 +5094,23 @@ def validate_masked_tpc_matrix(
             and value > 0
         )
 
+    # Every cross-sectional check this function makes degenerates at a
+    # cardinality of one: with one mode there is no mechanism to agree with,
+    # with one bit the pairwise disjointness loop never executes, and with one
+    # trial determinism is trivially satisfied. Such a matrix is not weak
+    # evidence, it is a mapping confirmed only by the observation that
+    # produced it, so refuse the shape outright.
     shape_ok = (
         isinstance(modes, list)
-        and modes
+        and len(modes) >= 2
+        and len(set(modes)) == len(modes)
         and all(isinstance(m, str) and m for m in modes)
         and isinstance(bits, list)
-        and bits
+        and len(bits) >= 2
         and all(positive_int(b) or b == 0 for b in bits)
         and len(set(bits)) == len(bits)
         and positive_int(trials)
+        and trials >= 2
         and isinstance(allowed_counts, list)
         and allowed_counts
         and all(positive_int(c) for c in allowed_counts)
@@ -5252,8 +5262,18 @@ def validate_masked_tpc_matrix(
     checks["deterministic_across_trials"] = deterministic
 
     # --- agreement across masking mechanisms ------------------------------
+    # With a single declared mode there is nothing for the mapping to agree
+    # with, and the loop below would report agreement for every bit because
+    # each bit yields exactly one set. That is not weak evidence, it is no
+    # evidence: the mapping would be confirmed only by the observation it was
+    # derived from. Refuse the degenerate shape rather than pass it silently.
     mapping: dict[int, frozenset[int]] = {}
-    consistent = True
+    consistent = len(set(modes)) >= 2
+    if not consistent:
+        errors.append(
+            "masked matrix declares fewer than two masking mechanisms, so "
+            "cross-mode agreement cannot be evidence of anything"
+        )
     for bit in bits:
         sets = {
             per_mode_bit[(mode, bit)]
@@ -5302,20 +5322,54 @@ def validate_masked_tpc_matrix(
             )
 
     # --- the mask must actually restrict ----------------------------------
-    if baseline_observed_sm_count is None:
+    # A cardinality comparison alone is nearly vacuous: two masked SMs are
+    # "fewer than" a baseline of three, and a caller-supplied integer is not
+    # tied to any observed card. Demand the baseline's actual SM set, from the
+    # same GPU, and require containment -- a mask that confines to SMs the
+    # unmasked run never touched has not restricted anything, it has moved.
+    baseline_sms = (
+        frozenset(baseline_observed_sms)
+        if isinstance(baseline_observed_sms, (list, tuple, set, frozenset))
+        and all(
+            not isinstance(value, bool) and isinstance(value, int)
+            for value in baseline_observed_sms
+        )
+        else None
+    )
+    baseline_uuid_matches = (
+        isinstance(baseline_gpu_uuid, str)
+        and bool(baseline_gpu_uuid)
+        and len(identities) == 1
+        and baseline_gpu_uuid == next(iter(identities))[1]
+    )
+    checks["baseline_is_from_the_same_gpu"] = baseline_uuid_matches
+    if not baseline_uuid_matches:
+        errors.append(
+            "unmasked baseline must be identified by the same GPU UUID as "
+            "the masked observations"
+        )
+    if baseline_sms is None or not baseline_sms:
         checks["restricts_relative_to_unmasked_baseline"] = False
         errors.append(
-            "no unmasked baseline SM coverage was supplied for comparison"
+            "no unmasked baseline SM set was supplied for comparison"
+        )
+    elif baseline_observed_sm_count is not None and not _exact_scalar(
+        baseline_observed_sm_count, len(baseline_sms)
+    ):
+        checks["restricts_relative_to_unmasked_baseline"] = False
+        errors.append(
+            f"unmasked baseline count {baseline_observed_sm_count!r} "
+            f"disagrees with its own SM set of {len(baseline_sms)}"
         )
     else:
         restricts = bool(mapping) and all(
-            len(sms) < baseline_observed_sm_count for sms in mapping.values()
+            sms < baseline_sms for sms in mapping.values()
         )
         checks["restricts_relative_to_unmasked_baseline"] = restricts
         if not restricts:
             errors.append(
-                "masked observations do not cover fewer SMs than the "
-                f"unmasked baseline ({baseline_observed_sm_count})"
+                "masked observations are not a proper subset of the "
+                f"unmasked baseline's {len(baseline_sms)} SMs"
             )
 
     return {

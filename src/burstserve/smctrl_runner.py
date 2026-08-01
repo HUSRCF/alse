@@ -3210,9 +3210,7 @@ def evaluate_gate_manifest_policy(
         "baseline_coverage_meets_minimum": minimum_coverage_valid,
         # A manifest may narrow the declared matrix to the mechanisms this
         # driver actually supports, but the declaration must stay canonically
-        # ordered and must cover every mode the manifest approves; otherwise a
-        # mode could be approved for launch while no matrix cell demands the
-        # cross-mode agreement that makes a TPC->SM mapping falsifiable.
+        # ordered.
         "single_tpc_matrix_modes_are_canonical": (
             matrix_modes_valid
             and matrix_modes
@@ -3222,10 +3220,46 @@ def evaluate_gate_manifest_policy(
                 if item in set(matrix_modes)
             ]
         ),
+        # A one-mode matrix has no cross-mode agreement to demand, and the
+        # matrix validator's agreement check is vacuously true when only one
+        # mode is present. Narrowing must never reach that degenerate shape:
+        # a TPC->SM mapping derived from a single mechanism is confirmed only
+        # by the observation it was derived from.
+        "single_tpc_matrix_declares_at_least_two_modes": (
+            matrix_modes_valid and len(matrix_modes) >= 2
+        ),
+        # Stream masking is the one mechanism that blind-writes an opaque
+        # driver struct. It may only be declared alongside both callback
+        # modes, so a stream mapping always has two independent mechanisms to
+        # agree with. Before subsets were permitted this was implied by the
+        # exact-triple pin; narrowing must not silently drop it.
+        "single_tpc_matrix_corroborates_stream_with_callback_modes": (
+            matrix_modes_valid
+            and (
+                "stream" not in set(matrix_modes)
+                or {"global", "next"} <= set(matrix_modes)
+            )
+        ),
+        # Every approved mode must appear in the matrix, otherwise a mode
+        # could be approved for launch while no cell demands its agreement.
         "single_tpc_matrix_modes_cover_approved_modes": (
             matrix_modes_valid
             and approved_modes_valid
             and set(approved_modes) <= set(matrix_modes)
+        ),
+        # The converse only binds once the manifest is promoted: a declared
+        # mode that is not approved can never produce a cell, so its matrix
+        # would be permanently incomplete -- fail-closed, but only discovered
+        # at aggregation time after the runs were spent. An unpromoted
+        # manifest legitimately declares the full intended matrix with nothing
+        # yet approved.
+        "single_tpc_matrix_modes_match_approved_modes_when_promoted": (
+            safety.get("experimental_mask_enabled") is not True
+            or (
+                matrix_modes_valid
+                and approved_modes_valid
+                and set(matrix_modes) == set(approved_modes)
+            )
         ),
         "single_tpc_matrix_tpc_bits_are_canonical": (
             matrix_tpc_bits == canonical_tpc_bits

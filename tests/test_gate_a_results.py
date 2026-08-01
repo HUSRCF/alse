@@ -4258,12 +4258,100 @@ def _masked_observations(mapping=None, **overrides):
 
 class MaskedTpcMatrixTest(unittest.TestCase):
     def validate(self, observations, **kwargs):
+        # The unmasked baseline is the full die observed on the same card, so
+        # every masked set must be a proper subset of it.
         kwargs.setdefault("baseline_observed_sm_count", 128)
+        kwargs.setdefault("baseline_observed_sms", list(range(128)))
+        kwargs.setdefault("baseline_gpu_uuid", _gpu_uuid(1))
         return validate_masked_tpc_matrix(
             observations,
             matrix=_MASKED_MATRIX,
             hardware=_MASKED_HARDWARE,
             **kwargs,
+        )
+
+    def test_degenerate_cardinalities_are_refused(self):
+        """Every cross-sectional check is vacuous at a cardinality of one.
+
+        With one mode there is no mechanism to agree with; with one bit the
+        pairwise disjointness loop never runs; with one trial determinism is
+        trivially true.  Such a matrix would report a mapping confirmed only
+        by the observation that produced it, which is not weak evidence but
+        none, so the shape itself must be refused.
+        """
+
+        for label, modes, bits, trials in (
+            ("one mode", ["global"], [0, 31, 32, 63], 3),
+            ("one bit", ["global", "next"], [0], 3),
+            ("one trial", ["global", "next"], [0, 31, 32, 63], 1),
+            ("all singular", ["global"], [0], 1),
+        ):
+            with self.subTest(label):
+                matrix = dict(_MASKED_MATRIX)
+                matrix.update(
+                    modes=modes, tpc_bits=bits, trials_per_cell=trials
+                )
+                rows = [
+                    {
+                        "mode": mode,
+                        "tpc_bit": bit,
+                        "trial": trial,
+                        "physical_gpu": 1,
+                        "gpu_uuid": _gpu_uuid(1),
+                        "blocks": 4096,
+                        "observed_blocks": 4096,
+                        "observed_sms": [2 * bit, 2 * bit + 1],
+                    }
+                    for mode in modes
+                    for bit in bits
+                    for trial in range(trials)
+                ]
+                report = validate_masked_tpc_matrix(
+                    rows,
+                    matrix=matrix,
+                    hardware=_MASKED_HARDWARE,
+                    baseline_observed_sm_count=128,
+                    baseline_observed_sms=list(range(128)),
+                    baseline_gpu_uuid=_gpu_uuid(1),
+                )
+                self.assertFalse(report["accepted"])
+                self.assertFalse(
+                    report["checks"]["matrix_declaration_well_formed"]
+                )
+
+    def test_restriction_requires_containment_in_the_same_card_baseline(self):
+        """A smaller SM set is not evidence that the mask restricted.
+
+        Comparing cardinalities alone accepts a mask that moved the kernel to
+        SMs the unmasked run never touched, and accepts a baseline integer
+        that belongs to no observed card at all.
+        """
+
+        # Masked sets that are small but NOT inside the baseline's coverage.
+        report = self.validate(
+            _masked_observations(),
+            baseline_observed_sms=[5, 6, 7],
+            baseline_observed_sm_count=3,
+        )
+        self.assertFalse(report["accepted"])
+        self.assertFalse(
+            report["checks"]["restricts_relative_to_unmasked_baseline"]
+        )
+
+        # A baseline measured on a different card proves nothing about this one.
+        report = self.validate(
+            _masked_observations(), baseline_gpu_uuid=_gpu_uuid(4)
+        )
+        self.assertFalse(report["accepted"])
+        self.assertFalse(report["checks"]["baseline_is_from_the_same_gpu"])
+
+        # A supplied count that contradicts its own set is a malformed claim.
+        report = self.validate(
+            _masked_observations(), baseline_observed_sm_count=9999
+        )
+        self.assertFalse(report["accepted"])
+        self.assertFalse(
+            report["checks"]["restricts_relative_to_unmasked_baseline"]
         )
 
     def test_a_consistent_disjoint_matrix_is_accepted(self):
@@ -4632,6 +4720,8 @@ class MaskedCellContractTest(unittest.TestCase):
         report = validate_masked_tpc_matrix(
             rows, matrix=_MASKED_MATRIX, hardware=_MASKED_HARDWARE,
             baseline_observed_sm_count=128,
+            baseline_observed_sms=list(range(128)),
+            baseline_gpu_uuid=_gpu_uuid(1),
         )
         self.assertTrue(report["accepted"], report["errors"])
         self.assertEqual(

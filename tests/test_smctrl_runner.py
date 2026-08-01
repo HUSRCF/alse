@@ -498,24 +498,114 @@ class DriverPolicyTest(unittest.TestCase):
                     checks["single_tpc_matrix_modes_cover_approved_modes"]
                 )
 
-        # Ordering, repetition and unknown names stay rejected.
-        for label, modes in (
-            ("reordered", ["next", "global"]),
-            ("repeated", ["global", "global", "next"]),
-            ("unknown", ["global", "next", "partition"]),
-            ("empty", []),
-        ):
-            with self.subTest(malformed=label):
-                broken = json.loads(json.dumps(base))
-                broken["single_tpc_matrix_after_explicit_promotion"][
-                    "modes"
-                ] = modes
-                broken["safety"]["approved_mask_modes"] = ["global"]
-                checks, allowed = evaluate(broken, "global")
-                self.assertFalse(allowed)
-                self.assertFalse(
-                    checks["single_tpc_matrix_modes_are_canonical"]
+        # Reordering is the one shape the canonical expression alone governs;
+        # repetition, unknown names and emptiness are already refused upstream
+        # by single_tpc_matrix_modes_are_valid_unique_strings, so asserting
+        # the canonical check on them would prove nothing about this code.
+        reordered = json.loads(json.dumps(base))
+        reordered["single_tpc_matrix_after_explicit_promotion"]["modes"] = [
+            "next",
+            "global",
+        ]
+        reordered["safety"]["approved_mask_modes"] = ["global", "next"]
+        checks, allowed = evaluate(reordered, "global")
+        self.assertFalse(allowed)
+        self.assertFalse(checks["single_tpc_matrix_modes_are_canonical"])
+
+    def test_narrowing_cannot_reach_a_degenerate_or_uncorroborated_matrix(
+        self,
+    ) -> None:
+        """Permitting subsets must not permit the shapes it exists to avoid.
+
+        A one-mode matrix has no cross-mode agreement to demand, and a matrix
+        that declares stream without both callback modes leaves the only
+        mechanism that blind-writes an opaque driver struct with nothing
+        independent to agree with.  Both were impossible while the declaration
+        was pinned to the exact triple.
+        """
+
+        gpu = {"name": "GPU", "uuid": "uuid"}
+        base = _gate_manifest(promoted=True)["content"]
+
+        def evaluate(manifest, mode):
+            with mock.patch(
+                "burstserve.smctrl_runner.MASKED_HEALTH_MONITOR_IMPLEMENTED",
+                True,
+            ):
+                return evaluate_gate_manifest_policy(
+                    manifest,
+                    mode=mode,
+                    physical_gpu=3,
+                    gpu=gpu,
+                    driver_version=13030,
+                    experimental_mask_off=-16 if mode == "stream" else None,
+                    timeout_s=10,
+                    maximum_used_mib=1024,
+                    iterations=100,
+                    blocks=4096,
+                    threads_per_block=256,
+                    trial=0,
+                    enabled_tpc=0,
                 )
+
+        def manifest(modes, approved):
+            value = json.loads(json.dumps(base))
+            value["single_tpc_matrix_after_explicit_promotion"]["modes"] = (
+                modes
+            )
+            value["safety"]["approved_mask_modes"] = approved
+            if "stream" not in approved:
+                value["safety"]["stream_offset_search_enabled"] = False
+                value["safety"]["stream_mask_off_candidates"] = []
+            return value
+
+        for label, modes, approved, mode, failing in (
+            (
+                "single callback mode",
+                ["global"],
+                ["global"],
+                "global",
+                "single_tpc_matrix_declares_at_least_two_modes",
+            ),
+            (
+                "stream alone",
+                ["stream"],
+                ["stream"],
+                "stream",
+                "single_tpc_matrix_corroborates_stream_with_callback_modes",
+            ),
+            (
+                "stream without next",
+                ["global", "stream"],
+                ["global", "stream"],
+                "stream",
+                "single_tpc_matrix_corroborates_stream_with_callback_modes",
+            ),
+            (
+                "declared but never approved",
+                ["global", "next", "stream"],
+                ["global", "next"],
+                "global",
+                "single_tpc_matrix_modes_match_approved_modes_when_promoted",
+            ),
+        ):
+            with self.subTest(label):
+                checks, allowed = evaluate(manifest(modes, approved), mode)
+                self.assertFalse(allowed)
+                self.assertFalse(checks[failing])
+
+        # An unpromoted manifest legitimately declares the full intended
+        # matrix while approving nothing, so the equality rule must not bind.
+        unpromoted = _gate_manifest()["content"]
+        checks, allowed = evaluate(unpromoted, "baseline")
+        self.assertTrue(allowed, sorted(
+            name for name, ok in checks.items() if not ok
+        ))
+        self.assertTrue(
+            checks[
+                "single_tpc_matrix_modes_match_approved_modes_when_promoted"
+            ]
+        )
 
     def test_masked_matrix_rejects_unregistered_tpc_trial_and_duplicates(
         self,
