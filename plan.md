@@ -1520,3 +1520,28 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   GPU 1 健康未受影响（1 MiB / 33 °C，内核日志中无该卡 Xid；唯一一次 Xid 31
   来自 offset 扫描时的 GPU 0，PCI `0000:01:00`）。隔离记录副本留存于
   scratchpad `streamoff/quarantine_record/` 后再清除。
+- 2026-08-01 / masked-gate-a-global-next-accepted：**首次取得正式 masked
+  证据**。在 GPU 1（A0 已接受编队卡，UUID `GPU-4cc58bdd…abfb`）上以
+  promoted manifest `gate-a-4090-cuda133-20260801-promoted-global-next-gpu1`
+  跑完 `{global,next}` × TPC bit `{0,31,32,63}` × 3 trials = 24 格，全部
+  exit 0，每格约 10–12 s。另跑同一 manifest 身份下的 unmasked baseline 一格
+  （`bs1-2dc25f5f…1838`，128 SM）作为对照。
+  校验：24 格逐一通过 `validate_masked_cell_contract`（0 拒绝），
+  `validate_masked_tpc_matrix` 15 项检查全 PASS、`accepted=true`。映射
+  bit N → SM `{2N, 2N+1}`，跨 3 trial 确定、跨 2 种机制一致、bit 间两两不相交、
+  且每个 masked 集合都是同卡 baseline 128 SM 的**真子集**（今日新增的收紧判据）。
+  聚合结果存于 `experiments/aggregates/gate_a_masked_global_next_gpu1_20260801.json`。
+  到达此结果前有三次失败尝试，全部 run 目录保留未删：第一次 24 格因
+  `__pycache__` 被形式化源码策略拒绝；第二次因 runner 校验器的 NVML 符号
+  拷贝错误导致首格 monitor_failed 并毒化 GPU lease，其余 23 格连锁快速失败；
+  第三次因 lease 的 armed-poison 载荷仍在——清除隔离需要**两步**（删除
+  quarantine marker **并**截断 lock 文件），我第一次只做了前一步。相关
+  RuntimeError 文本被 `main()` 的 `except BaseException` 整个丢弃，只打印
+  `<no-run-directory>`，三次排查都必须靠外部 traceback 注入才拿到原因——
+  这是个真实的可用性缺陷，已记录待修。
+  尚未晋级 stream：promoted manifest 仍为 `approved_mask_modes
+  ["global","next"]`、`stream_offset_search_enabled=false`、
+  `global_next_matrix_accepted=false`、`stream_mask_off_candidates=[]`。
+  按 manifest 自身 promotion_requirements 的次序，本次 global/next 矩阵被接受
+  正是置 `global_next_matrix_accepted=true` 的前提，下一步方可录入
+  `MASK_OFF=+280`（总偏移 `0x5fc`）并产出 stream 的正式证据。
