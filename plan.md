@@ -86,7 +86,7 @@
 | 第二 GPU SKU 预约 | 无 | 无 SKU、时间窗或预约证明 | missing | Phase 0 硬门；H100 优先，A100/A800 备选 |
 | 编队 5 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | `gate_a0_4090_v2_seed1_fleet5_20260731.json`：15/15 accepted、2 个 sealed rejection 有效、`gate_a0.complete=true`，report `683c0ca1…8f0e`，每格绑定 VBIOS/板厂/NUMA/功耗上限 | **exact** | 编队 2026-07-31 由 8 张缩为 5 张（见 Decision Log）；GPU 0/5/6 若释放可作编队外补充证据，但届时须整批重跑 |
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
-| 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 纯模拟测试；GPU7 只读注册 smoke supported bits `61852`、Xid bit `8` | approximate | 修复中断孤儿、有界 reap、真实 quiet window 和 post-health 覆盖后才 exact |
+| 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 2026-08-01 起有真机覆盖：真实 `libnvidia-ml.so.610.43.02` 上 9 个必需符号全部绑定、sealed memfd 快照 sha256 与磁盘一致、supported bits `61852`、Xid bit `8` 注册成功、250 ms quiet window 实测 250.1 ms、0 事件、`safe_for_acceptance=true`；错误 hash/version 双向 fail-closed | approximate | 已修复 `nvmlDeviceGetHandleByUUID_v2` 不存在导致的必然失败；仍需真实 Xid 注入验证（无安全注入手段）与 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
 | Gate A 动态 SM 功能与性能 | 尚未运行 masked kernel；masked 单 cell validator（`validate_masked_cell_contract`）与跨 trial/bit/mode 矩阵 validator（`validate_masked_tpc_matrix`）均已实现，纯函数、26 项对抗测试、端到端串联已验证 | 无 TPC map、10,000 次重配、更新 p99、overlap 或 correctness 证据；两个 validator 尚未接入 `validate_gate_a0`（无 masked 证据可消费） | missing | Gate A 硬门，不能由 A0 或 simulator 替代；仍缺 Xid 真实覆盖与 CUDA 13.3 stream offset 政策 |
 
@@ -688,6 +688,37 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   4. 未覆盖：GPU 0/5/6 从未在本负载下测过（被他人长任务占用）；GPU 7 只有
      Gate A0 的 2.3 秒探针，**没有**本负载数据。因此不能声称「8 张卡都
      差不多」，只能声称「已测的 GPU 1/2/3/4 在本负载下等价」。
+- 2026-08-01：**Xid 监视器真机覆盖，并修复一个会让 masked Gate A 永远无法
+  进行的必然失败**。此前 `tests/test_nvml_events.py` 的**每一个**测试都跑在
+  本仓库自己写的 `FakeNvml` 上，唯一的 layout 测试也只比对常量——监视器从未
+  接触过真实的 `libnvidia-ml.so.1`。
+  - **缺陷**：`_REQUIRED_SYMBOLS` 要求 `nvmlDeviceGetHandleByUUID_v2`，而
+    **NVML 从未发布过该符号的 _v2 变体**。真实库（driver 610.43.02）导出的是
+    `nvmlDeviceGetHandleByUUID` 与 `nvmlDeviceGetHandleByUUIDV`。其余 8 个符号
+    均存在，只有这一个错。后果：监视器在真机上**必然** `NvmlLibraryError`，
+    而 masked cell 要求监视器干净 —— 即 **masked Gate A 在修复前不可能通过**。
+  - **为什么一直没发现**：plan.md 记录的那次「GPU7 只读注册 smoke，supported
+    bits 61852、Xid bit 8」是用**裸 ctypes** 做的，绕过了被测代码；我用真实库
+    复现得到同样的 61852 与 bit 8，证实该 smoke 从未经过监视器路径。
+  - 更糟的是有一个测试把错误**锁死**了：`test_legacy_uuid_symbol_is_not_an_
+    accepted_fallback` 断言普通的 `nvmlDeviceGetHandleByUUID` 必须被拒绝为
+    "legacy fallback" —— 但它才是唯一正确的 API。该测试的**意图**（不接受
+    静默降级到弱符号）是对的，**前提**是错的。已改为
+    `test_only_the_documented_uuid_symbol_is_accepted`，改为拒绝
+    `nvmlDeviceGetHandleByUUIDV`（它接收 `nvmlUUID_t` 结构体而非 `char *`，
+    绑定它会在 ABI 边界造成类型混淆）与不存在的 `_v2`。
+  - **新增真机覆盖**（无 GPU/无库时干净 skip，不破坏干净 checkout）：
+    (1) `test_real_library_exports_every_required_symbol` —— 只需库文件即可
+    运行，是今天这个 bug 的直接回归测试；(2) 真机注册与 drain：9 个符号全部
+    解析为驱动导出的名字、sealed memfd 快照 sha256 与磁盘一致、载入路径为
+    `/proc/self/fd/`、supported bits `61852`、Xid bit 注册为 `8`、250 ms quiet
+    window 实测 250.1 ms、final zero poll 执行、0 事件、`safe_for_acceptance
+    = true`；(3) 错误 hash 与错误 version 双向 fail-closed。
+    已验证这两个测试对修复前的代码确实失败（一 failure 一 error）。
+  - 附带澄清（非缺陷）：`safe_for_acceptance` 属性要求 `_closed`，故在
+    `with` 块内必为 False；runner 读的是 close 后写出的 provenance 记录。
+  - 仍未 exact：**没有安全的真实 Xid 注入手段**，因此「观测到 Xid 时 fail
+    closed」这条路径在真机上仍只有模拟覆盖；post-health 覆盖亦未完成。
 - 2026-08-01：**masked 单 cell validator 落地，与矩阵 validator 串联**。
   `validate_masked_cell_contract` 校验 masked 模式独有的那半个契约，并把通过
   的 cell 转成矩阵 validator 所需的观测记录 —— 即**一个 cell 只能经由单 cell

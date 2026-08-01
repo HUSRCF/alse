@@ -48,7 +48,12 @@ _REQUIRED_SYMBOLS = {
     "init": "nvmlInit_v2",
     "shutdown": "nvmlShutdown",
     "system_get_nvml_version": "nvmlSystemGetNVMLVersion",
-    "device_get_handle_by_uuid": "nvmlDeviceGetHandleByUUID_v2",
+    # NVML never shipped a _v2 of this call.  The documented entry point
+    # is nvmlDeviceGetHandleByUUID(const char *, nvmlDevice_t *); the only
+    # other variant, nvmlDeviceGetHandleByUUIDV, takes an nvmlUUID_t struct
+    # and must never be bound here, because passing a char * to it would be
+    # a type confusion at the ABI boundary.
+    "device_get_handle_by_uuid": "nvmlDeviceGetHandleByUUID",
     "event_set_create": "nvmlEventSetCreate",
     "event_set_free": "nvmlEventSetFree",
     "device_get_supported_event_types": "nvmlDeviceGetSupportedEventTypes",

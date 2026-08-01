@@ -4,6 +4,7 @@ import ctypes
 import hashlib
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -21,6 +22,7 @@ from burstserve.nvml_events import (
     NvmlProtocolError,
     NvmlUnsupportedError,
     NvmlXidMonitor,
+    NvmlMonitorError,
 )
 
 
@@ -59,7 +61,7 @@ class FakeNvml:
         )
         self.version = version
         self.nvmlSystemGetNVMLVersion = FakeFunction(self._version)
-        self.nvmlDeviceGetHandleByUUID_v2 = FakeFunction(
+        self.nvmlDeviceGetHandleByUUID = FakeFunction(
             self._device_by_uuid
         )
         self.nvmlEventSetCreate = FakeFunction(self._event_create)
@@ -187,7 +189,7 @@ class MonitorTest(unittest.TestCase):
         )
         self.assertEqual(
             provenance["library"]["symbols"]["device_get_handle_by_uuid"],
-            "nvmlDeviceGetHandleByUUID_v2",
+            "nvmlDeviceGetHandleByUUID",
         )
         self.assertEqual(library.calls[-2:], ["free", "shutdown"])
 
@@ -253,15 +255,30 @@ class MonitorTest(unittest.TestCase):
         self.assertFalse(monitor.safe_for_acceptance)
         self.assertNotIn("init", library.calls)
 
-    def test_legacy_uuid_symbol_is_not_an_accepted_fallback(self):
-        library = FakeNvml()
-        library.nvmlDeviceGetHandleByUUID = (
-            library.nvmlDeviceGetHandleByUUID_v2
-        )
-        del library.nvmlDeviceGetHandleByUUID_v2
-        monitor = self.make_monitor("GPU-legacy-symbol", library)
-        with self.assertRaises(NvmlLibraryError):
-            monitor.open()
+    def test_only_the_documented_uuid_symbol_is_accepted(self):
+        """No substitute for nvmlDeviceGetHandleByUUID may be bound.
+
+        nvmlDeviceGetHandleByUUIDV exists in the real library but takes an
+        nvmlUUID_t struct rather than a char *, so binding it here would be a
+        type confusion at the ABI boundary. Requiring the exact symbol also
+        stops a driver that dropped it from being silently tolerated.
+        """
+
+        for substitute in (
+            "nvmlDeviceGetHandleByUUIDV",
+            "nvmlDeviceGetHandleByUUID_v2",
+        ):
+            with self.subTest(substitute=substitute):
+                library = FakeNvml()
+                setattr(
+                    library,
+                    substitute,
+                    library.nvmlDeviceGetHandleByUUID,
+                )
+                del library.nvmlDeviceGetHandleByUUID
+                monitor = self.make_monitor("GPU-substitute", library)
+                with self.assertRaises(NvmlLibraryError):
+                    monitor.open()
 
     def test_library_hash_and_version_are_both_pinned(self):
         library = FakeNvml(version="wrong")
@@ -639,3 +656,196 @@ class MonitorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+_REAL_NVML_PATH = Path("/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1")
+_TRUSTED_NVIDIA_SMI = Path("/usr/bin/nvidia-smi")
+
+
+def _real_nvml_library():
+    """Resolve the installed NVML library, or None when it is absent."""
+
+    try:
+        resolved = _REAL_NVML_PATH.resolve(strict=True)
+    except OSError:
+        return None
+    return resolved if resolved.is_file() else None
+
+
+def _idle_gpu_uuid():
+    """UUID of a GPU with no compute process, or None.
+
+    Read-only: registering for NVML events creates no CUDA context and
+    launches nothing, but an idle card still keeps the observation clean.
+    """
+
+    if not _TRUSTED_NVIDIA_SMI.is_file():
+        return None
+    try:
+        listing = subprocess.run(
+            [
+                str(_TRUSTED_NVIDIA_SMI),
+                "--query-gpu=uuid,memory.used",
+                "--format=csv,noheader,nounits",
+            ],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+        busy = subprocess.run(
+            [
+                str(_TRUSTED_NVIDIA_SMI),
+                "--query-compute-apps=gpu_uuid",
+                "--format=csv,noheader",
+            ],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if listing.returncode != 0 or busy.returncode != 0:
+        return None
+    occupied = {line.strip() for line in busy.stdout.splitlines() if line.strip()}
+    for row in listing.stdout.splitlines():
+        fields = [field.strip() for field in row.split(",")]
+        if len(fields) != 2:
+            continue
+        uuid, used = fields
+        if uuid in occupied:
+            continue
+        try:
+            if int(used) > 64:
+                continue
+        except ValueError:
+            continue
+        return uuid
+    return None
+
+
+class RealNvmlTest(unittest.TestCase):
+    """Coverage against the installed driver rather than the fake.
+
+    Every other test in this module drives a FakeNvml whose behaviour this
+    repository wrote, so it cannot show that the required symbols exist, that
+    the struct layout matches the shipped header, or that the driver reports
+    and registers the Xid bit at all.
+    """
+
+    def test_real_library_exports_every_required_symbol(self):
+        library = _real_nvml_library()
+        if library is None:
+            self.skipTest("no installed NVML library")
+        handle = ctypes.CDLL(str(library))
+        missing = [
+            symbol
+            for symbol in sorted(nvml_events._REQUIRED_SYMBOLS.values())
+            if not hasattr(handle, symbol)
+        ]
+        self.assertEqual(
+            missing, [],
+            f"{library} does not export: {missing}. NVML never shipped a _v2 "
+            "of nvmlDeviceGetHandleByUUID; binding a name the driver lacks "
+            "makes every masked run fail setup.",
+        )
+
+    def test_real_monitor_registers_and_drains_clean_on_an_idle_gpu(self):
+        library = _real_nvml_library()
+        if library is None:
+            self.skipTest("no installed NVML library")
+        uuid = _idle_gpu_uuid()
+        if uuid is None:
+            self.skipTest("no idle GPU available")
+
+        content = library.read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        version = _real_nvml_version(library)
+
+        monitor = NvmlXidMonitor(
+            uuid,
+            library_path=library,
+            expected_library_sha256=digest,
+            expected_library_version=version,
+        )
+        with monitor as opened:
+            events = opened.drain(
+                timeout_ms=250, max_events=8, maximum_total_ms=5000
+            )
+        self.assertEqual(events, [])
+
+        record = monitor.last_provenance
+        self.assertIsNotNone(record)
+        self.assertIs(record["safe_for_acceptance"], True)
+        self.assertEqual(record["physical_uuid"], uuid)
+        self.assertEqual(record["xids_seen"], 0)
+        self.assertEqual(record["method"], "nvmlEventSetWait_v2_exact_xid")
+
+        # The driver must actually offer and accept the Xid bit.
+        self.assertEqual(record["xid_event_bit"], NVML_EVENT_TYPE_XID_CRITICAL_ERROR)
+        self.assertTrue(
+            record["supported_event_bits"] & NVML_EVENT_TYPE_XID_CRITICAL_ERROR,
+            record["supported_event_bits"],
+        )
+        self.assertEqual(
+            record["registered_event_bits"], NVML_EVENT_TYPE_XID_CRITICAL_ERROR
+        )
+        self.assertTrue(record["registered_device_handle"])
+
+        # Every symbol resolved to the name the driver exports.
+        self.assertEqual(
+            record["library"]["symbols"], dict(nvml_events._REQUIRED_SYMBOLS)
+        )
+        # The loaded bytes are the sealed snapshot of the on-disk library.
+        self.assertEqual(record["library"]["sha256"], digest)
+        self.assertEqual(record["library"]["sealed_snapshot"]["sha256"], digest)
+        self.assertTrue(record["library"]["load_path"].startswith("/proc/self/fd/"))
+
+        # A quiet window really elapsed, and the final zero poll ran.
+        drain = record["drain"]
+        self.assertTrue(drain["succeeded"])
+        self.assertIsNone(drain["error"])
+        self.assertGreaterEqual(drain["observed_quiet_ms"], drain["requested_quiet_ms"])
+        self.assertGreaterEqual(drain["final_poll_calls"], 1)
+        self.assertEqual(record["setup"]["error"], None)
+        self.assertEqual(record["cleanup"]["errors"], [])
+
+    def test_a_wrong_pinned_hash_or_version_fails_closed_on_the_real_library(self):
+        library = _real_nvml_library()
+        if library is None:
+            self.skipTest("no installed NVML library")
+        uuid = _idle_gpu_uuid()
+        if uuid is None:
+            self.skipTest("no idle GPU available")
+        digest = hashlib.sha256(library.read_bytes()).hexdigest()
+        version = _real_nvml_version(library)
+
+        for label, sha, ver in (
+            ("hash", "0" * 64, version),
+            ("version", digest, "0.0.0.0"),
+        ):
+            with self.subTest(pinned=label):
+                monitor = NvmlXidMonitor(
+                    uuid,
+                    library_path=library,
+                    expected_library_sha256=sha,
+                    expected_library_version=ver,
+                )
+                with self.assertRaises(NvmlMonitorError):
+                    monitor.open()
+                try:
+                    monitor.close()
+                except Exception:
+                    pass
+
+
+def _real_nvml_version(library):
+    handle = ctypes.CDLL(str(library))
+    if handle.nvmlInit_v2() != 0:
+        raise unittest.SkipTest("NVML could not initialise")
+    try:
+        buffer = ctypes.create_string_buffer(
+            nvml_events.NVML_SYSTEM_NVML_VERSION_BUFFER_SIZE
+        )
+        if handle.nvmlSystemGetNVMLVersion(
+            buffer, nvml_events.NVML_SYSTEM_NVML_VERSION_BUFFER_SIZE
+        ) != 0:
+            raise unittest.SkipTest("NVML version query failed")
+        return buffer.value.decode("ascii")
+    finally:
+        handle.nvmlShutdown()
