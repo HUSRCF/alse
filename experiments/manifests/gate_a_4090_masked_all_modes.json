@@ -1,0 +1,80 @@
+{
+  "schema_version": "burstserve.gate-a-manifest/v2",
+  "manifest_id": "gate-a-4090-cuda133-20260801-promoted-all-modes-gpu1",
+  "hardware": {
+    "gpu_name": "NVIDIA GeForce RTX 4090",
+    "physical_gpu_indices": [1],
+    "compute_capability": [8, 9],
+    "sm_count": 128,
+    "expected_tpc_count": 64,
+    "driver_version": "610.43.02",
+    "driver_api_version": 13030,
+    "runtime_api_version": 13030,
+    "toolkit_version": "13.3"
+  },
+  "source": {
+    "libsmctrl_commit": "c250928930cb5c95bffc878913301f9a5d4efcb7",
+    "libsmctrl_metadata": "vendor/LIBSMCTRL_SOURCE.json",
+    "approved_launcher_sha256": "9ec49f54905cca1ae98f418e5374dc2e0af656fbd1767f176fe03db0e2563168",
+    "approved_real_probe_sha256": "a5a4cb6437cba5ee8ae68742f20ef236d177452464de219e5657cbebbdec1c88",
+    "approved_build_stamp_sha256": "e4ea4c1adea5593193fc95bc426bddd505f9ae13d4841f68eacd4243c5346c38",
+    "approved_build_attestation_sha256": "263a2a508b03eff7f80cc4927b470a79042824bddecc6f17053356292055e1ac"
+  },
+  "safety": {
+    "protocol": "docs/gate-a-safety.md",
+    "maximum_preexisting_gpu_memory_mib": 1024,
+    "timeout_s": 30,
+    "mps_allowed": false,
+    "mps_bypass": "CUDA_MPS_PIPE_DIRECTORY_empty",
+    "unknown_driver_policy": "fail_closed",
+    "experimental_mask_enabled": true,
+    "approved_mask_modes": ["global", "next", "stream"],
+    "reserved_gpu_uuids": ["GPU-4cc58bdd-dfba-b754-4ddf-976885e4abfb"],
+    "exclusive_reservation_evidence": {
+      "schema_version": "burstserve.gpu-reservation/v1",
+      "status": "active",
+      "gpu_uuid": "GPU-4cc58bdd-dfba-b754-4ddf-976885e4abfb",
+      "physical_gpu": 1,
+      "reservation_id": "dd-gpu1-masked-gate-a-stream-20260801",
+      "owner": "zhuoxu@dd",
+      "valid_from_utc": "2026-08-01T18:16:47Z",
+      "valid_until_utc": "2026-08-02T00:16:47Z"
+    },
+    "xid_monitoring": {
+      "available": true,
+      "method": "nvmlEventSetWait_v2_exact_xid",
+      "quiet_ms": 1000,
+      "library_path": "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.610.43.02",
+      "library_sha256": "2dc828b3f5027f98e05c7607c1d8129d11bd28de4c2091c5cd7e32dbc21ec172",
+      "library_version": "13.610.43.02"
+    },
+    "stream_offset_search_enabled": true,
+    "stream_mask_off_candidates": [280],
+    "global_next_matrix_accepted": true
+  },
+  "baseline": {
+    "blocks_per_sm": 32,
+    "iterations": 4096,
+    "threads_per_block": 256,
+    "minimum_sm_coverage_fraction": 0.75,
+    "trials_per_gpu": 3
+  },
+  "single_tpc_matrix_after_explicit_promotion": {
+    "modes": ["global", "next", "stream"],
+    "tpc_bits": [0, 31, 32, 63],
+    "trials_per_cell": 3,
+    "allowed_observed_sm_count": [1, 2],
+    "iterations": 4096,
+    "blocks": 4096,
+    "threads_per_block": 256
+  },
+  "promotion_requirements": [
+    "SATISFIED: every source approval pin holds the verified current artifact digest",
+    "SATISFIED: the reserved physical GPU UUID and a time-bound exclusive reservation lease are recorded",
+    "SATISFIED: the sealed NVML library identity and version are pinned from a real-hardware monitor run",
+    "SATISFIED: unmasked Gate-A0 baseline evidence for this GPU is accepted in gate_a0_4090_v2_seed1_fleet5_20260731",
+    "SATISFIED: the global/next matrix is accepted in gate_a_masked_global_next_gpu1_20260801, which is the precondition this manifest names for enabling stream",
+    "STREAM OFFSET IS REVERSE-ENGINEERED, NOT AN INTERFACE: MASK_OFF=+280 (total 0x5fc) was recovered by writing into an opaque CUstream struct on driver 610.43.02, because upstream's validated table stops at CUDA 12.8. It is pinned to this driver version and a driver update invalidates it, possibly silently. See experiments/probes/cuda133-stream-offset/",
+    "REFRESH BEFORE EACH RUN: valid_from_utc/valid_until_utc must cover the whole matrix and be committed clean, because the reservation is part of the formal run identity"
+  ]
+}
