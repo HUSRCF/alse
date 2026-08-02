@@ -24,18 +24,19 @@
      profiler 可见真实 stream overlap、两 stream 互斥分区并发执行
   2. **AMD 映射仅抽样 4/32 bit**，与 NVIDIA 线当初 4/64 的过度外推是同一
      类问题，须扫满 32 bit 才能作全 die 主张
-  3. 第二 GPU SKU 预约仍未关闭（Phase 0 硬门）。**R9700 是否可充当该 SKU
-     待定**——它确实是完全不同的厂商与架构，但 plan 原文指定 H100 优先、
-     A100/A800 备选，是否改判需显式决策
+  3. 第二 GPU SKU 预约仍未关闭（Phase 0 硬门）。**已决定：R9700 不顶替该
+     要求。** AMD 线是 NVIDIA 线的补充而非替代，因此 NVIDIA 侧的第二 SKU
+     （H100 优先，A100/A800 备选）仍须独立覆盖，该硬门不因 AMD 线的进展
+     而关闭
   4. offline wheelhouse 从零重建仍未完成（Phase 0 硬门）
-  5. **plan 的 Gate A 条文以 NVIDIA 措辞写成**（「编队内全部 5 张 4090」、
-     TPC、native 更新）。AMD 成为主线后，Gate A 是被替代还是被补充，须
-     显式决策后再改写条文，不得默认套用
+  5. **已决定：AMD 线补充而非替代 NVIDIA 线。** 原 Gate A 条文（编队 5 张
+     4090、TPC、native 更新）继续对 NVIDIA 侧完整有效且仍欠五条；AMD 侧
+     另立平行的 Gate A-AMD 条文，两条线各自独立通过，互不顶替
 - Next three actions:
   1. AMD 侧扫满 32 个 mask bit，取得全 die 映射的正式证据
-  2. AMD 侧补齐 Gate A 剩余四条：并发互斥分区、10,000 次重配置、
-     mask 更新延迟分布、masked/unmasked 确定性一致
-  3. 就上述 blocker 3 与 5 取得决策后再改写 Gate A 条文
+  2. AMD 侧补齐 Gate A-AMD 剩余五条：并发互斥分区、10,000 次重配置、
+     mask 更新延迟分布、masked/unmasked 确定性一致、可观测 overlap
+  3. NVIDIA 侧第二 SKU 预约（H100 优先）——不因 AMD 线进展而放松
 - Latest run IDs / commit: HEAD 见 git log；AMD baseline
   `bs1-5c2669b73ffd90727f08`，AMD 聚合
   `experiments/aggregates/amd_r9700_cu_mask_20260802.json`
@@ -267,6 +268,29 @@ $$
 - native 更新 p99 不超过 100 μs。
 - deterministic correctness 不因 mask 或发射顺序破坏。
 - profiler 中可观察到真实 stream overlap。
+
+验收 Gate A-AMD（2026-08-02 新增，**补充而非替代上面的 Gate A**）：
+
+单卡 `gfx1201`（Radeon AI PRO R9700，32 个可掩码单元），机制为
+`hipExtStreamCreateWithCUMask` 与 `ROC_GLOBAL_CU_MASK`。上面的 Gate A 条文
+以 NVIDIA 措辞写成，继续对 NVIDIA 侧完整有效；AMD 侧按下列平行条文验收，
+两者各自独立通过，**任何一侧的通过都不顶替另一侧**，NVIDIA 的第二 GPU SKU
+覆盖要求亦不因本条文而关闭。
+
+- 全部 32 个 mask bit 均建立实测 `mask bit -> 单元` 映射，且跨两种机制一致。
+  不得由抽样若干 bit 外推全 die——NVIDIA 侧曾以 4/64 抽样过度外推，已记录。
+- probe kernel 100% 只落在该 bit 经实测映射得到的单元集合。
+- 两个 CU-masked stream 在同一进程内互斥分区且并发执行。判据必须是
+  「落在各自 oracle 预测的集合内」，**不得**用「两臂 SM 集合不相交」——
+  NVIDIA 侧实测证明未加 mask 的对照组同样不相交。
+- 10,000 次动态重配置无崩溃、越界或错误 mask；因 `hipExtStreamGetCUMask`
+  可读回，每次重配置均须读回校验而非仅靠 kernel 行为间接推断。
+- 记录 mask 配置延迟分布（p50/p99）。**语义与 NVIDIA 不同须如实写明**：
+  HIP 在建流时确定掩码，而非就地更新已有 stream，因此「更新延迟」在两平台
+  上不是同一件事，不得直接比较。
+- deterministic correctness 不因 mask 或发射顺序破坏。
+- 并发 overlap 可观测：以 kernel 内时钟记录各 block 的进入/退出时刻，
+  证明两臂执行区间实际重叠。
 
 若 08-12 未通过，允许使用第 3 周前三天修复；若 08-15 仍未通过，停止动态 SM 核心投稿路线，保留 temporal-only artifact，并明确标记 full-paper Gate A 失败，不使用 MPS 冒充等价结果。
 
