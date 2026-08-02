@@ -1,0 +1,88 @@
+{
+  "verdict": {
+    "checks": {
+      "matrix_section_keys_exact": true,
+      "matrix_declaration_well_formed": true,
+      "die_sms_per_tpc_is_integral": true,
+      "observation_records_well_formed": true,
+      "single_gpu_identity": true,
+      "matrix_complete": true,
+      "no_unexpected_cells": true,
+      "observed_sm_count_within_allowed": true,
+      "observed_sms_within_device_range": true,
+      "deterministic_across_trials": true,
+      "consistent_across_modes": true,
+      "disjoint_across_bits": true,
+      "mapping_matches_die_sms_per_tpc": true,
+      "baseline_is_from_the_same_gpu": true,
+      "restricts_relative_to_unmasked_baseline": true
+    },
+    "tpc_sm_mapping": {
+      "0": [
+        0
+      ],
+      "15": [
+        29
+      ],
+      "16": [
+        2
+      ],
+      "31": [
+        31
+      ]
+    },
+    "declared_matrix": {
+      "modes": [
+        "global_cu_mask",
+        "stream_cu_mask"
+      ],
+      "tpc_bits": [
+        0,
+        15,
+        16,
+        31
+      ],
+      "trials_per_cell": 3,
+      "expected_cell_count": 24,
+      "observed_cell_count": 24
+    },
+    "errors": [],
+    "accepted": true
+  },
+  "rejected": [],
+  "baseline_units": 32,
+  "dense_index_map": {
+    "536870912": 0,
+    "536871936": 1,
+    "536872960": 2,
+    "536873984": 3,
+    "536936448": 4,
+    "536937472": 5,
+    "536938496": 6,
+    "536939520": 7,
+    "537133056": 8,
+    "537134080": 9,
+    "537135104": 10,
+    "537136128": 11,
+    "537198592": 12,
+    "537199616": 13,
+    "537200640": 14,
+    "537201664": 15,
+    "537395200": 16,
+    "537396224": 17,
+    "537397248": 18,
+    "537398272": 19,
+    "537460736": 20,
+    "537461760": 21,
+    "537462784": 22,
+    "537463808": 23,
+    "537657344": 24,
+    "537658368": 25,
+    "537659392": 26,
+    "537660416": 27,
+    "537722880": 28,
+    "537723904": 29,
+    "537724928": 30,
+    "537725952": 31
+  }
+}

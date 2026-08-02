@@ -1681,3 +1681,31 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   `__smid`/`HW_ID` 寄存器读取，与 `%smid` 不同需另行确认）、AMD 侧的
   provenance/promotion 机制是否复用现有 runner、以及是否需要在 X570 上
   建立独立的 Gate A0 基线。
+- 2026-08-02 / amd-cu-mask-matrix-accepted：AMD 侧第一步（CU 探针）完成，
+  结论比 NVIDIA 侧强得多，且**一次逆向都不需要**。原始记录见
+  `experiments/probes/amd-r9700-cu-mask/`（非正式证据，无 provenance 绑定）。
+  探针 `native/amd_cu_probe/cu_probe.hip` 读 `HW_ID1`（`s_getreg_b32`，
+  HW_REG id 23）作为硬件单元标识，屏蔽低 10 位的 wave/SIMD 字段。字段布局
+  **不照规格解码**，而是用 mask API 当 ground truth 反推——单单元掩码若出现
+  多个标识即证明切法错了。
+  两种独立机制，均为一等接口：`stream_cu_mask`
+  （`hipExtStreamCreateWithCUMask`，HIP 4.2 起文档化并导出）与
+  `global_cu_mask`（`ROC_GLOBAL_CU_MASK` 进程级环境变量）。因此跨模式一致性
+  这条证伪依据在 AMD 上同样成立，无需任何替代方案。
+  矩阵：2 机制 × bit `{0,15,16,31}` × 3 trials = 24 格全部成功，喂给
+  **未经任何修改**的 `validate_masked_tpc_matrix`（NVIDIA 线同一个函数），
+  15 项检查全 PASS、`accepted=true`。
+  **NVIDIA 无对应物的能力**：`hipExtStreamGetCUMask` 可读回实际生效的掩码。
+  NVIDIA 侧掩码写进不透明结构体后不可观测，"写了但无效"与"写了且有效"只能
+  靠 kernel 行为区分；AMD 侧则由 API 直接报告。
+  两处被实测纠正的错误读法（均记录在案）：
+  (1) `multiProcessorCount` 报 32 而 `rocminfo` 报 64 CU，掩码宽度从外部无法
+  判定；且在 `ROC_GLOBAL_CU_MASK` 下该值变为 `popcount(mask)/2`（单 bit 时为
+  **0**），一度使我认定向量宽 64 位。**64 位 sweep 推翻了它**：bit 0–31 各自
+  约束到恰好一个单元，bit 32–63 则完全不掩码，**并且读回 API 报告掩码与请求
+  不符**——即文档所述 "extra elements are ignored"，由读回抓住而非由直方图推断。
+  (2) 同一报告怪癖对探针自身是陷阱：掩码生效时无法向设备查询自身掩码宽度，
+  故宽度改由调用方经 `--maskable-units` 声明，并仅在无掩码时与设备报告交叉核对。
+  另记：掩码 bit 序**不等于**硬件单元序（bit 15 → 单元 29，bit 16 → 单元 2，
+  按 baseline 标识符排序的稠密索引）。标识符归一化经 baseline 自身的有序集合
+  完成，映射表已随证据保存。
