@@ -1,6 +1,6 @@
 {
   "schema_version": "burstserve.amd-cu-manifest/v1",
-  "manifest_id": "amd-r9700-gfx1201-x570-20260802",
+  "manifest_id": "amd-r9700-gfx1201-x570-fulldie-20260802",
   "hardware": {
     "gpu_name": "AMD Radeon AI PRO R9700",
     "gcn_arch": "gfx1201",
@@ -12,10 +12,48 @@
     "probe": "native/amd_cu_probe/cu_probe.hip"
   },
   "matrix": {
-    "modes": ["global_cu_mask", "stream_cu_mask"],
-    "mask_bits": [0, 15, 16, 31],
+    "modes": [
+      "global_cu_mask",
+      "stream_cu_mask"
+    ],
+    "mask_bits": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31
+    ],
     "trials_per_cell": 3,
-    "allowed_observed_unit_count": [1],
+    "allowed_observed_unit_count": [
+      1
+    ],
     "iterations": 4096,
     "blocks": 4096,
     "threads_per_block": 256
