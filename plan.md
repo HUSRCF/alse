@@ -1738,3 +1738,33 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   `applies_to` 必须恰为 `single-card single-operator gfx1201`（声称更宽范围
   如 "all AMD hardware" 会被拒）、且必须非空列出所删守卫。
   全量 493 tests OK（21 skipped）。
+- 2026-08-02 / amd-formal-evidence-accepted：AMD 线产出**第一批正式证据**，
+  来源绑定干净、无 dirty 后缀。
+  运行环境 `husrcf@X570`，Radeon AI PRO R9700 / gfx1201，manifest
+  `amd-r9700-gfx1201-x570-20260802`，source revision
+  `04bfc25b16a77dbf699946282a490fbf99b9b4a2`（干净），探针二进制摘要
+  `d536d473…a6f1` 逐格写入 cell config。
+  矩阵：`{global_cu_mask, stream_cu_mask}` × mask bit `{0,15,16,31}` × 3
+  trials = **24 格全部接受、0 拒绝**，另有同 manifest 身份的 unmasked
+  baseline（`bs1-5c2669b7…`，32 单元）。判据是**与 CUDA 线共用且完全未改**的
+  `validate_masked_tpc_matrix`，15 项全 PASS、`accepted=true`。映射
+  bit → 单元 `{0→0, 15→29, 16→2, 31→31}`——掩码 bit 序不等于硬件单元序。
+  聚合存于 `experiments/aggregates/amd_r9700_cu_mask_20260802.json`
+  （sha256 `bfbeb8e3…8362`）。
+  过程中修掉四个真实问题，均**未放宽任何共享代码**：
+  (1) X570 的 git 为 2.43，而 provenance capture 使用 2.45 才有的
+  `--no-lazy-fetch`，且拒绝 group/world 可写的 git 可执行文件。解法是在用户空间
+  conda 环境装 git 2.55（`~/Code/alse-tools`，不动系统、无 root）并 `chmod g-w,o-w`，
+  由 `BURSTSERVE_GIT` 指定——**没有为迁就旧环境放宽 capture**，因为 CUDA 线同样
+  依赖这两项。
+  (2) 仓库内的 libsmctrl submodule 未注册即无法精确描述工作树；由调用方按
+  `vendor/LIBSMCTRL_SOURCE.json` 的 pin 显式声明 gitlink。AMD 线不使用该库，
+  但共享同一仓库，未登记的 gitlink 是拒绝理由而非可跳过的细节。
+  (3) **自指问题**：驱动把聚合写进它刚刚绑定的那棵树里的受跟踪路径，导致每次
+  重跑都把上一次的输出看成修改而自我标脏。改为写入允许的未跟踪根
+  `experiments/runs`，curated 副本另行收取。
+  (4) 构建产物按设计就是未跟踪的，`snapshot.clean` 计入未跟踪条目，因此即使
+  零 staged/零 unstaged 仍判为脏。新增**构建清单例外**：接受且仅接受已认证清单
+  中的文件、且摘要必须逐字节相符，其余任何未跟踪路径一律拒绝；revision 的
+  脏/净判定改依据受跟踪变更。这不是放宽——探针摘要本就参与每格 cell 身份。
+  全量 493 tests OK（21 skipped）。
