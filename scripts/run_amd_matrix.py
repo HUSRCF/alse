@@ -34,7 +34,15 @@ def main() -> int:
     probe = REPO / "build/amd_cu_probe/cu_probe"
     run_root = REPO / "experiments/runs"
     run_root.mkdir(parents=True, exist_ok=True)
-    revision = source_revision(REPO)
+    # The repository carries the vendored CUDA library as a submodule. The
+    # AMD line does not use it, but the tree cannot be bound exactly while a
+    # gitlink is unaccounted for, so declare it at the commit it is pinned at.
+    libsmctrl_pin = json.loads(
+        (REPO / "vendor/LIBSMCTRL_SOURCE.json").read_text()
+    )["source_commit"]
+    revision = source_revision(
+        REPO, expected_gitlinks={"vendor/libsmctrl": libsmctrl_pin}
+    )
     print(f"source revision: {revision}")
 
     matrix = manifest["matrix"]

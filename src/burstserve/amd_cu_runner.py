@@ -140,11 +140,23 @@ def validate_amd_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     return dict(manifest)
 
 
-def source_revision(repo_root: Path, *, git: str = "/usr/bin/git") -> str:
-    """Bind the run to the exact source tree, refusing an ambiguous one."""
+def source_revision(
+    repo_root: Path,
+    *,
+    expected_gitlinks: Mapping[str, str] | None = None,
+    git: Path = Path("/usr/bin/git"),
+) -> str:
+    """Bind the run to the exact source tree, refusing an ambiguous one.
+
+    Registered submodules must be declared with the commit they are pinned
+    at. The AMD line does not use the vendored CUDA library, but it shares a
+    repository with it, and an unregistered gitlink means the tree cannot be
+    described exactly -- which is a refusal, not a detail to skip.
+    """
 
     snapshot = capture_repository(
         repo_root.resolve(),
+        expected_gitlinks=dict(expected_gitlinks or {}),
         allowed_untracked_roots=("experiments/runs", "related_work"),
         allow_untracked_regular_files=False,
         git=git,
@@ -153,12 +165,19 @@ def source_revision(repo_root: Path, *, git: str = "/usr/bin/git") -> str:
         raise AmdContractError(
             "could not bind the source tree: " + ";".join(snapshot.errors)
         )
-    head = snapshot.head_commit
+    head = snapshot.head_oid
     if not head:
         raise AmdContractError("source tree has no HEAD commit")
-    if snapshot.dirty_paths:
+    if not snapshot.clean:
+        # Record the exact departure rather than refusing outright: a run from
+        # a modified tree is still evidence, but it must never be mistaken for
+        # one from the committed source.
+        divergence = {
+            "staged": sorted(str(p) for p in snapshot.staged_changes),
+            "unstaged": sorted(str(p) for p in snapshot.unstaged_changes),
+        }
         digest = hashlib.sha256(
-            canonical_json(sorted(snapshot.dirty_paths)).encode("utf-8")
+            canonical_json(divergence).encode("utf-8")
         ).hexdigest()[:16]
         return f"{head}+dirty-{digest}"
     return str(head)
