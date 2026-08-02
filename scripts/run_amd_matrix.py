@@ -47,11 +47,23 @@ def main() -> int:
         (REPO / "vendor/LIBSMCTRL_SOURCE.json").read_text()
     )["source_commit"]
     import hashlib
-    probe_digest = hashlib.sha256(probe.read_bytes()).hexdigest()
+
+    # Every build artifact this repository's AMD line produces, named
+    # explicitly. Discovering them instead would make "unexpected untracked
+    # path" unfalsifiable, which is the whole point of the check.
+    attested = {}
+    for relative in (
+        "build/amd_cu_probe/cu_probe",
+        "build/amd_cu_probe/gate_a_probe",
+    ):
+        path = REPO / relative
+        if path.is_file():
+            attested[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    probe_digest = attested["build/amd_cu_probe/cu_probe"]
     revision = source_revision(
         REPO,
         expected_gitlinks={"vendor/libsmctrl": libsmctrl_pin},
-        attested_build_files={"build/amd_cu_probe/cu_probe": probe_digest},
+        attested_build_files=attested,
         git=GIT,
     )
     print(f"attested probe: {probe_digest}")
