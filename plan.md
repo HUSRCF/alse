@@ -1709,3 +1709,32 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   另记：掩码 bit 序**不等于**硬件单元序（bit 15 → 单元 29，bit 16 → 单元 2，
   按 baseline 标识符排序的稠密索引）。标识符归一化经 baseline 自身的有序集合
   完成，映射表已随证据保存。
+- 2026-08-02 / amd-reduced-contract-scoped-and-enforced：按授权对 AMD 线做
+  减法，**并把「仅限本环境」做成机制而非仅写在文档里**。用户明确要求确认：
+  这是**只针对 AMD 单卡环境**的减法，不是修订后的标准，NVIDIA 线不得援引。
+  账本见新增的 `docs/amd-reduced-contract.md`，逐条列出：删掉了什么、它在
+  CUDA 侧防的是什么风险、为什么该风险在此环境不存在、以及**什么条件下必须
+  加回来**。删除项与其复原条件例：NVML Xid 监视器/lease 毒化/隔离态——防的是
+  盲写把卡打挂（实测过 `Xid 31 ... ACCESS_TYPE_VIRT_WRITE`），此处无盲写，
+  **一旦 AMD 侧需要任何未文档化的写入即须恢复**；独占预约与 busy-GPU 预检——
+  防的是他人中途抢卡，**一旦出现第二个使用者或调度器即须恢复**；
+  sealed-memfd exec 与 parent-death guard——防的是共享租户，同上；MPS bypass
+  ——ROCm 此配置无对应物；多卡 A0——单卡无跨卡主张可作，**加第二张卡即须恢复**。
+  **未减的部分**（属于证据质量而非风险缓解，全部保留）：内容寻址 run id、
+  Git provenance 绑定、构建认证、运行前声明矩阵形状、逐格契约检查，以及
+  `validate_masked_tpc_matrix` **完全未改**——含其 ≥2 机制、≥2 bit、≥2 trial
+  下限，跨模式一致、bit 间不相交，以及 masked 集合须为同卡 baseline 真子集。
+  另有一项是**增项而非减项**：`hipExtStreamGetCUMask` 读回检查，CUDA 侧无法
+  实现。
+  三重强制机制（文档挡不住渗漏，这些能）：
+  (1) 新模块 `src/burstserve/amd_cu_runner.py` **不 import 也不修改**
+  `smctrl_runner`，因此任何为 AMD 所做的改动在结构上无法放宽 CUDA 门；
+  (2) AMD cell 使用独立 schema `burstserve.amd-cu-cell/v1`，而 CUDA 校验器
+  逐字符钉住自己的 schema 串，故 AMD 证据**无法**被计入 CUDA 聚合；
+  (3) `tests/test_amd_cu_runner.py` 用 AST 检查真实 import（而非子串——
+  子串检查会误报模块 docstring 里那句说明分离的话，我第一版正是这么翻的车），
+  并断言未晋级 CUDA manifest 仍拒绝全部三种 masked 模式。
+  AMD manifest 契约本身也强制自我声明：`reduced_contract` 必须指向该账本文档、
+  `applies_to` 必须恰为 `single-card single-operator gfx1201`（声称更宽范围
+  如 "all AMD hardware" 会被拒）、且必须非空列出所删守卫。
+  全量 493 tests OK（21 skipped）。
