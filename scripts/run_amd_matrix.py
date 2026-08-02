@@ -8,6 +8,7 @@ Runs the declared matrix plus an unmasked baseline through
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +24,11 @@ from burstserve.amd_cu_runner import (  # noqa: E402
 )
 from burstserve.gate_a_results import validate_masked_tpc_matrix  # noqa: E402
 from burstserve.provenance import canonical_json  # noqa: E402
+
+# Provenance capture hardens its git invocations with flags that arrived in
+# git 2.45. The host may ship an older one; point at a newer binary rather
+# than relaxing the capture, which the CUDA line also depends on.
+GIT = Path(os.environ.get("BURSTSERVE_GIT", "/usr/bin/git"))
 
 
 def main() -> int:
@@ -41,7 +47,7 @@ def main() -> int:
         (REPO / "vendor/LIBSMCTRL_SOURCE.json").read_text()
     )["source_commit"]
     revision = source_revision(
-        REPO, expected_gitlinks={"vendor/libsmctrl": libsmctrl_pin}
+        REPO, expected_gitlinks={"vendor/libsmctrl": libsmctrl_pin}, git=GIT
     )
     print(f"source revision: {revision}")
 
