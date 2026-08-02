@@ -1757,3 +1757,38 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   中的文件、且摘要必须逐字节相符，其余任何未跟踪路径一律拒绝；revision 的
   脏/净判定改依据受跟踪变更。这不是放宽——探针摘要本就参与每格 cell 身份。
   全量 493 tests OK（21 skipped）。
+- 2026-08-02 / gate-a-amd-passed：**Gate A-AMD 全部条款通过**。这是补充条款，
+  NVIDIA 侧的 Gate A 仍欠五条、第二 GPU SKU 硬门亦未关闭，两者互不顶替。
+  (1) **全 die 映射**：manifest `amd-r9700-gfx1201-x570-fulldie-20260802`，
+  source revision `8a4006bb…`（干净），双机制 × **全部 32 个 mask bit** ×
+  3 trials = **192 格全接受、0 拒绝**，`validate_masked_tpc_matrix`（与
+  NVIDIA 线共用且未改）15 项全 PASS。32 个 bit 各自映射到 32 个互不相同的
+  单元，并集恰为全部 32 单元。聚合
+  `experiments/aggregates/amd_r9700_cu_mask_fulldie_20260802.json`
+  （sha256 `87e77c29…`）。**不再是抽样外推**——先前 4/32 的版本已被此结果取代。
+  (2) **并发互斥分区**：两个 CU-masked stream 各请求 8 个单元，实测各得
+  8 个、**相交 0 个**、时间窗重叠 **100.0 ms**（kernel 内 100 MHz 常速时钟
+  记录各 block 进出时刻），`partitioned=true`。**未加掩码的对照组**两臂各
+  覆盖全部 32 单元、相交 32 个、`partitioned=false`——判据是「单元数等于
+  请求数且不相交且时间重叠」，不是「不相交」。此处顺带纠正一处我自己的
+  空真判据：最初的 `matches_alone_oracle` 对未掩码对照恒为真（其"单独跑"
+  本就是全 die），已改为上述可判别形式。
+  另记平台差异：NVIDIA 侧未掩码对照**也**不相交（调度器按奇偶劈分 die），
+  AMD 侧未掩码对照则完全重叠。故「不相交」在 NVIDIA 上毫无判别力，在 AMD
+  上有一些——但两边都不采用它作判据。
+  (3) **10,000 次动态重配置**：0 崩溃、0 越界、0 错误 mask。每一次均经
+  `hipExtStreamGetCUMask` **读回校验**（0 不符），而非仅由 kernel 落点间接
+  推断——NVIDIA 侧无此能力。
+  (4) **配置延迟，语义差异如实记录**：HIP 在**建流时**固定掩码，不能就地
+  更新已有 stream，因此存在两个截然不同的代价。建流
+  `hipExtStreamCreateWithCUMask` **p50 6885 μs / p99 7852 μs**——是 NVIDIA
+  侧 Gate A 那条 100 μs 预算的**约 70 倍，绝不可置于关键路径**。真正的运行
+  原语是**预建掩码流池后在其间切换**：10,000 次实测 **p50 1.11 μs /
+  p99 2.22 μs / max 30.4 μs**，0 越界 0 失败，比 100 μs 预算低约 45 倍。
+  **这两个数字不可与 NVIDIA 的「mask 更新延迟」直接比较**，机制不同名。
+  该发现直接约束调度器设计：AMD 上必须预建流池，不能按需建流。
+  (5) **确定性**：固定 seed 校验和在 unmasked 与 6 个不同单掩码下逐位相同，
+  且重复发射不改变结果。
+  (6) **可观测 overlap**：由 kernel 内时钟给出每个 block 的进入/退出时刻，
+  实测重叠 100.0 ms，强于依赖 profiler 截图。
+  原始记录 `experiments/probes/amd-r9700-cu-mask/gate_a_experiments.jsonl`。
