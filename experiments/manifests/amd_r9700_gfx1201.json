@@ -1,0 +1,37 @@
+{
+  "schema_version": "burstserve.amd-cu-manifest/v1",
+  "manifest_id": "amd-r9700-gfx1201-x570-20260802",
+  "hardware": {
+    "gpu_name": "AMD Radeon AI PRO R9700",
+    "gcn_arch": "gfx1201",
+    "gpu_uuid": "GPU-55d91e3d9b7d11e6",
+    "maskable_units": 32,
+    "device_ordinal": 0
+  },
+  "source": {
+    "probe": "native/amd_cu_probe/cu_probe.hip"
+  },
+  "matrix": {
+    "modes": ["global_cu_mask", "stream_cu_mask"],
+    "mask_bits": [0, 15, 16, 31],
+    "trials_per_cell": 3,
+    "allowed_observed_unit_count": [1],
+    "iterations": 4096,
+    "blocks": 4096,
+    "threads_per_block": 256
+  },
+  "reduced_contract": {
+    "document": "docs/amd-reduced-contract.md",
+    "applies_to": "single-card single-operator gfx1201",
+    "dropped_guards": [
+      "nvml_xid_monitor_and_acceptance_gate",
+      "gpu_lease_quarantine_and_armed_poison",
+      "exclusive_reservation_evidence",
+      "busy_gpu_foreign_process_preflight",
+      "sealed_memfd_launcher",
+      "parent_death_guard",
+      "mps_bypass_pinning",
+      "multi_gpu_fleet_baseline"
+    ]
+  }
+}
