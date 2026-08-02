@@ -1641,3 +1641,19 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   `10d0d2b7…c43d`、attestation `936042f0…4da6`）。已接受的旧证据不受影响：
   每个 cell 内嵌自己的 manifest 副本与 pin，校验对内嵌副本进行。
   全量 481 tests OK（21 skipped）。
+- 2026-08-02 / all-modes-matrix-reaccepted-on-attested-offset：以移出 vendor
+  之后的机制重跑三模式矩阵并通过。36 格（`{global,next,stream}` × bit
+  `{0,31,32,63}` × 3 trials）全部 exit 0，逐格通过
+  `validate_masked_cell_contract`（0 拒绝），`validate_masked_tpc_matrix`
+  15 项全 PASS、`accepted=true`，映射与此前完全一致
+  （bit N → SM `{2N,2N+1}`）。stream 格现在经 `--stream-mask-offset 1532`
+  传递绝对偏移，子进程环境中**不再有 `MASK_OFF`**，stderr 为空。
+  聚合存于
+  `experiments/aggregates/gate_a_masked_all_modes_gpu1_attested_offset_20260802.json`。
+  首次重跑时 12 个 stream 格被拒，暴露了我迁移时漏掉的第二处旧契约：
+  `validate_masked_cell_contract` 仍要求「stream 模式必须存在 `MASK_OFF`
+  环境变量」——正是新机制刻意消除的那个东西。改为：环境里出现偏移只在
+  非 stream 模式下算错误（历史证据合法携带它），而 stream 模式在环境未提供
+  偏移时必须在 argv 中携带 `--stream-mask-offset`；任何模式下 argv 出现该
+  参数而模式不是 stream 亦为错误。这样 2026-08-01 已接受的 36 格与今日的
+  36 格都能校验，且两种形态都无法省略偏移来源。

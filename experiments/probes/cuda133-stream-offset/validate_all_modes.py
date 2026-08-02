@@ -20,7 +20,7 @@ RUNS = Path("/data/zhuoxu/alse/experiments/runs")
 S = Path(__file__).parent
 GPU = 1
 UUID = "GPU-4cc58bdd-dfba-b754-4ddf-976885e4abfb"
-BASELINE_RUN = "bs1-2279b0f0ea5a10c90196092e3cd2fd89056e362e1ffd1b91e9ba2b2a3eaf6ec0"
+BASELINE_RUN = "bs1-3a60e237d5d2a4481bb8d938fd61bdf9bd801a726862b1b0440227daaff082eb"
 
 
 def load(run_id):

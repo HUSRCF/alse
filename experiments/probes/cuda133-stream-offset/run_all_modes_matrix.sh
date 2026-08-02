@@ -17,10 +17,10 @@ set -u
 cd /data/zhuoxu/alse
 
 MANIFEST=experiments/manifests/gate_a_4090_masked_all_modes.json
-# Reverse-engineered CUDA 13.3 CUstream mask offset: total 0x5fc,
-# expressed as a delta from libsmctrl's 0x4e4 base. Only this exact
-# value is declared in the manifest; the gate refuses any other.
-STREAM_MASK_OFF=280
+# Reverse-engineered CUDA 13.3 CUstream mask offset, absolute: 0x5fc.
+# The probe refuses anything but the constant compiled into it, and
+# the manifest declares only this value.
+STREAM_MASK_OFF=1532
 GPU=1
 SEED=1
 S=/tmp/claude-1005/-data-zhuoxu-alse/bda35aff-72c5-4f5e-ab9d-b70d8c02190a/scratchpad/streamoff

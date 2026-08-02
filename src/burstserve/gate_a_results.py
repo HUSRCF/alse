@@ -4983,9 +4983,28 @@ def validate_masked_cell_contract(
             errors.append(
                 "masked child environment must carry the expected parent PID"
             )
-        if ("MASK_OFF" in environment) != (mode == "stream"):
+        # The offset used to reach the child as MASK_OFF. It now travels as an
+        # argument the probe checks against its attested constant, and an
+        # offset in the environment is exactly the thing that must not happen:
+        # it would let the surrounding process redirect a blind struct write,
+        # and the probe refuses to run when it is set. Cells recorded before
+        # that change legitimately carry it, so accept either shape but
+        # require the argument whenever the environment does not supply it.
+        legacy_environment_offset = "MASK_OFF" in environment
+        if legacy_environment_offset and mode != "stream":
             errors.append(
-                "MASK_OFF must be present for stream mode and absent otherwise"
+                "a mask offset may only ever appear for stream mode"
+            )
+        if mode == "stream" and not legacy_environment_offset:
+            if not isinstance(argv, list) or "--stream-mask-offset" not in argv:
+                errors.append(
+                    "stream command argv does not carry the attested offset"
+                )
+        if mode != "stream" and isinstance(argv, list) and (
+            "--stream-mask-offset" in argv
+        ):
+            errors.append(
+                "a mask offset may only ever appear for stream mode"
             )
 
     histogram = native.get("observed_histogram")
