@@ -2,78 +2,43 @@
 
 ## 执行状态
 
-- Last updated: 2026-07-31
-- Current phase: 第 1 周——工程基线与可复现环境；并行进行 Gate A0
-  fail-closed 预研，不视为进入第 2 周
-- Current gate: Phase 0 baseline reproducibility；**Gate A0 已在 5 张编队
-  （GPU 1/2/3/4/7）下通过**（2026-07-31，report `683c0ca1…8f0e`）；
-  masked Gate A 仍未开始，promotion lock 保持关闭
+- Last updated: 2026-08-02
+- Current phase: 第 2 周——libsmctrl 高风险可行性闸门（masked Gate A）。
+  **主推进平台自 2026-08-02 起转为 AMD**（`husrcf@X570`，Radeon AI PRO
+  R9700 / gfx1201），NVIDIA 线的成果保留但不再是推进重心
+- Current gate: Gate A。**NVIDIA 侧 TPC→SM 映射已取得正式证据并接受**
+  （三模式 36 格，`gate_a_masked_all_modes_gpu1_attested_offset_20260802`）；
+  **AMD 侧 CU 映射已取得正式证据并接受**（双机制 24 格，
+  `amd_r9700_cu_mask_20260802`，sha256 `bfbeb8e3…8362`）。
+  但 Gate A 的六条验收里两侧都只完成了「映射」这一条，其余四条未做
 - Status: in_progress
-- Last accepted evidence: Phase-0 baseline 与 same-mode correctness 均通过；
-  专用 `burstserve-phase0` 环境的 25+52 包 relocatable lock exact-match；其
-  stock trials 2/3 跨 GPU latent SHA 完全一致且与原栈相同；14 个 run 中
-  12 accepted、2 legacy completed。Gate A0 的
-  `experiments/aggregates/gate_a0_4090_dd8c927_seed1_partial_20260730.json`
-  已在 commit `d967722` 固化：GPU 1/2/3/4/7 各 3 次，共 15/15
-  unmasked cells accepted，均为 4096 blocks、128/128 SM coverage；
-  aggregate input SHA256 为 `08ef4053…a188`。该报告明确判定完整 Gate A0
-  为 `false`，GPU 0/5/6 各缺 3 次 trial。纯 CPU simulator foundation
-  已在 commit `82a27c4` 固化：dual-ledger 原子记账、tenant/request
-  生命周期、canonical schema codec 与三态 I/O 模型经两套解释器各
-  68/68 测试及六轮独立攻击复审通过。确定性 lifecycle trace 的 canonical
-  JSONL、整数 PRNG、线性资源上界、自校验 replay evidence 已在 commit
-  `827beb8` 固化：两套解释器各 107/107 完整 simulator 测试，三轮独立
-  资源放大与伪造攻击终审无阻断项；这些仍只是获准的后续阶段预研，不代表
-  Gate C 通过。隔离、raw-byte Git provenance 已在 commit `3820a98`
-  固化：拒绝 repo config/attributes/filter/fsmonitor 派生执行，覆盖
-  SHA-1/SHA-256、linked/split index、递归 gitlink，并对 HEAD commit、
-  当前完整 tree closure 及所有相关 blobs 在 raw scan 前后重算对象哈希；
-  两套解释器各 18/18 且独立攻击复审无模块级阻断项。其 formal caller /
-  build-exception 接入仍在当前 dirty 批次中，不能据此生成正式证据。
-- Active blockers: 尚未完成第二 GPU SKU 的外部预约；从锁重建的干净
-  conda base 已成功，但数 GB pip wheelhouse 按高带宽机下载约定待回传后
-  完成 offline-install 验证；masked CUDA 13.3 probe 仍缺独占 GPU 预约、
-  跨 trial/bit validator 与经审查的 promotion 授权（artifact pin 已填，
-  但 promotion lock 完全关闭，三种 masked 模式实测 `permitted=False`）。
-  **Gate A0 已不再是 blocker**：2026-07-31 编队缩为 5 张后，GPU 1/2/3/4/7
-  各 3 次共 15/15 accepted，加 2 个有效 sealed rejection，报告判定
-  `complete=true`。
-  **但编队卡的可用性会被同机用户抢占，这是一个已实际发生的前向风险**：
-  2026-08-01 观测到 `yitong` 把 VLLM 双卡服务从 GPU 0+6 迁到 GPU 6+7，
-  **占用了编队内的 GPU 7**（在其 A0 与等价性数据采集完成约 20 分钟后）；
-  同时 GPU 0 反而空出。已固化的 Gate A0 证据不受影响（一次性测量、
-  identity 已锁、证据不可变），矩阵卡 GPU 1/2/3/4 亦未受影响，丢失的仅是
-  备用卡。**风险在于重跑**：Gate A0 的门槛是编队 5 张全过，若日后任何源码
-  改动导致 identity 变化而需重采，且届时 GPU 7 仍被占用，则只能凑出 4 张、
-  达不到 `REQUIRED_GATE_A0_GPU_COUNT_V2 = 5`，Gate A0 将由 complete 退回
-  incomplete。即：**当前的通过状态依赖「重跑时 GPU 7 恰好可用」这一不可控
-  条件**。已决定按 A 方案处理——不因此改动编队或阈值，仅记录风险；待真正
-  需要重采时再依当时的卡况做一次范围决策。第 13–14 周主实验须为「某张矩阵
-  卡中途被抢占」准备预案；已冻结的「arm 比较必须同卡配对」规则正好兜住这
-  一情形：单卡中断只损失该卡的 cell，不污染其他卡的结果。
+- Last accepted evidence: AMD `amd-r9700-gfx1201-x570-20260802`，source
+  revision `04bfc25b…`（干净），探针摘要 `d536d473…a6f1`；24 格全接受、
+  0 拒绝，unmasked baseline 32 单元，判据为与 NVIDIA 线共用且未修改的
+  `validate_masked_tpc_matrix`，15 项全 PASS。NVIDIA 侧：Gate A0 五卡
+  15/15（`683c0ca1…8f0e`），masked 三模式 36 格接受，CUDA 13.3 stream
+  offset `0x5fc` 经全 64 bit 双射验证
+- Active blockers:
+  1. **Gate A 六条验收只完成一条**（映射）。未做：10,000 次动态重配置、
+     mask 更新 p99 ≤ 100 μs、masked/unmasked/co-run 确定性一致、
+     profiler 可见真实 stream overlap、两 stream 互斥分区并发执行
+  2. **AMD 映射仅抽样 4/32 bit**，与 NVIDIA 线当初 4/64 的过度外推是同一
+     类问题，须扫满 32 bit 才能作全 die 主张
+  3. 第二 GPU SKU 预约仍未关闭（Phase 0 硬门）。**R9700 是否可充当该 SKU
+     待定**——它确实是完全不同的厂商与架构，但 plan 原文指定 H100 优先、
+     A100/A800 备选，是否改判需显式决策
+  4. offline wheelhouse 从零重建仍未完成（Phase 0 硬门）
+  5. **plan 的 Gate A 条文以 NVIDIA 措辞写成**（「编队内全部 5 张 4090」、
+     TPC、native 更新）。AMD 成为主线后，Gate A 是被替代还是被补充，须
+     显式决策后再改写条文，不得默认套用
 - Next three actions:
-  1. 进入第 2 周 masked Gate A 的前置准备：跨 trial/bit validator、Xid
-     monitor 真实覆盖、CUDA 13.3 stream offset 政策；在三者齐备并经独立
-     复审前，promotion lock 一律不开
-  2. 推进第二 GPU SKU 预约与 offline wheelhouse 重建这两个外部 blocker
-     （Phase 0 仍因这两项未关闭）
-  3. 在纯 CPU 侧继续 plan.md 已获准的 simulator 预研（action selector、
-     predictor error），不产生正式 profile 或性能 claim
-- Latest run IDs / commit: HEAD `5bcc55f`；本批七个提交依次为
-  `c4641da`（provenance fsync fail-closed）、`955fc67`（NVML Xid monitor）、
-  `8caaf60`（sealed native launch + build attestation）、
-  `ec33347`（environment 接入 raw git provenance）、
-  `35f3f7f`（runner v2 formal launch contract + manifest v2）、
-  `8f6b3c4`（Gate v2 evidence 校验，无 schema downgrade）、
-  `5bcc55f`（填入 fresh v2 artifact pin，promotion lock 不变）。
-  最新正式 GPU 证据仍是旧 v1 identity 的 GPU 1/2/3/4/7 各 3 次、
-  15/15 unmasked subset，aggregate input SHA256 仍为 `08ef4053…a188`，
-  report SHA256 仍为 `f35164ab…22bf`（已加回归测试锁定逐字节不变）；
-  代表 run `bs1-f3628358…ba7`（GPU1）至 `bs1-f3679d41…bf2f`（GPU7）；
-  sealed rejection `bs1-81ee41a6…b59` / `bs1-73dbd73a…27d`。
-  clean-commit fresh v2 build identity（仅构建身份，非 GPU 证据）：
-  launcher `81524e3d…8b01`、real probe `b4e6026a…8fcc`、
-  stamp `1dba5e72…4406`、attestation `67c0c921…bb38`
+  1. AMD 侧扫满 32 个 mask bit，取得全 die 映射的正式证据
+  2. AMD 侧补齐 Gate A 剩余四条：并发互斥分区、10,000 次重配置、
+     mask 更新延迟分布、masked/unmasked 确定性一致
+  3. 就上述 blocker 3 与 5 取得决策后再改写 Gate A 条文
+- Latest run IDs / commit: HEAD 见 git log；AMD baseline
+  `bs1-5c2669b73ffd90727f08`，AMD 聚合
+  `experiments/aggregates/amd_r9700_cu_mask_20260802.json`
 
 ### 当前阶段 requirement alignment（2026-07-30）
 
