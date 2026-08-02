@@ -46,9 +46,15 @@ def main() -> int:
     libsmctrl_pin = json.loads(
         (REPO / "vendor/LIBSMCTRL_SOURCE.json").read_text()
     )["source_commit"]
+    import hashlib
+    probe_digest = hashlib.sha256(probe.read_bytes()).hexdigest()
     revision = source_revision(
-        REPO, expected_gitlinks={"vendor/libsmctrl": libsmctrl_pin}, git=GIT
+        REPO,
+        expected_gitlinks={"vendor/libsmctrl": libsmctrl_pin},
+        attested_build_files={"build/amd_cu_probe/cu_probe": probe_digest},
+        git=GIT,
     )
+    print(f"attested probe: {probe_digest}")
     print(f"source revision: {revision}")
 
     matrix = manifest["matrix"]

@@ -20,7 +20,7 @@ import json
 import os
 import subprocess
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .git_provenance import capture_repository
@@ -144,6 +144,7 @@ def source_revision(
     repo_root: Path,
     *,
     expected_gitlinks: Mapping[str, str] | None = None,
+    attested_build_files: Mapping[str, str] | None = None,
     git: Path = Path("/usr/bin/git"),
 ) -> str:
     """Bind the run to the exact source tree, refusing an ambiguous one.
@@ -153,6 +154,8 @@ def source_revision(
     repository with it, and an unregistered gitlink means the tree cannot be
     described exactly -- which is a refusal, not a detail to skip.
     """
+
+    import os as _os
 
     snapshot = capture_repository(
         repo_root.resolve(),
@@ -165,10 +168,39 @@ def source_revision(
         raise AmdContractError(
             "could not bind the source tree: " + ";".join(snapshot.errors)
         )
+
+    # Build output is untracked by design and would otherwise make every run
+    # report a modified tree. Accept exactly the attested inventory and its
+    # parent directories -- nothing else, and only at the recorded digest, so
+    # an unexpected or altered binary is still a divergence.
+    attested = dict(attested_build_files or {})
+    tolerated: set[str] = set()
+    for relative, digest in attested.items():
+        path = repo_root.resolve() / relative
+        if not path.is_file():
+            raise AmdContractError(f"attested build file is missing: {relative}")
+        if _sha256_file(path) != digest:
+            raise AmdContractError(
+                f"attested build file does not match its digest: {relative}"
+            )
+        parts = PurePosixPath(relative).parts
+        for index in range(1, len(parts) + 1):
+            tolerated.add("/".join(parts[:index]))
+    unexpected = sorted(
+        _os.fsdecode(entry.path)
+        for entry in snapshot.untracked_entries
+        if _os.fsdecode(entry.path) not in tolerated
+    )
+    if unexpected:
+        raise AmdContractError(
+            f"unexpected untracked paths in the bound tree: {unexpected}"
+        )
     head = snapshot.head_oid
     if not head:
         raise AmdContractError("source tree has no HEAD commit")
-    if not snapshot.clean:
+    # `clean` counts untracked entries, and the attested build inventory has
+    # just been accounted for above, so judge divergence on tracked changes.
+    if snapshot.staged_changes or snapshot.unstaged_changes:
         # Record the exact departure rather than refusing outright: a run from
         # a modified tree is still evidence, but it must never be mistaken for
         # one from the committed source.
