@@ -1792,3 +1792,19 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   (6) **可观测 overlap**：由 kernel 内时钟给出每个 block 的进入/退出时刻，
   实测重叠 100.0 ms，强于依赖 profiler 截图。
   原始记录 `experiments/probes/amd-r9700-cu-mask/gate_a_experiments.jsonl`。
+- 2026-08-02 / amd-cu-quota-reaches-pytorch：Gate B 的前置可行性已验证——
+  **CU 掩码穿透到真实 PyTorch 负载**，吞吐随配额单调变化。这是在下载数十 GB
+  模型权重之前必须先答的问题：若掩码到不了框架层，整个 Gate B 的 profiling
+  计划就建立在一个无效机制上（NVIDIA 侧 `next` 正是这样被证伪的）。
+  实测（fp16 4096³ matmul，torch `2.9.1+rocm7.2.0`，R9700）：
+  未掩码 131.78 TFLOPS / 32 单元 131.15 / 16 单元 76.71 / 8 单元 43.76。
+  即 25% 的单元给出 33% 吞吐、50% 给出 58%——**次线性但单调且幅度显著**，
+  正是 Gate B 需要的 quota→吞吐关系。比例高于配额比是预期内的：活跃单元
+  少时时钟余量更大、尾部效应更小，具体成因待 profile 阶段拆解。
+  由此确定 Gate B 的实现形态：**每个 profiling cell 用一个独立进程并以
+  `ROC_GLOBAL_CU_MASK` 固定配额**，co-run cell 用两个各带不相交掩码的进程。
+  **无需改动 PyTorch 的 stream 管理**，也就绕开了 per-stream 掩码与框架
+  内部发射的耦合问题。
+  注意 plan 原文的 quota 列表 `{16,32,...,128}` 是 4090 的 SM 计数；AMD 侧
+  32 个可掩码单元对应的等价列表为 `{4,8,12,16,20,24,28,32}`，须在 Gate B-AMD
+  条文中另行写明，不得直接套用。
