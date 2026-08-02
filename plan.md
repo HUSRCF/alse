@@ -1657,3 +1657,27 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   偏移时必须在 argv 中携带 `--stream-mask-offset`；任何模式下 argv 出现该
   参数而模式不是 stream 亦为错误。这样 2026-08-01 已接受的 36 格与今日的
   36 格都能校验，且两种形态都无法省略偏移来源。
+- 2026-08-02 / amd-line-bootstrapped：为跨平台主张开出 AMD 分支，在
+  `husrcf@X570`（passwordless ssh，Ubuntu 24.04 / kernel 6.17）建立
+  `~/Code/alse` 并同步源码树。
+  硬件与环境：**AMD Radeon AI PRO R9700**，`gfx1201`（RDNA4），**64 CU**、
+  32 GB VRAM（`34208743424` B），ROCm 7.2.0，`/usr/bin/hipcc` 就绪，
+  根分区 2.3 T 可用，外网可达（GitHub 200）。CPU 为 Ryzen 9 5900X（24 线程）。
+  **对论文最关键的发现**：AMD 侧的对等能力是**文档化的一等 API**——
+  `hipExtStreamCreateWithCUMask`（自 HIP 4.2，已在
+  `/opt/rocm/lib/libamdhip64.so` 中导出为 `@@hip_4.2`），并且还有
+  `hipExtStreamGetCUMask` 可以**读回**当前掩码。对照 NVIDIA 侧：per-stream
+  掩码需要向不透明 `CUstream` 结构体盲写一个逆向所得、锁定驱动版本的偏移，
+  且**没有任何读回途径**（我们只能用 `%smid` 直方图间接观测）。这构成一个
+  真实的、可写进论文的平台差异，而不是"我们在两个平台上都做了同样的事"。
+  同步范围：源码、测试、native、manifests、aggregates、probes、plan.md 与
+  git 历史（HEAD `0f8c457`）。**排除** `experiments/runs/`（483 M，且是
+  NVIDIA 专属证据）、`build/`、`related_work/`、`vendor/asle/`、`ASLE.tar.gz`。
+  已验证：`validate_masked_tpc_matrix` **无需任何修改**即可用于 AMD——
+  喂入 AMD 形状的合成矩阵（64 CU、每 mask bit 一个 CU、两种机制 × 4 bit ×
+  3 trial）返回 `accepted=true`。该 validator 只消费「观测记录 + 声明的矩阵
+  形状 + 硬件形状」，不含任何 CUDA 假设，因此跨平台证据链的判据部分可以共用。
+  尚未做（需要方向确认后再展开）：HIP 版 CU-ID 探针（AMD 的对应物是
+  `__smid`/`HW_ID` 寄存器读取，与 `%smid` 不同需另行确认）、AMD 侧的
+  provenance/promotion 机制是否复用现有 runner、以及是否需要在 X570 上
+  建立独立的 Gate A0 基线。
