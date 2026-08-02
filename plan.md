@@ -318,6 +318,28 @@ $$
 - cold-model 预测严格使用缺失字节和实测带宽。
 - 每个 profile 都带硬件、驱动、CUDA、Torch、模型 revision 和 schema version。
 
+验收 Gate B-AMD（2026-08-02 新增，**补充而非替代上面的 Gate B**）：
+
+单卡 `gfx1201`（R9700，32 个可掩码单元）。上面的 Gate B 条文以 4090 的 SM
+计数写成，继续对 NVIDIA 侧完整有效；AMD 侧按下列平行条文验收。
+
+- quota 列表用 `{4,8,12,16,20,24,28,32}` **个可掩码单元**，不是 SM 计数。
+  每个 cell 以独立进程加 `ROC_GLOBAL_CU_MASK` 固定配额——该路径已实测穿透
+  PyTorch（2026-08-02），无需改动框架的 stream 管理。
+- **每个 cell 必须记录自己是否处于饱和区**。2026-08-02 实测：负载填不满 die
+  时 quota→吞吐**非单调**（1024 行时 16 单元达峰，32 单元反降至峰值 69%），
+  4096 行以上才恢复接近线性。未标注饱和状态的 quota→latency 条目不得进入
+  canonical table，否则调度器的单调假设会与数据冲突而无从判断是模型错还是
+  测量错。
+- 稳态 solo cell 的 CV 不超过 5%，且**必须记录实际达到的 CV 与加采样次数**，
+  不得只声称满足 30 采样的约定。
+- held-out solo p50 MAPE 不超过 10%；transition prediction MAPE 不超过 10%。
+- resident 同模型轮转观测到零权重 PCIe 流量。
+- cold-model 预测严格使用缺失字节和实测带宽。
+- 每个 profile 带硬件、驱动、ROCm、Torch、模型 revision 与 schema version；
+  **掩码须同时记录请求值与 `hipExtStreamGetCUMask` 读回值**（NVIDIA 侧无此项）。
+- co-run cell 用两个各带不相交掩码的进程，而非单进程多 stream。
+
 ### 第 5–6 周：2026-08-27 至 09-09——Trace Simulator 与算法冻结
 
 实现：
