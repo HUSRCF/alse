@@ -144,8 +144,10 @@ def main() -> int:
         "verdict": verdict,
         "reduced_contract": manifest["reduced_contract"],
     }
-    out = REPO / "experiments/aggregates/amd_r9700_cu_mask_20260802.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    # Write inside an allowed untracked root, never into the tracked tree the
+    # run just bound: an aggregate committed there would make the next run see
+    # its own previous output as a modification and label itself dirty.
+    out = run_root / f"{manifest['manifest_id']}-aggregate.json"
     out.write_text(canonical_json(report) + "\n")
     print(f"aggregate: {out}")
     return 0 if verdict["accepted"] else 1
