@@ -101,7 +101,7 @@ def _gate_manifest(*, promoted: bool = False) -> dict[str, object]:
                 "library_version": "test",
             },
             "stream_offset_search_enabled": promoted,
-            "stream_mask_off_candidates": [-16] if promoted else [],
+            "stream_mask_off_candidates": [1532] if promoted else [],
             "global_next_matrix_accepted": promoted,
             "mps_allowed": False,
             "mps_bypass": "CUDA_MPS_PIPE_DIRECTORY_empty",
@@ -350,7 +350,7 @@ class DriverPolicyTest(unittest.TestCase):
             driver_version=13030,
             latest_pinned_version=12080,
             experimental_allow_unsupported_driver=True,
-            experimental_mask_off=-16,
+            experimental_mask_off=1532,
         )
         self.assertFalse(allowed_without_offset)
         self.assertTrue(allowed)
@@ -375,7 +375,7 @@ class DriverPolicyTest(unittest.TestCase):
             physical_gpu=3,
             gpu=gpu,
             driver_version=13030,
-            experimental_mask_off=-16,
+            experimental_mask_off=1532,
             timeout_s=10,
             maximum_used_mib=1024,
             iterations=100,
@@ -397,7 +397,7 @@ class DriverPolicyTest(unittest.TestCase):
                 physical_gpu=3,
                 gpu=gpu,
                 driver_version=13030,
-                experimental_mask_off=-16,
+                experimental_mask_off=1532,
                 timeout_s=10,
                 maximum_used_mib=1024,
                 iterations=100,
@@ -418,7 +418,7 @@ class DriverPolicyTest(unittest.TestCase):
                 physical_gpu=3,
                 gpu=gpu,
                 driver_version=13030,
-                experimental_mask_off=-8,
+                experimental_mask_off=1528,
                 timeout_s=10,
                 maximum_used_mib=1024,
                 iterations=100,
@@ -456,7 +456,7 @@ class DriverPolicyTest(unittest.TestCase):
                     physical_gpu=3,
                     gpu=gpu,
                     driver_version=13030,
-                    experimental_mask_off=-16 if mode == "stream" else None,
+                    experimental_mask_off=1532 if mode == "stream" else None,
                     timeout_s=10,
                     maximum_used_mib=1024,
                     iterations=100,
@@ -542,7 +542,7 @@ class DriverPolicyTest(unittest.TestCase):
                     physical_gpu=3,
                     gpu=gpu,
                     driver_version=13030,
-                    experimental_mask_off=-16 if mode == "stream" else None,
+                    experimental_mask_off=1532 if mode == "stream" else None,
                     timeout_s=10,
                     maximum_used_mib=1024,
                     iterations=100,
@@ -734,7 +734,9 @@ class CommandTest(unittest.TestCase):
                 experimental_mask_off=None,
             )
         self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-selected")
-        self.assertEqual(environment["MASK_OFF"], "12")
+        # An offset in the environment would let the surrounding process
+        # redirect a blind struct write; it travels as an argument now.
+        self.assertNotIn("MASK_OFF", environment)
         self.assertEqual(environment["BURSTSERVE_PARENT_PID"], "4321")
         self.assertNotIn("BURSTSERVE_PARENT_PID", baseline_environment)
         self.assertEqual(
@@ -746,7 +748,6 @@ class CommandTest(unittest.TestCase):
                 "CUDA_CACHE_DISABLE": "1",
                 "CUDA_VISIBLE_DEVICES": "GPU-selected",
                 "CUDA_MPS_PIPE_DIRECTORY": "",
-                "MASK_OFF": "12",
                 "BURSTSERVE_PARENT_PID": "4321",
             },
         )
@@ -1739,11 +1740,20 @@ class LifecycleLeaseTest(unittest.TestCase):
         """
 
         marker = "synthetic rejection for diagnostics"
-        with mock.patch.object(
+        # Stub the manifest loader too: it reads the real repository, so a
+        # working tree that happens to be dirty would raise first and this
+        # test would assert on the wrong exception.
+        with mock.patch.multiple(
             smctrl_runner,
-            "execute",
-            side_effect=RuntimeError(marker),
-        ):
+            execute=mock.DEFAULT,
+            load_gate_manifest_record=mock.DEFAULT,
+        ) as patched:
+            patched["execute"].side_effect = RuntimeError(marker)
+            patched["load_gate_manifest_record"].return_value = {
+                "path": "experiments/manifests/gate_a_4090.json",
+                "sha256": "0" * 64,
+                "content": _gate_manifest()["content"],
+            }
             stdout, stderr = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(stdout):
                 with contextlib.redirect_stderr(stderr):

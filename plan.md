@@ -1608,3 +1608,36 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   边界：该结论锁定于驱动 610.43.02。`0x5fc` 是逆向常量而非接口，驱动升级
   后可能静默失效（写入填充字节、mask 空转）或触发 Xid。论文中必须如实写成
   reverse-engineered、version-locked。
+- 2026-08-02 / stream-offset-adaptation-moved-out-of-vendor：偿还
+  2026-08-01 `stream-vendor-banner-prefilter` 记下的技术债。
+  依据是项目自己冻结的策略——`vendor/LIBSMCTRL_SOURCE.json` 的
+  `"policy": "Immutable upstream submodule. Never patch this checkout; keep
+  BurstServe guards, probes, and any offset adaptation outside
+  vendor/libsmctrl."`——它既禁止打补丁，也直接指明了正路：把 offset adaptation
+  放在 vendor 之外。因此不 fork、不 re-pin submodule。
+  在 `native/smctrl_probe/smid_probe.cu` 中实现 `apply_adapted_stream_mask`，
+  复刻 vendored 源码的 `struct stream_sm_mask_v2` 写入语义
+  （`enabled=1`，`mask[0..3] = mask >> {0,32,64,96}`），偏移
+  `kAdaptedStreamMaskOffset = 0x5fc` 与驱动版本 `kAdaptedStreamMaskDriverVersion
+  = 13030` 均为编译期常量，随构建认证一并固化。
+  这比原来的 `MASK_OFF` 环境变量**更严而非更松**：环境变量对任何驱动版本都
+  照写不误、且可被外围进程改写以重定向一次盲写；新实现拒绝除验证过的那个
+  驱动版本以外的一切版本，拒绝任何与编译进二进制的常量不逐字节相同的偏移，
+  并且 runner **不再向子进程注入 `MASK_OFF`**——探针检测到该变量存在即
+  fail closed。偏移改走 `--stream-mask-offset` 参数，语义由「相对 `0x4e4`
+  的增量」改为**绝对结构体偏移**（`280` → `1532`）。
+  实测四种误用全部 fail closed：错误偏移、缺省偏移、`MASK_OFF` 仍被设置、
+  在非 stream 模式上传偏移；正确调用 exit 0、观测 SM `{0,1}`、
+  **stderr 完全为空**——横幅从根源上消失了，不再依赖前置过滤。
+  `stream_offset_is_8byte_aligned` 相应改为 `stream_offset_is_4byte_aligned`
+  （`uint32_t` 字段的结构性要求；原规则是「相对 `0x4e4` 的增量 8 字节对齐」，
+  等价于总偏移 ≡4 mod 8，那是已观测偏移的巧合而非结构约束）。该模运算已不是
+  约束力所在：真正的门是探针只接受与认证构建逐字节相同的那一个值。
+  `residual_native_stderr` **保留**：2026-08-01 已接受的 36 格证据的
+  `stderr.log` 里确实有横幅，聚合校验器会重算并逐键比对，删掉它会让那批证据
+  作废。它现在只服务历史证据，新证据不再触发它。
+  重建改变了四个产物摘要，三份 manifest 的 approval pin 全部刷新
+  （launcher `c0ffa798…316b`、real probe `d367b99f…b904b`、stamp
+  `10d0d2b7…c43d`、attestation `936042f0…4da6`）。已接受的旧证据不受影响：
+  每个 cell 内嵌自己的 manifest 副本与 pin，校验对内嵌副本进行。
+  全量 481 tests OK（21 skipped）。

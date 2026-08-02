@@ -50,6 +50,7 @@ struct Options {
   int iterations = kDefaultIterations;
   int blocks = 0;
   bool allow_unsupported_driver = false;
+  int stream_mask_offset = -1;
 };
 
 struct DeviceInfo {
@@ -255,7 +256,8 @@ void print_usage(const char* argv0) {
       << "  --iterations N              FMA iterations per thread (default 4096)\n"
       << "  --blocks N                  Kernel blocks (default 32 x SM count)\n"
       << "  --device N                  CUDA device ordinal (default 0)\n"
-      << "  --allow-unsupported-driver  Explicitly permit an experimental masked run\n";
+      << "  --allow-unsupported-driver  Explicitly permit an experimental masked run\n"
+      << "  --stream-mask-offset N      Attested CUstream mask offset (stream mode)\n";
 }
 
 bool parse_int(const char* text, int minimum, int maximum, int* output) {
@@ -374,6 +376,15 @@ bool parse_options(int argc, char** argv, Options* options, std::string* error) 
         *error = "--device must be a non-negative integer";
         return false;
       }
+    } else if (arg == "--stream-mask-offset") {
+      const char* value = require_value("--stream-mask-offset");
+      if (value == nullptr) {
+        return false;
+      }
+      if (!parse_int(value, 0, 1 << 20, &options->stream_mask_offset)) {
+        *error = "--stream-mask-offset must be a nonnegative integer";
+        return false;
+      }
     } else if (arg == "--allow-unsupported-driver") {
       options->allow_unsupported_driver = true;
     } else if (arg == "--help" || arg == "-h") {
@@ -391,6 +402,10 @@ bool parse_options(int argc, char** argv, Options* options, std::string* error) 
   }
   if (!is_masked_mode(options->mode) && options->enabled_tpc >= 0) {
     *error = "--enabled-tpc is invalid in baseline mode";
+    return false;
+  }
+  if (options->mode != Mode::kStream && options->stream_mask_offset >= 0) {
+    *error = "--stream-mask-offset is only meaningful for stream mode";
     return false;
   }
   return true;
@@ -513,21 +528,67 @@ bool driver_is_validated_by_upstream(Mode mode, int version) {
   }
 }
 
-bool validate_mask_off(std::string* error) {
-  const char* value = std::getenv("MASK_OFF");
-  if (value == nullptr || *value == '\0') {
-    *error =
-        "experimental stream mode requires an explicit integer MASK_OFF";
+// The one CUDA version whose CUstream mask offset this repository recovered
+// itself, because upstream's table stops at 12.8. See
+// experiments/probes/cuda133-stream-offset/ for the sweep that found it and
+// the three-mode matrix that failed to falsify it.
+//
+// This is a reverse-engineered constant, not an interface. It is pinned to
+// one driver API version on purpose: a newer driver may move the field, and
+// then this write lands on whatever now occupies 0x5fc -- silently doing
+// nothing, or faulting the GPU. Both were observed during the sweep.
+constexpr int kAdaptedStreamMaskDriverVersion = 13030;
+constexpr int kAdaptedStreamMaskOffset = 0x5fc;
+
+// Mirrors `struct stream_sm_mask_v2` in the vendored libsmctrl, which is the
+// layout CUDA 12.0 introduced for large Hopper/Ada parts.
+struct StreamSmMaskV2 {
+  uint32_t enabled;
+  uint32_t mask[4];
+};
+
+// The offset adaptation the pinned-source policy requires to live outside
+// vendor/libsmctrl: "Never patch this checkout; keep BurstServe guards,
+// probes, and any offset adaptation outside vendor/libsmctrl."
+//
+// Writing the field ourselves rather than through libsmctrl's MASK_OFF
+// experiment path is strictly narrower. MASK_OFF applies whatever number it
+// is handed on whatever driver happens to be loaded; this refuses every
+// version but the one the constant was validated against, and refuses any
+// offset that disagrees with the compiled-in value. It also keeps the
+// constant inside the attested build rather than in a process environment
+// variable, and emits nothing on stderr.
+bool apply_adapted_stream_mask(cudaStream_t stream, uint128_t mask,
+                               int driver_version, int requested_offset,
+                               std::string* error) {
+  if (driver_version != kAdaptedStreamMaskDriverVersion) {
+    std::ostringstream message;
+    message << "adapted stream mask is validated only for driver API version "
+            << kAdaptedStreamMaskDriverVersion << ", refusing version "
+            << driver_version;
+    *error = message.str();
     return false;
   }
-  int offset = 0;
-  // libsmctrl applies this to its CUDA-12.2 base (0x4e4). Reject values which
-  // its implementation would treat as a negative total address.
-  if (!parse_int(value, -0x4e4, 1 << 20, &offset)) {
-    *error =
-        "MASK_OFF must be an integer whose CUDA-12.2-relative total is nonnegative";
+  if (requested_offset != kAdaptedStreamMaskOffset) {
+    std::ostringstream message;
+    message << "requested stream mask offset " << requested_offset
+            << " does not match the attested offset "
+            << kAdaptedStreamMaskOffset;
+    *error = message.str();
     return false;
   }
+  char* stream_struct_base = *reinterpret_cast<char**>(stream);
+  if (stream_struct_base == nullptr) {
+    *error = "CUDA stream handle did not carry a struct pointer";
+    return false;
+  }
+  auto* hardware_mask = reinterpret_cast<StreamSmMaskV2*>(
+      stream_struct_base + kAdaptedStreamMaskOffset);
+  hardware_mask->enabled = 1;
+  hardware_mask->mask[0] = static_cast<uint32_t>(mask);
+  hardware_mask->mask[1] = static_cast<uint32_t>(mask >> 32);
+  hardware_mask->mask[2] = static_cast<uint32_t>(mask >> 64);
+  hardware_mask->mask[3] = static_cast<uint32_t>(mask >> 96);
   return true;
 }
 
@@ -645,18 +706,32 @@ int main(int argc, char** argv) {
                                  "unsupported_driver", error.str()));
   }
 
+  const bool stream_driver_validated =
+      options.mode == Mode::kStream &&
+      driver_is_validated_by_upstream(options.mode, report.driver_version);
   if (options.mode == Mode::kStream) {
-    const bool stream_driver_validated =
-        driver_is_validated_by_upstream(options.mode, report.driver_version);
-    if (stream_driver_validated && mask_off_is_present()) {
+    // MASK_OFF is libsmctrl's offset-hunting escape hatch. This probe never
+    // uses it: on a driver upstream validated we take upstream's own pinned
+    // offset, and otherwise we take the offset attested into this binary.
+    // Leaving it set would let a process environment variable redirect a
+    // blind struct write, so refuse it outright rather than ignore it.
+    if (mask_off_is_present()) {
       return static_cast<int>(fail(
           &report, ExitCode::kConfiguration, "configuration_error",
-          "MASK_OFF is forbidden for a validated stream driver; unset it to "
-          "use the pinned offset"));
+          "MASK_OFF must not be set; stream mode uses the upstream pinned "
+          "offset or this binary's attested offset"));
     }
-    if (!stream_driver_validated && !validate_mask_off(&parse_error)) {
-      return static_cast<int>(fail(&report, ExitCode::kConfiguration,
-                                   "configuration_error", parse_error));
+    if (stream_driver_validated && options.stream_mask_offset >= 0) {
+      return static_cast<int>(fail(
+          &report, ExitCode::kConfiguration, "configuration_error",
+          "--stream-mask-offset is forbidden for a driver upstream validated; "
+          "omit it to use the pinned offset"));
+    }
+    if (!stream_driver_validated && options.stream_mask_offset < 0) {
+      return static_cast<int>(fail(
+          &report, ExitCode::kConfiguration, "configuration_error",
+          "stream mode on an unvalidated driver requires an explicit "
+          "--stream-mask-offset matching this binary's attested offset"));
     }
   }
 
@@ -715,6 +790,7 @@ int main(int argc, char** argv) {
   uint32_t* device_smids = nullptr;
   float* device_sinks = nullptr;
   cudaStream_t stream = nullptr;
+  std::string stream_mask_error;
 
   runtime_result = cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
   if (runtime_result != cudaSuccess) {
@@ -779,7 +855,16 @@ int main(int argc, char** argv) {
   } else if (options.mode == Mode::kStream) {
     uint128_t disabled_mask_ext = ~static_cast<uint128_t>(0);
     disabled_mask_ext ^= static_cast<uint128_t>(1) << options.enabled_tpc;
-    libsmctrl_set_stream_mask_ext(stream, disabled_mask_ext);
+    if (stream_driver_validated) {
+      libsmctrl_set_stream_mask_ext(stream, disabled_mask_ext);
+    } else if (!apply_adapted_stream_mask(stream, disabled_mask_ext,
+                                          report.driver_version,
+                                          options.stream_mask_offset,
+                                          &stream_mask_error)) {
+      cleanup();
+      return static_cast<int>(fail(&report, ExitCode::kConfiguration,
+                                   "configuration_error", stream_mask_error));
+    }
   }
 
   collect_smid_kernel<<<blocks, kThreadsPerBlock, 0, stream>>>(
@@ -791,7 +876,16 @@ int main(int argc, char** argv) {
   if (options.mode == Mode::kGlobal) {
     libsmctrl_set_global_mask(0);
   } else if (options.mode == Mode::kStream) {
-    libsmctrl_set_stream_mask_ext(stream, static_cast<uint128_t>(0));
+    if (stream_driver_validated) {
+      libsmctrl_set_stream_mask_ext(stream, static_cast<uint128_t>(0));
+    } else {
+      // Best effort: the launch descriptor is already built, and a failure
+      // here cannot invalidate it. Any error surfaces on the next use.
+      std::string ignored;
+      apply_adapted_stream_mask(stream, static_cast<uint128_t>(0),
+                                report.driver_version,
+                                options.stream_mask_offset, &ignored);
+    }
   }
 
   if (runtime_result != cudaSuccess) {

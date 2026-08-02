@@ -15,10 +15,10 @@
   "source": {
     "libsmctrl_commit": "c250928930cb5c95bffc878913301f9a5d4efcb7",
     "libsmctrl_metadata": "vendor/LIBSMCTRL_SOURCE.json",
-    "approved_launcher_sha256": "9ec49f54905cca1ae98f418e5374dc2e0af656fbd1767f176fe03db0e2563168",
-    "approved_real_probe_sha256": "a5a4cb6437cba5ee8ae68742f20ef236d177452464de219e5657cbebbdec1c88",
-    "approved_build_stamp_sha256": "e4ea4c1adea5593193fc95bc426bddd505f9ae13d4841f68eacd4243c5346c38",
-    "approved_build_attestation_sha256": "263a2a508b03eff7f80cc4927b470a79042824bddecc6f17053356292055e1ac"
+    "approved_launcher_sha256": "c0ffa7985fb751ff61a3efc01b3bf55aceffa1a7691a4c88fc04b611b979316b",
+    "approved_real_probe_sha256": "d367b99f211965282c7ee6d9245d8c5dcd8dd1020667d2ffea355443931b904b",
+    "approved_build_stamp_sha256": "10d0d2b72cbf4783f3b7adcab63bcfeca357503eb197384426ee22fb51bdc43d",
+    "approved_build_attestation_sha256": "936042f06f4b1e67645681f5100c3c6cac6af09be784025070ad00a8a1444da6"
   },
   "safety": {
     "protocol": "docs/gate-a-safety.md",

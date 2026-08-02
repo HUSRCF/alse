@@ -15,10 +15,10 @@
   "source": {
     "libsmctrl_commit": "c250928930cb5c95bffc878913301f9a5d4efcb7",
     "libsmctrl_metadata": "vendor/LIBSMCTRL_SOURCE.json",
-    "approved_launcher_sha256": "9ec49f54905cca1ae98f418e5374dc2e0af656fbd1767f176fe03db0e2563168",
-    "approved_real_probe_sha256": "a5a4cb6437cba5ee8ae68742f20ef236d177452464de219e5657cbebbdec1c88",
-    "approved_build_stamp_sha256": "e4ea4c1adea5593193fc95bc426bddd505f9ae13d4841f68eacd4243c5346c38",
-    "approved_build_attestation_sha256": "263a2a508b03eff7f80cc4927b470a79042824bddecc6f17053356292055e1ac"
+    "approved_launcher_sha256": "c0ffa7985fb751ff61a3efc01b3bf55aceffa1a7691a4c88fc04b611b979316b",
+    "approved_real_probe_sha256": "d367b99f211965282c7ee6d9245d8c5dcd8dd1020667d2ffea355443931b904b",
+    "approved_build_stamp_sha256": "10d0d2b72cbf4783f3b7adcab63bcfeca357503eb197384426ee22fb51bdc43d",
+    "approved_build_attestation_sha256": "936042f06f4b1e67645681f5100c3c6cac6af09be784025070ad00a8a1444da6"
   },
   "safety": {
     "protocol": "docs/gate-a-safety.md",
@@ -37,8 +37,8 @@
       "physical_gpu": 1,
       "reservation_id": "dd-gpu1-masked-gate-a-stream-20260801",
       "owner": "zhuoxu@dd",
-      "valid_from_utc": "2026-08-01T18:16:47Z",
-      "valid_until_utc": "2026-08-02T00:16:47Z"
+      "valid_from_utc": "2026-08-02T14:47:38Z",
+      "valid_until_utc": "2026-08-02T20:47:38Z"
     },
     "xid_monitoring": {
       "available": true,
@@ -49,7 +49,7 @@
       "library_version": "13.610.43.02"
     },
     "stream_offset_search_enabled": true,
-    "stream_mask_off_candidates": [280],
+    "stream_mask_off_candidates": [1532],
     "global_next_matrix_accepted": true
   },
   "baseline": {
@@ -74,7 +74,7 @@
     "SATISFIED: the sealed NVML library identity and version are pinned from a real-hardware monitor run",
     "SATISFIED: unmasked Gate-A0 baseline evidence for this GPU is accepted in gate_a0_4090_v2_seed1_fleet5_20260731",
     "SATISFIED: the global/next matrix is accepted in gate_a_masked_global_next_gpu1_20260801, which is the precondition this manifest names for enabling stream",
-    "STREAM OFFSET IS REVERSE-ENGINEERED, NOT AN INTERFACE: MASK_OFF=+280 (total 0x5fc) was recovered by writing into an opaque CUstream struct on driver 610.43.02, because upstream's validated table stops at CUDA 12.8. It is pinned to this driver version and a driver update invalidates it, possibly silently. See experiments/probes/cuda133-stream-offset/",
+    "STREAM OFFSET IS REVERSE-ENGINEERED, NOT AN INTERFACE: the absolute CUstream mask offset 1532 (0x5fc) was recovered by writing into an opaque driver struct on driver 610.43.02, because upstream's validated table stops at CUDA 12.8. It is pinned to this driver version and a driver update invalidates it, possibly silently. The probe refuses any offset that is not byte-identical to the constant compiled into its attested build, so this declaration authorises but does not choose. See experiments/probes/cuda133-stream-offset/",
     "REFRESH BEFORE EACH RUN: valid_from_utc/valid_until_utc must cover the whole matrix and be committed clean, because the reservation is part of the formal run identity"
   ]
 }

@@ -1,8 +1,13 @@
 """Build and run the native Gate-A SM-ID probe with complete provenance.
 
 Masked probes deliberately fail closed on every CUDA driver API version absent
-from the pinned libsmctrl source.  An experimental run must opt in explicitly;
-stream masking additionally requires an explicit ``MASK_OFF``.
+from the pinned libsmctrl source.  An experimental run must opt in explicitly.
+
+Stream masking additionally requires an absolute CUstream mask offset, passed
+as an argument and checked by the probe against the constant compiled into its
+attested build.  It is never passed through the environment: the pinned-source
+policy keeps offset adaptation outside ``vendor/libsmctrl``, and an
+environment variable would let the surrounding process redirect a blind write.
 """
 
 from __future__ import annotations
@@ -3436,11 +3441,17 @@ def evaluate_gate_manifest_policy(
         "stream_offset_is_declared": (
             mode != "stream" or experimental_mask_off in stream_candidates
         ),
-        "stream_offset_is_8byte_aligned": (
+        # The field is `uint32_t enabled; uint32_t mask[4]`, so the absolute
+        # struct offset must be 4-byte aligned. This is no longer the binding
+        # constraint: the probe refuses any offset that is not byte-identical
+        # to the one compiled into its attested build, so exactly one value
+        # can run regardless of what arithmetic a manifest satisfies.
+        "stream_offset_is_4byte_aligned": (
             mode != "stream"
             or (
                 experimental_mask_off is not None
-                and experimental_mask_off % 8 == 0
+                and experimental_mask_off > 0
+                and experimental_mask_off % 4 == 0
             )
         ),
     }
@@ -3657,7 +3668,11 @@ def build_child_environment(
             or not isinstance(experimental_mask_off, int)
         ):
             raise ValueError("experimental_mask_off must be integer or null")
-        environment["MASK_OFF"] = str(experimental_mask_off)
+        # The offset travels as an argument the probe checks against the
+        # constant compiled into it, never as an environment variable. An
+        # env var would let the surrounding process redirect a blind struct
+        # write, and it is what made the vendored library announce the offset
+        # on stderr. The probe refuses to run at all if MASK_OFF is present.
     if parent_pid is not None:
         if (
             isinstance(parent_pid, bool)
@@ -3724,6 +3739,7 @@ def build_probe_command(
     iterations: int,
     blocks: int,
     experimental_allow_unsupported_driver: bool,
+    experimental_mask_off: int | None = None,
 ) -> list[str]:
     """Construct the native probe command without shell interpolation."""
 
@@ -3741,6 +3757,18 @@ def build_probe_command(
     command.extend(
         ["--iterations", str(iterations), "--blocks", str(blocks)]
     )
+    if experimental_mask_off is not None:
+        if (
+            isinstance(experimental_mask_off, bool)
+            or not isinstance(experimental_mask_off, int)
+            or experimental_mask_off <= 0
+        ):
+            raise ValueError(
+                "experimental_mask_off must be a positive absolute offset"
+            )
+        if mode != "stream":
+            raise ValueError("a mask offset is only meaningful for stream mode")
+        command.extend(["--stream-mask-offset", str(experimental_mask_off)])
     if experimental_allow_unsupported_driver:
         command.append("--allow-unsupported-driver")
     return command
@@ -6758,6 +6786,7 @@ def _execute_under_leases(
         iterations=iterations,
         blocks=blocks,
         experimental_allow_unsupported_driver=experimental_allow,
+        experimental_mask_off=experimental_mask_off,
     )
     expected_parent_pid = os.getpid() if mode in MASKED_MODES else None
     child_environment = build_child_environment(
@@ -8849,7 +8878,7 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--experimental-mask-off",
         type=int,
-        help="stream-mask offset passed as MASK_OFF; requires experimental allow",
+        help="absolute CUstream mask offset; must match the probe's attested constant",
     )
     return parser
 
