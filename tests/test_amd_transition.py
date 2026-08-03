@@ -119,5 +119,50 @@ class MapeReuseTest(unittest.TestCase):
             mape([], [])
 
 
+
+class ResultInvarianceTest(unittest.TestCase):
+    """Moving work between streams must not change what is computed.
+
+    The caching allocator does not know about the event dependency used to
+    order a quota handover, so cross-stream reuse is a real hazard. Arguing
+    that it is safe is not enough: the run checksums the latent and the
+    switching schedule has to match a steady-state run bit for bit. If it
+    does not, the timings are timing a different computation.
+    """
+
+    def test_the_run_checksums_its_result(self):
+        source = ast.unparse(_function("main"))
+        self.assertIn("sha256", source)
+        self.assertIn("latent_digests", source)
+
+    def test_the_report_states_whether_switching_matched(self):
+        source = ast.unparse(_function("main"))
+        self.assertIn("switching_matches_steady", source)
+
+    def test_an_absent_switching_digest_does_not_read_as_a_match(self):
+        """None must never compare equal to a steady digest."""
+        digests = {"steady_8": "abc", "steady_32": "def"}
+        matched = (
+            digests.get("switching") is not None
+            and digests.get("switching") in {
+                v for k, v in digests.items() if k.startswith("steady_")
+            }
+        )
+        self.assertFalse(matched)
+
+    def test_a_differing_digest_is_reported_as_a_mismatch(self):
+        digests = {"steady_8": "abc", "steady_32": "abc", "switching": "zzz"}
+        matched = digests["switching"] in {
+            v for k, v in digests.items() if k.startswith("steady_")
+        }
+        self.assertFalse(matched)
+
+    def test_a_matching_digest_is_reported_as_a_match(self):
+        digests = {"steady_8": "abc", "steady_32": "abc", "switching": "abc"}
+        matched = digests["switching"] in {
+            v for k, v in digests.items() if k.startswith("steady_")
+        }
+        self.assertTrue(matched)
+
 if __name__ == "__main__":
     unittest.main()

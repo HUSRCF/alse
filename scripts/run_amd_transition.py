@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import statistics
 import sys
@@ -131,8 +132,14 @@ def main() -> int:
         masks[units] = hex(mask)
         streams[units] = torch.cuda.ExternalStream(handle.value)
 
+    # Latent output: the denoising steps are what is being timed, and
+    # skipping the VAE keeps the comparison to the steps themselves. It
+    # also gives a tensor to checksum, which is how the run proves that
+    # moving work between streams did not change the result -- the caching
+    # allocator does not know about the event dependency used to order the
+    # handover, so correctness has to be demonstrated rather than argued.
     call = {"prompt": [args.prompt], "num_inference_steps": args.steps,
-            "generator": None}
+            "generator": None, "output_type": "latent"}
     if args.model.startswith("cogvideox"):
         call["num_frames"] = args.frames
     else:
@@ -166,23 +173,32 @@ def main() -> int:
         torch.cuda.set_stream(streams[start])
         call["generator"] = torch.Generator(device="cuda").manual_seed(args.seed)
         with torch.inference_mode():
-            pipeline(callback_on_step_end=on_step, **call)
+            result = pipeline(callback_on_step_end=on_step, **call)
         torch.cuda.synchronize()
         torch.cuda.set_stream(torch.cuda.default_stream())
+        latent = result.images
+        if not torch.is_tensor(latent):
+            latent = latent[0]
+        digest = hashlib.sha256(
+            latent.detach().to(torch.float32).cpu().numpy().tobytes()
+        ).hexdigest()
         # Boundary i..i+1 ran at the quota in force at boundary i.
-        return [
+        return digest, [
             (at_quota[i], events[i].elapsed_time(events[i + 1]) / 1000.0)
             for i in range(len(events) - 1)
         ]
 
     # Steady state: the table a scheduler would already have.
     steady: dict[int, list[float]] = {}
+    digests: dict[str, str] = {}
     for units in quotas:
         for _ in range(args.warmup):
             run(None, units)
         samples: list[float] = []
         for _ in range(args.steady_repeats):
-            samples += [seconds for _, seconds in run(None, units)]
+            digest, rows = run(None, units)
+            digests[f"steady_{units}"] = digest
+            samples += [seconds for _, seconds in rows]
         steady[units] = samples
         print(f"  steady {units:2d} units: per-step median "
               f"{statistics.median(samples)*1000:7.2f} ms  n={len(samples)}",
@@ -195,7 +211,9 @@ def main() -> int:
         run(plan, None)
     observed: list[tuple[int, float]] = []
     for _ in range(args.switch_repeats):
-        observed += run(plan, None)
+        digest, rows = run(plan, None)
+        digests["switching"] = digest
+        observed += rows
 
     # A step is predicted to cost what that quota costs when nothing moved.
     predicted = [steady_median[units] for units, _ in observed]
@@ -233,6 +251,16 @@ def main() -> int:
         "meets_threshold": score <= args.mape_threshold,
         "torch": torch.__version__,
         "device_name": torch.cuda.get_device_name(0),
+        "latent_digests": digests,
+        # Same seed, same schedule of arithmetic, so moving the work between
+        # streams must not change the result. If it does, the timings are
+        # measuring something that is not the same computation.
+        "switching_matches_steady": (
+            digests.get("switching") is not None
+            and digests["switching"] in {
+                v for k, v in digests.items() if k.startswith("steady_")
+            }
+        ),
     }
     for label, rows in (("first_step_after_a_change", first_after),
                         ("settled_steps", settled)):
