@@ -151,7 +151,12 @@ def run_once(args, rotations: int, workdir: Path) -> dict:
         "--width", str(args.width),
         "--frames", str(args.frames),
     ]
-    proc = subprocess.run(argv, env=env, capture_output=True, text=True)
+    # Run from outside the repository: rocprofv3 drops a .rocprofv3 directory
+    # into its working directory, and an untracked path inside the bound tree
+    # makes the next run refuse to bind -- a profiler should not be able to
+    # invalidate the provenance of the thing it is profiling.
+    proc = subprocess.run(argv, env=env, capture_output=True, text=True,
+                          cwd=str(workdir))
     body = [line for line in proc.stdout.splitlines() if line.startswith("{")]
     record = {
         "rotations": rotations,

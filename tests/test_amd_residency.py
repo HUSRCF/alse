@@ -138,6 +138,36 @@ class CopyTraceParsingTest(unittest.TestCase):
             )
 
 
+class ProfilerMustNotPolluteTheBoundTreeTest(unittest.TestCase):
+    """rocprofv3 drops a .rocprofv3 directory in its working directory.
+
+    Left in the repository that becomes an untracked path, and the next run
+    refuses to bind its source tree. A profiler must not be able to
+    invalidate the provenance of the thing it profiles, so it is run from
+    outside the repository.
+    """
+
+    def test_the_profiler_is_launched_outside_the_repository(self):
+        import ast
+        import inspect
+
+        tree = ast.parse(inspect.getsource(residency.run_once))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "run"
+            ):
+                keywords = {kw.arg for kw in node.keywords}
+                self.assertIn(
+                    "cwd", keywords,
+                    "rocprofv3 is launched without a working directory, so it "
+                    "writes .rocprofv3 into the bound tree",
+                )
+                return
+        self.fail("no subprocess.run call found in run_once")
+
+
 class SlopeTest(unittest.TestCase):
     def test_it_separates_the_one_off_load_from_the_per_rotation_cost(self):
         load, per = 7_000_000_000, 4_000_000
