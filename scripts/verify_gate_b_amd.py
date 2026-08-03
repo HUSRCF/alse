@@ -36,6 +36,21 @@ REQUIRED_METADATA = (
     "schema_version",
 )
 
+# Every row field this verifier reads. Declared rather than left implicit so
+# that a rename in the producer is caught by a test instead of by a clause
+# that silently starts reading None -- which, for most of these, would read
+# as a failure whose cause is invisible.
+ROW_FIELDS_CONSUMED = (
+    "status", "role", "requested_units", "batch", "cu_mask", "p50_s", "cv",
+    "escalations", "samples", "saturating_regime", "canonical_eligible",
+    "cu_mask_attestation",
+) + REQUIRED_METADATA
+
+HEADER_FIELDS_CONSUMED = (
+    "record", "model", "source_revision", "source_revision_after",
+    "source_revision_stable",
+)
+
 
 def load_table(path: Path) -> tuple[dict, list[dict]]:
     header, rows = None, []

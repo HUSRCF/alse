@@ -78,6 +78,77 @@ class NotMeasuredTest(unittest.TestCase):
         )
 
 
+class ProducerConsumerAgreementTest(unittest.TestCase):
+    """The verifier must read fields the producers actually write.
+
+    Every fixture in this file is hand-written, so it proves the verifier is
+    self-consistent and nothing more. A field renamed in the producer would
+    leave the fixtures passing while the clause reads None off a real row --
+    which, for most of these clauses, reads as a failure whose cause is
+    invisible. So the field names are extracted from the producer sources
+    and compared, rather than trusted.
+    """
+
+    SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+
+    def _produced_row_fields(self) -> set[str]:
+        import ast
+
+        produced: set[str] = set()
+        for name in ("amd_profile_cell.py", "run_amd_gate_b.py"):
+            tree = ast.parse((self.SCRIPTS / name).read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                # keys of dict literals, e.g. record = {"p50_s": ...}
+                if isinstance(node, ast.Dict):
+                    produced.update(
+                        key.value for key in node.keys
+                        if isinstance(key, ast.Constant)
+                        and isinstance(key.value, str)
+                    )
+                # subscript assignment, e.g. row["saturating_regime"] = ...
+                elif isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if (
+                            isinstance(target, ast.Subscript)
+                            and isinstance(target.slice, ast.Constant)
+                            and isinstance(target.slice.value, str)
+                        ):
+                            produced.add(target.slice.value)
+        return produced
+
+    def test_every_consumed_row_field_is_produced_somewhere(self):
+        produced = self._produced_row_fields()
+        missing = [
+            field for field in verify.ROW_FIELDS_CONSUMED
+            if field not in produced
+        ]
+        self.assertEqual(
+            missing, [],
+            f"the verifier reads fields no producer writes: {missing}",
+        )
+
+    def test_every_consumed_header_field_is_produced(self):
+        produced = self._produced_row_fields()
+        missing = [
+            field for field in verify.HEADER_FIELDS_CONSUMED
+            if field not in produced
+        ]
+        self.assertEqual(missing, [], f"header fields never written: {missing}")
+
+    def test_the_fixtures_carry_every_field_the_verifier_consumes(self):
+        """A fixture missing a field would exercise the absent-value path."""
+        row = _row(16)
+        missing = [
+            field for field in verify.ROW_FIELDS_CONSUMED if field not in row
+        ]
+        self.assertEqual(missing, [], f"fixture is missing: {missing}")
+
+    def test_the_extraction_would_notice_a_rename(self):
+        """The comparison above must be able to fail."""
+        produced = self._produced_row_fields()
+        self.assertNotIn("definitely_not_a_field_name", produced)
+
+
 class QuotaCoverageTest(unittest.TestCase):
     def test_the_full_declared_quota_list_passes(self):
         self.assertEqual(
