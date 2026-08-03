@@ -2075,3 +2075,25 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   **一般教训**:`max_memory_allocated` 是「历史峰值」,在异步执行下它度量的是
   「同时存活」而非「单次调用需要」。显存峰值表必须声明其同步条件,否则
   两张表在不同 harness 下不可比。
+- 2026-08-03 / amd-transition-prediction-passes：**transition prediction 通过**,
+  MAPE **7.75%**(阈值 10%,87 个 step 样本)。测法即调度器的真实动作:
+  单进程、请求进行中、不重载模型,在 denoising step 之间把租户交给另一个配额的
+  stream(`hipExtStreamCreateWithCUMask` + `ExternalStream`)。
+  预测器**零自由参数**——「某 step 在配额 q 下的耗时 = 该配额稳态下的 per-step
+  中位数」,切换引入的任何瞬态都落进误差而不是被拟合项吸收。
+  稳态 per-step 中位数(768²):8 单元 263.34 ms / 16 单元 155.10 ms /
+  32 单元 112.36 ms(8→32 加速比仅 2.34×,配额比 4×,与 serial floor 一致)。
+  分段:**切换后第一步 MAPE 8.49%,已稳定步 7.59%**——切换确有代价但很小,
+  一阶模型「切换后即为目标配额稳态」够用。
+  **附带取得一个更强的结果**:三次运行的 latent 校验和**完全相同**
+  (`2b7e57c5…`):`steady_8` = `steady_32` = `switching`。即
+  (a) 跨 stream 搬运工作不改变计算结果——这是必需的,因为 caching allocator
+  并不知道我们用 event 建立的跨流依赖,安全性必须证明而非论证;
+  (b) **不同配额下结果逐位相同**,即 CU 掩码不影响数值——Gate A 的确定性
+  条文在真实 diffusion 模型上的直接验证(此前只在合成 kernel 上验证过)。
+  **过程中修掉一个由数据暴露的 off-by-one**:callback 在 step `index` 结束时
+  触发,故 `events[i]→events[i+1]` 测的是 step i+1,应归属**切换之后**的配额;
+  原先在切换前记录,把每个区间都记到了上一步的配额上。征兆是反常的分布——
+  「切换后第一步 MAPE 2.39% 而已稳定步 78.89%」,恰好反了,只有标签整体
+  错位一步能解释(在切换点上,上一步的配额碰巧是「对的答案,错的理由」)。
+  修正后 46.10% → 2.52%(冒烟)/ 7.75%(正式)。
