@@ -1967,3 +1967,21 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   但 `smid_probe.real` 保持 `ad2069f0…` 不变，因为该测试文件不参与
   `smid_probe.cu` 的编译。stamp 记录更广的上下文，产物摘要记录产物本身，
   两者本就该分层；此前它们同时漂移，掩盖了这一点。
+- 2026-08-03 / amd-per-stream-quota-reaches-pytorch：**`hipExtStreamCreateWithCUMask`
+  与 `torch.cuda.ExternalStream` 可以组合,进程内即可动态改配额**——不必重启进程。
+  这是 ASLE runtime 的关键前提(此前只在 HIP probe 内验证过掩码机制,未验证它
+  穿透到 PyTorch 的 stream 管理)。实测(8192² fp16 matmul 链 ×4):
+  单元数 `{4,8,16,32}` 的 p50 = `192.5 / 100.5 / 57.8 / 44.7` ms,
+  相对默认流 `0.232 / 0.444 / 0.772 / 0.998`×。三点均已核验,缺一不可:
+  (1) **掩码被真正执行而非仅仅安装**——满掩码流与默认流之比 0.998,
+  低配额流按比例变慢;若只安装不执行,读回会完好而计时不变。
+  (2) **掩码是 per-stream 的,没有泄漏到进程**——四个掩码流全部用过之后,
+  默认流仍为 44.6 ms(与使用前的 44.6 ms 一致),`default_stream_unaffected`。
+  这一条决定了单进程内能否并存不同配额的租户。
+  (3) **读回值逐个与请求一致**(`hipExtStreamGetCUMask`)。
+  切换开销:在最小/最大配额间逐次交替,相对各自稳态 32 单元 **−0.6%**
+  (噪声内)、4 单元 **+6.7%**。故 transition 的一阶模型可取「切换后即为目标
+  配额的稳态延迟」,误差上界约 7%,在 Gate B 的 10% 阈值内——但**须用真实模型
+  复测**,上述为合成负载。
+  注意此处 4→32 加速比仅 4.31×(配额比 8×),与 SDXL 的 5.05× 同样次线性,
+  说明 serial 成分不是 diffusion pipeline 特有,合成 matmul 链同样存在。
