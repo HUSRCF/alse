@@ -1896,3 +1896,39 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   两参数模型评分，纯比例模型会在高配额端系统性低估延迟。该模型与评分实现
   在 `src/burstserve/quota_model.py`，对两种空洞通过都做了拒绝：三点以下不
   拟合（两参数模型在两点上必然零残差），留出集为空不评分（MAPE 恒为 0）。
+- 2026-08-03 / native-build-is-not-reproducible：**`smid_probe.real` 的构建
+  不是逐位可复现的**，而三个 NVIDIA gate manifest 用
+  `approved_real_probe_sha256` 把它 pin 死了。这意味着 pin 所声称的
+  「可验证性」实际不成立：产物一旦丢失就无法重建出同一个二进制来核对。
+  发现经过与证据：为修一个 flaky 测试改了 `tests/test_native_parent_guard.py`，
+  该文件的 SHA 在 build stamp 内（这是设计使然），于是必须重建。重建后
+  `make` 三次得到**同一个 build stamp `10d0d2b7…`（即全部构建输入的 SHA
+  完全一致）却得到三个不同的二进制**：
+  `d367b99f…`（manifest pin）/ `0cb8ea61…` / `d059b2c0…`。
+  根因已定位到**恰好 3 个字节**：nvcc 把自己的临时文件名
+  `tmpxft_<PID 的十六进制>_00000000-6_smid_probe.cudafe1.cpp` 作为一个
+  `FILE LOCAL DEFAULT ABS` 符号写进了符号表，其中 8 位十六进制是 nvcc 进程的
+  PID。验证：对两个不同的二进制各执行
+  `objcopy --wildcard -N 'tmpxft_*'` 后，二者变为**逐位相同**
+  （`ad2069f0…`）。该符号是纯编译单元名标记，不参与任何重定位。
+  只有经 nvcc 的 `smid_probe.real` 带此符号，其余产物（纯 C，由 cc 编译）没有。
+  **已造成且不可逆的后果**：`d367b99f…` 那个二进制已被重建覆盖，仓库内无备份
+  （`build/` 不入 git），只有 `experiments/runs/*/manifest.json` 里留有它的
+  SHA 记录。因此三个 manifest 的 pin 现在指向一个不存在的产物，
+  `test_default_manifest_is_artifact_pinned_but_still_unpromoted` 如实判负。
+  **这是拒绝而非放行，行为是安全的**：NVIDIA 侧的 masked 运行现在会被拒。
+  **补救路径（尚未执行，须在不被 GPU 任务打断的时段整体做完）**：
+  (1) 在 `REAL_TARGET` 链接后加一步 `objcopy --wildcard -N 'tmpxft_*'`，并把
+  `objcopy` 像 `ar`/`cc` 一样纳入 stamp 与 attestation（`OBJCOPY`、
+  `OBJCOPY_EXECUTABLE_SHA256`、`OBJCOPY_VERSION_SHA256`），否则等于在证明体系里
+  留一个未被证明的工具；(2) 连续两次 `make clean && make all` 验证 bit-identical；
+  (3) 更新三个 manifest 的 `approved_real_probe_sha256` /
+  `approved_build_stamp_sha256` / `approved_build_attestation_sha256`；
+  (4) 用新身份重跑 NVIDIA 侧 baseline 与 masked 矩阵——**不得把旧二进制跑出的
+  cell 与新身份混用**。代价可控：NVIDIA Gate A 本就欠五项、本就要重跑。
+  连带待办：`tests/test_native_parent_guard.py` 中
+  `test_artifacts_have_exact_permissions_links_and_no_capability` 会在
+  `/run/user/$UID`（tmpfs，登录会话结束即清空）被清理而 `build/` 尚存时抛
+  `FileNotFoundError` 而非 skip——因为 `require_artifacts()` 只覆盖 `build/`。
+  修法已验证（拆成独立测试 + 缺失即 skip），但因会触发上述二进制轮换，
+  暂缓到补救路径一并执行，本次已 revert。
