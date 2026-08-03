@@ -2058,3 +2058,20 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   这条独立地加强了「第二 GPU SKU 仍须覆盖」这个 Phase 0 硬门的理由:
   H100-80G 能容纳 FLUX 的 resident 全量,R9700 不能,故 AMD 线**在模型覆盖上
   也不足以替代** NVIDIA 线,与此前「AMD 是补充而非替代」的决定一致。
+- 2026-08-03 / peak-memory-was-inflated-by-async-execution：**显存峰值的测量
+  受同步方式影响,此前的数字偏高**。同一配置(SDXL 1024²、batch=1)在
+  per-step 计时改用 CUDA events 并在每次 pipeline 调用后显式
+  `torch.cuda.synchronize()` 之后,`max_memory_allocated` 从 **19.92 GB
+  降到 10.52 GB**,且 8/12/… 各配额一致(此前只有 4 单元是 10.52 GB,
+  ≥8 单元都报 19.92 GB,该「随配额跳变」本身就是异步造成的假象)。
+  成因:未显式同步时,相邻两次 pipeline 调用的中间张量在时间上重叠存活,
+  峰值把两次调用的激活加在一起。
+  **连带修正**:据此,1024² 下两个 16 单元 cell 实际只需 2×10.52 = **21 GB
+  < 34.2 GB,是装得下的**;此前依 19.92 GB 判定 39.8 GB 超限而把 co-run 退到
+  512²,那个判定基于被测量方法抬高的数字。512² 的 co-run 结论(不相交掩码
+  下仍有 +22.8%/+23.7% 外部性)不受影响——它测的是同一现象——但
+  **1024² 的 16+16 co-run 应当补测**,因为它更接近真实负载,且是显存峰值表
+  与 pairwise externality table 都需要的条目。
+  **一般教训**:`max_memory_allocated` 是「历史峰值」,在异步执行下它度量的是
+  「同时存活」而非「单次调用需要」。显存峰值表必须声明其同步条件,否则
+  两张表在不同 harness 下不可比。
