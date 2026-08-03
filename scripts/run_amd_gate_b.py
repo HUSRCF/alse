@@ -57,8 +57,23 @@ def mask_for(units: int) -> str:
     return hex((1 << units) - 1)
 
 
+def problem_scale(*, batch: int, height: int, width: int, frames: int,
+                  model: str) -> int:
+    """How much work one call asks for, in a unit comparable across shapes.
+
+    The saturation test needs a strictly larger problem at the same quota,
+    and on a 32 GB card a larger batch is not always available: SDXL at
+    1024 with batch 1 already peaks near 20 GB, so batch 2 does not fit.
+    Resolution is the other axis, and both have to be comparable for the
+    test to say which cell is the larger one.
+    """
+    if model.startswith("cogvideox"):
+        return batch * frames * height * width
+    return batch * height * width
+
+
 def run_cell(cell_script: Path, *, units: int, batch: int, args, samples: int,
-             warmup: int) -> dict:
+             warmup: int, height: int, width: int) -> dict:
     env = dict(os.environ)
     env["ROC_GLOBAL_CU_MASK"] = mask_for(units)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -71,11 +86,13 @@ def run_cell(cell_script: Path, *, units: int, batch: int, args, samples: int,
         "--samples", str(samples),
         "--target-cv", str(args.target_cv),
         "--max-samples", str(args.max_samples),
-        "--height", str(args.height),
-        "--width", str(args.width),
+        "--height", str(height),
+        "--width", str(width),
         "--frames", str(args.frames),
         "--seed", str(args.seed),
     ]
+    scale = problem_scale(batch=batch, height=height, width=width,
+                          frames=args.frames, model=args.model)
     started = time.time()
     proc = subprocess.run(argv, env=env, capture_output=True, text=True)
     body = [ln for ln in proc.stdout.splitlines() if ln.startswith("{")]
@@ -85,12 +102,16 @@ def run_cell(cell_script: Path, *, units: int, batch: int, args, samples: int,
             "returncode": proc.returncode,
             "requested_units": units,
             "batch": batch,
+            "height": height,
+            "width": width,
+            "problem_scale": scale,
             "stderr_tail": proc.stderr[-2000:],
             "stdout_tail": proc.stdout[-1000:],
             "wall_s": time.time() - started,
         }
     record = json.loads(body[-1])
     record["requested_units"] = units
+    record["problem_scale"] = scale
     record["wall_s"] = time.time() - started
     return record
 
@@ -104,32 +125,44 @@ def classify(rows: list[dict], epsilon: float) -> None:
     second; the first is what explains it when it fails.
     """
 
-    ok = [r for r in rows if r.get("status") == "ok"]
-    by_batch: dict[int, dict[int, dict]] = {}
-    for row in ok:
-        by_batch.setdefault(row["batch"], {})[row["requested_units"]] = row
-    batches = sorted(by_batch)
+    # Work per second, not items per second. Once the larger problem can be
+    # a higher resolution rather than a bigger batch, an "item" is no longer
+    # a constant amount of work, and comparing items/s across resolutions
+    # would report a saturated cell as unsaturated purely because its items
+    # are bigger.
+    def throughput(row):
+        return row.get("problem_scale", row["batch"]) / row["p50_s"]
 
-    for index, batch in enumerate(batches):
-        larger = batches[index + 1] if index + 1 < len(batches) else None
-        for units, row in by_batch[batch].items():
-            peer = by_batch.get(larger, {}).get(units) if larger else None
+    ok = [r for r in rows if r.get("status") == "ok"]
+    by_scale: dict[int, dict[int, dict]] = {}
+    for row in ok:
+        scale = row.get("problem_scale", row["batch"])
+        by_scale.setdefault(scale, {})[row["requested_units"]] = row
+    scales = sorted(by_scale)
+
+    for index, scale in enumerate(scales):
+        larger = scales[index + 1] if index + 1 < len(scales) else None
+        for units, row in by_scale[scale].items():
+            peer = by_scale.get(larger, {}).get(units) if larger else None
             if peer is None:
                 row["saturating_regime"] = None
                 row["saturation_basis"] = "no larger problem measured"
             else:
-                gain = peer["items_per_s"] / row["items_per_s"] - 1.0
+                gain = throughput(peer) / throughput(row) - 1.0
                 row["saturating_regime"] = gain <= epsilon
                 row["saturation_basis"] = {
-                    "compared_batch": larger,
+                    "compared_scale": larger,
+                    "compared_batch": peer["batch"],
+                    "compared_height": peer.get("height"),
+                    "compared_width": peer.get("width"),
                     "throughput_gain": gain,
                     "epsilon": epsilon,
                 }
             lower = [
-                other for q, other in by_batch[batch].items() if q < units
+                other for q, other in by_scale[scale].items() if q < units
             ]
             row["quota_monotone"] = all(
-                row["items_per_s"] >= other["items_per_s"] for other in lower
+                throughput(row) >= throughput(other) for other in lower
             ) if lower else True
             # What the canonical p50 table is allowed to contain.
             row["canonical_eligible"] = bool(
@@ -152,6 +185,10 @@ def main() -> int:
     parser.add_argument("--quotas", default=",".join(str(q) for q in DEFAULT_QUOTAS))
     parser.add_argument("--canonical-batch", type=int, default=1)
     parser.add_argument("--probe-batch", type=int, default=2)
+    # When a bigger batch will not fit, resolution is the other way to
+    # pose a strictly larger problem at the same quota.
+    parser.add_argument("--probe-height", type=int)
+    parser.add_argument("--probe-width", type=int)
     parser.add_argument("--samples", type=int, default=30)
     parser.add_argument("--warmup", type=int, default=5)
     # The larger problem only has to decide a boolean about the regime, not
@@ -186,15 +223,23 @@ def main() -> int:
     print(f"source revision: {revision}", flush=True)
 
     rows: list[dict] = []
-    plan = [(args.canonical_batch, args.samples, args.warmup, "canonical")]
-    if args.probe_batch and args.probe_batch != args.canonical_batch:
+    probe_height = args.probe_height or args.height
+    probe_width = args.probe_width or args.width
+    plan = [(args.canonical_batch, args.samples, args.warmup, "canonical",
+             args.height, args.width)]
+    probe_differs = (
+        args.probe_batch != args.canonical_batch
+        or probe_height != args.height or probe_width != args.width
+    )
+    if probe_differs:
         plan.append((args.probe_batch, args.probe_samples, args.probe_warmup,
-                     "saturation_probe"))
+                     "saturation_probe", probe_height, probe_width))
 
-    for batch, samples, warmup, role in plan:
+    for batch, samples, warmup, role, height, width in plan:
         for units in quotas:
             row = run_cell(cell_script, units=units, batch=batch, args=args,
-                           samples=samples, warmup=warmup)
+                           samples=samples, warmup=warmup,
+                           height=height, width=width)
             row["role"] = role
             rows.append(row)
             if row.get("status") == "ok":
@@ -246,6 +291,8 @@ def main() -> int:
         "width": args.width,
         "canonical_batch": args.canonical_batch,
         "probe_batch": args.probe_batch,
+        "probe_height": probe_height,
+        "probe_width": probe_width,
         "reduced_contract": "docs/amd-reduced-contract.md",
     }
     with out.open("w", encoding="utf-8") as handle:

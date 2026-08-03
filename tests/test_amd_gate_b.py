@@ -200,6 +200,82 @@ class SaturationTest(unittest.TestCase):
         self.assertFalse(rows[1]["canonical_eligible"])
 
 
+class ProblemScaleTest(unittest.TestCase):
+    """Resolution has to work as a size axis, not just batch.
+
+    SDXL at 1024 with batch 1 already peaks near 20 GB on a 32 GB card, so
+    the batch-2 probe cannot run, and without a larger problem every cell's
+    regime is undetermined and the whole table is ineligible. Resolution is
+    the axis that still fits.
+    """
+
+    def _cell_at(self, units, *, batch, height, width, p50, model="sdxl"):
+        scale = gate_b.problem_scale(batch=batch, height=height, width=width,
+                                     frames=49, model=model)
+        return {
+            "status": "ok", "requested_units": units, "batch": batch,
+            "height": height, "width": width, "problem_scale": scale,
+            "p50_s": p50, "cv": 0.01, "meets_cv_threshold": True,
+            "cu_mask_stable": True,
+            "cu_mask_attestation": {"readback_matches_request": True},
+        }
+
+    def test_a_larger_resolution_counts_as_a_larger_problem(self):
+        scale_small = gate_b.problem_scale(batch=1, height=1024, width=1024,
+                                           frames=49, model="sdxl")
+        scale_large = gate_b.problem_scale(batch=1, height=1216, width=1216,
+                                           frames=49, model="sdxl")
+        self.assertGreater(scale_large, scale_small)
+
+    def test_frames_count_as_size_for_video_models(self):
+        few = gate_b.problem_scale(batch=1, height=480, width=720, frames=17,
+                                   model="cogvideox-2b")
+        many = gate_b.problem_scale(batch=1, height=480, width=720, frames=49,
+                                    model="cogvideox-2b")
+        self.assertGreater(many, few)
+        # ...and not for image models, whose calls have no frame axis.
+        self.assertEqual(
+            gate_b.problem_scale(batch=1, height=1024, width=1024, frames=17,
+                                 model="sdxl"),
+            gate_b.problem_scale(batch=1, height=1024, width=1024, frames=49,
+                                 model="sdxl"),
+        )
+
+    def test_saturation_is_decided_by_work_per_second_not_items(self):
+        """Items/s across resolutions would call a saturated cell unsaturated.
+
+        A 1.41x larger problem taking 1.41x longer is exactly saturated, but
+        its items/s is unchanged at 1 item per call, so an items/s comparison
+        would see no gain from a genuinely bigger workload and an item-count
+        comparison would see the wrong thing entirely.
+        """
+        rows = [
+            self._cell_at(32, batch=1, height=1024, width=1024, p50=4.0),
+            self._cell_at(32, batch=1, height=1216, width=1216, p50=5.63),
+        ]
+        gate_b.classify(rows, 0.05)
+        self.assertIs(rows[0]["saturating_regime"], True)
+
+    def test_a_larger_resolution_that_runs_more_efficiently_is_not_saturating(self):
+        rows = [
+            self._cell_at(32, batch=1, height=1024, width=1024, p50=4.0),
+            self._cell_at(32, batch=1, height=1216, width=1216, p50=4.5),
+        ]
+        gate_b.classify(rows, 0.05)
+        self.assertIs(rows[0]["saturating_regime"], False)
+
+    def test_the_basis_records_which_cell_it_was_compared_against(self):
+        rows = [
+            self._cell_at(32, batch=1, height=1024, width=1024, p50=4.0),
+            self._cell_at(32, batch=1, height=1216, width=1216, p50=5.63),
+        ]
+        gate_b.classify(rows, 0.05)
+        basis = rows[0]["saturation_basis"]
+        self.assertEqual(basis["compared_height"], 1216)
+        self.assertEqual(basis["compared_width"], 1216)
+        self.assertEqual(basis["compared_batch"], 1)
+
+
 class MonotonicityTest(unittest.TestCase):
     def test_a_quota_that_lost_throughput_to_a_smaller_one_is_not_monotone(self):
         rows = [
