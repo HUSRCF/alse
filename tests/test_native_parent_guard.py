@@ -1556,35 +1556,10 @@ class NativeParentGuardArtifactTest(unittest.TestCase):
             EXEC_TEST_IDENTITY_HEADER: 0o400,
             STAMP: 0o400,
             ATTESTATION: 0o400,
+            BUILD_LOCK: 0o600,
+            BUILD_LOCK.parent: 0o700,
             BINARY.parent: 0o700,
         }
-        self._assert_exact_permissions(modes)
-
-    def test_build_lock_has_exact_permissions_links_and_no_capability(
-        self,
-    ) -> None:
-        """The build lock is checked separately because it outlives less.
-
-        ``build/`` is persistent, but the lock lives under ``/run/user/$UID``,
-        which is tmpfs and is cleared when the login session ends. Asserting
-        it alongside the persistent artifacts made the suite raise
-        FileNotFoundError whenever the binaries had survived a reboot and the
-        lock had not -- an error, not a skip, from a condition
-        ``require_artifacts`` does not cover. Skipping here is honest: a
-        missing lock is not a permissions failure, and it must not read as a
-        passing check either.
-        """
-
-        self.require_artifacts()
-        if not BUILD_LOCK.exists():
-            self.skipTest(
-                f"the build lock is not present in this session: {BUILD_LOCK}"
-            )
-        self._assert_exact_permissions(
-            {BUILD_LOCK: 0o600, BUILD_LOCK.parent: 0o700}
-        )
-
-    def _assert_exact_permissions(self, modes: dict[Path, int]) -> None:
         for path, expected_mode in modes.items():
             with self.subTest(path=path):
                 status = path.stat(follow_symlinks=False)
