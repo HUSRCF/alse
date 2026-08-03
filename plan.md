@@ -2114,3 +2114,19 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   无法被当作可用模型引用。
   这条与 `native-build-is-not-reproducible`、`amd-cold-model-fails-and-why`
   同属一类:**空洞或巧合的通过必须能被机制识别出来,而不是靠人盯数字**。
+- 2026-08-03 / corun-externality-is-scale-invariant：补测 1024² 的 16+16
+  co-run,与 512² 的结论**高度一致**,说明 CU 分区下的外部性不是某个负载规模
+  的偶然:
+  512²  → a **+22.8%** / b **+23.7%**(重叠 180.6 s = 99.5%,CV 0.51%/0.37%);
+  1024² → a **+24.2%** / b **+24.5%**(重叠 183.6 s = 99.2%,CV 0.20%/0.31%)。
+  两个规模相差 4 倍计算量,外部性稳定在 **23–24%**,随规模轻微上升(更大的
+  负载 → 更多显存带宽竞争)。**调度器可以把它当作一个近似常数的惩罚项**,
+  这比「随负载变化的未知函数」好得多。
+  同时**证实了 peak-memory-was-inflated-by-async-execution 的修正**:1024²
+  的 16+16 实测只需 **25.2 GB**(预算 30.8 GB),`fits=True` 且顺利跑完——
+  此前依未同步时的虚高数字(19.92 GB/cell → 39.8 GB)判定超限而退到 512²,
+  那次判定是错的。原始记录:
+  `experiments/probes/amd-r9700-cu-mask/corun_sdxl_16_16_{512,1024}_20260803.json`。
+  尚未测:非对称配额(如 8+24)、异构模型对(SDXL+CogVideoX)、
+  compute-bound 与 bandwidth-bound 负载配对——这些是 pairwise externality
+  table 的其余条目。
