@@ -141,6 +141,57 @@ class DeadlineSamplingTest(unittest.TestCase):
         self.assertEqual(len(calls), 8)
 
 
+class MemoryHeadroomTest(unittest.TestCase):
+    """A co-run that does not fit measures the wrong thing.
+
+    Two SDXL cells at 16 units each peaked at 19.92 GB apiece on a 32 GB
+    card (2026-08-03), so the pair cannot be resident. Run anyway it either
+    dies of OOM, producing nothing, or thrashes the allocator and produces
+    an externality that is really memory pressure wearing a CU-contention
+    label. The second is worse, so the check runs before the pair does.
+    """
+
+    def _solo(self, reserved, total=34_359_738_368):
+        return {"peak_memory_reserved_bytes": reserved,
+                "total_memory_bytes": total}
+
+    def test_a_pair_that_fits_is_allowed(self):
+        result = corun.memory_headroom(
+            self._solo(10_000_000_000), self._solo(10_000_000_000), safety=0.9
+        )
+        self.assertTrue(result["fits"])
+
+    def test_the_measured_sdxl_pair_does_not_fit(self):
+        result = corun.memory_headroom(
+            self._solo(19_920_000_000), self._solo(19_920_000_000), safety=0.9
+        )
+        self.assertFalse(result["fits"])
+
+    def test_the_budget_is_the_declared_fraction_of_the_card(self):
+        card = 34_359_738_368
+        half = int(card * 0.45)
+        self.assertTrue(
+            corun.memory_headroom(self._solo(half), self._solo(half),
+                                  safety=0.95)["fits"]
+        )
+        self.assertFalse(
+            corun.memory_headroom(self._solo(half), self._solo(half),
+                                  safety=0.85)["fits"]
+        )
+
+    def test_an_unknown_peak_is_reported_as_unknown_not_as_fitting(self):
+        """Missing data must not read as permission to proceed."""
+        for a, b in (
+            ({}, self._solo(1)),
+            (self._solo(1), {}),
+            ({"peak_memory_reserved_bytes": 1}, {"peak_memory_reserved_bytes": 1}),
+        ):
+            with self.subTest():
+                result = corun.memory_headroom(a, b, safety=0.9)
+                self.assertFalse(result["known"])
+                self.assertNotIn("fits", result)
+
+
 class OverlapTest(unittest.TestCase):
     """Two processes that took turns produce a clean-looking co-run.
 

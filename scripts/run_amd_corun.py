@@ -124,6 +124,32 @@ def corun(args, side_a: dict, side_b: dict, mask_a: str, mask_b: str) -> tuple:
         shutil.rmtree(barrier_dir, ignore_errors=True)
 
 
+def memory_headroom(solo_a: dict, solo_b: dict, *, safety: float) -> dict:
+    """Whether two solo cells of this size fit on the card at once.
+
+    A co-run that dies of OOM produces no externality number, and worse,
+    a co-run whose two sides thrash the allocator produces one that
+    measures memory pressure while being reported as CU contention. So the
+    check happens after the solo cells, whose peaks are already measured,
+    and before the pair is launched.
+    """
+    peaks = [solo_a.get("peak_memory_reserved_bytes"),
+             solo_b.get("peak_memory_reserved_bytes")]
+    total = solo_a.get("total_memory_bytes") or solo_b.get("total_memory_bytes")
+    if any(p is None for p in peaks) or not total:
+        return {"known": False}
+    required = sum(peaks)
+    return {
+        "known": True,
+        "required_bytes": required,
+        "total_bytes": total,
+        "safety_fraction": safety,
+        "budget_bytes": total * safety,
+        "fits": required <= total * safety,
+        "peaks": peaks,
+    }
+
+
 def restrict_to_overlap(record_a: dict, record_b: dict, minimum: float) -> dict:
     """Keep only samples that ran while both processes were sampling.
 
@@ -189,6 +215,10 @@ def main() -> int:
     parser.add_argument("--co-run-seconds", type=float, default=180.0)
     parser.add_argument("--barrier-timeout", type=float, default=1800.0)
     parser.add_argument("--minimum-overlap-fraction", type=float, default=0.80)
+    parser.add_argument("--memory-safety", type=float, default=0.90,
+                        help="fraction of card memory the pair may use")
+    parser.add_argument("--force", action="store_true",
+                        help="run the pair even when it does not fit")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -220,6 +250,36 @@ def main() -> int:
     solo_a = solo(args, side_a, mask_a, "a")
     print("solo b ...", flush=True)
     solo_b = solo(args, side_b, mask_b, "b")
+
+    headroom = memory_headroom(solo_a, solo_b, safety=args.memory_safety)
+    if headroom.get("known"):
+        print(f"memory: {headroom['required_bytes']/1e9:.1f} GB needed vs "
+              f"{headroom['budget_bytes']/1e9:.1f} GB budget "
+              f"({headroom['total_bytes']/1e9:.1f} GB card) -> "
+              f"fits={headroom['fits']}", flush=True)
+    if headroom.get("known") and not headroom["fits"] and not args.force:
+        # Reported as its own outcome. A co-run run anyway would either die
+        # of OOM or measure allocator thrash and label it CU contention.
+        report = {
+            "schema_version": TABLE_SCHEMA_VERSION,
+            "source_revision": revision,
+            "status": "does_not_fit",
+            "masks": {"a": mask_a, "b": mask_b,
+                      "units_a": args.units_a, "units_b": args.units_b,
+                      "disjoint": (int(mask_a, 0) & int(mask_b, 0)) == 0},
+            "sides": {"a": side_a, "b": side_b},
+            "solo": {"a": solo_a, "b": solo_b},
+            "memory_headroom": headroom,
+        }
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(canonical_json(report) + "\n")
+        print("co-run skipped: the pair does not fit on the card. "
+              "Lower the resolution or batch, or pass --force to measure "
+              "the failure.")
+        print(f"report: {out}")
+        return 1
+
     print("co-run ...", flush=True)
     co_a, co_b = corun(args, side_a, side_b, mask_a, mask_b)
 
@@ -247,6 +307,7 @@ def main() -> int:
         "sides": {"a": side_a, "b": side_b},
         "solo": {"a": solo_a, "b": solo_b},
         "corun": {"a": co_a, "b": co_b},
+        "memory_headroom": headroom,
         "wall_seconds": time.time() - started,
         "reduced_contract": "docs/amd-reduced-contract.md",
     }

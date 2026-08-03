@@ -404,6 +404,9 @@ def main() -> int:
         ) <= args.target_cv,
         "peak_memory_bytes": torch.cuda.max_memory_allocated(),
         "peak_memory_reserved_bytes": torch.cuda.max_memory_reserved(),
+        # Recorded so a co-run can tell in advance whether two of these fit
+        # on the card, rather than discovering it as an OOM mid-measurement.
+        "total_memory_bytes": torch.cuda.get_device_properties(0).total_memory,
         **({"per_step_count": len(last_steps),
             "per_step_mean_s": statistics.mean(last_steps),
             **phase_summary(last_steps)} if last_steps else {}),
