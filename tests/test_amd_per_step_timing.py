@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import ast
+import sys
+import unittest
+from pathlib import Path
+
+SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+
+import amd_profile_cell as cell  # noqa: E402
+
+
+class PerStepTimingUsesDeviceEventsTest(unittest.TestCase):
+    """Per-step timing must not come from a host clock.
+
+    Kernel launches are asynchronous, so a host timer between denoising
+    callbacks measures how fast the host queues work until the queue fills.
+    The first measurement of this reported 51.8 ms for the early steps
+    against 201.1 ms for the middle ones, on steps that do identical work,
+    and the plan asks for exactly that early/middle/late split.
+    """
+
+    def _diffusion_source(self) -> ast.FunctionDef:
+        tree = ast.parse((SCRIPTS / "amd_profile_cell.py").read_text("utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "diffusion":
+                return node
+        self.fail("diffusion() not found")
+
+    def test_the_callback_records_a_cuda_event(self):
+        source = ast.unparse(self._diffusion_source())
+        self.assertIn("Event(enable_timing=True)", source)
+        self.assertIn("elapsed_time", source)
+
+    def test_the_callback_does_not_read_a_host_clock(self):
+        """The regression this guards is precisely perf_counter in on_step."""
+        for node in ast.walk(self._diffusion_source()):
+            if isinstance(node, ast.FunctionDef) and node.name == "on_step":
+                source = ast.unparse(node)
+                self.assertNotIn("perf_counter", source)
+                self.assertNotIn("time.time", source)
+                return
+        self.fail("on_step() not found inside diffusion()")
+
+    def test_the_run_synchronises_before_reading_the_events(self):
+        """elapsed_time on an unrecorded-yet event is undefined."""
+        source = ast.unparse(self._diffusion_source())
+        self.assertLess(
+            source.index("cuda.synchronize"), source.index("elapsed_time")
+        )
+
+
+class PerStepConsistencyTest(unittest.TestCase):
+    """The steps are part of the call, so they cannot outlast it.
+
+    This is the check that would have caught the host-clock defect without
+    anyone reading the numbers: a per-step total larger than the end-to-end
+    p50 is impossible, and one far smaller means the rest of the call is
+    unaccounted for.
+    """
+
+    def _fraction(self, total, p50):
+        return 0.0 < (total / p50) <= 1.0
+
+    def test_steps_totalling_more_than_the_call_are_inconsistent(self):
+        self.assertFalse(self._fraction(6.0, 4.918))
+
+    def test_steps_fitting_inside_the_call_are_consistent(self):
+        self.assertTrue(self._fraction(3.8, 4.918))
+
+    def test_the_measured_host_clock_case_was_within_bounds_but_wrong(self):
+        """Consistency is necessary, not sufficient -- state that plainly.
+
+        The defective run totalled 2.89 s inside a 4.918 s call, so this
+        check alone would have passed it. It bounds the error; the CUDA
+        events are what remove it.
+        """
+        self.assertTrue(self._fraction(19 * 0.15206, 4.918))
+
+    def test_a_zero_or_negative_total_is_inconsistent(self):
+        self.assertFalse(self._fraction(0.0, 4.918))
+        self.assertFalse(self._fraction(-1.0, 4.918))
+
+
+class PhaseSummaryTest(unittest.TestCase):
+    def test_it_splits_into_thirds(self):
+        result = cell.phase_summary([1.0] * 3 + [2.0] * 3 + [3.0] * 3)
+        self.assertAlmostEqual(result["early_step_mean_s"], 1.0)
+        self.assertAlmostEqual(result["middle_step_mean_s"], 2.0)
+        self.assertAlmostEqual(result["late_step_mean_s"], 3.0)
+
+    def test_the_tail_goes_to_the_late_phase_when_it_does_not_divide(self):
+        result = cell.phase_summary([1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 3.0, 3.0])
+        self.assertAlmostEqual(result["late_step_mean_s"], 3.0)
+
+    def test_an_empty_trajectory_yields_nothing_rather_than_zeros(self):
+        self.assertEqual(cell.phase_summary([]), {})
+
+
+if __name__ == "__main__":
+    unittest.main()

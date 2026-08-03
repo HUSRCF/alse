@@ -205,16 +205,21 @@ def diffusion(torch, device, args):
     pipeline.set_progress_bar_config(disable=True)
     load_seconds = time.perf_counter() - load_started
 
-    # Per-step wall time, captured from inside the denoising loop so that
+    # Per-step device time, captured from inside the denoising loop so that
     # scheduler and VAE work are not folded into the step figure.
-    step_times: list[float] = []
-    last = [0.0]
+    #
+    # CUDA events, not host wall clock. Kernel launches are asynchronous, so
+    # a host timer between callbacks measures how fast the host can queue
+    # work until the queue fills, not how long the device took. That is not
+    # a subtle bias: the first measurement of this reported 51.8 ms for the
+    # early steps against 201.1 ms for the middle ones, on steps that do
+    # identical work.
+    events: list = []
 
     def on_step(pipe, index, timestep, kwargs):
-        now = time.perf_counter()
-        if last[0]:
-            step_times.append(now - last[0])
-        last[0] = now
+        event = torch.cuda.Event(enable_timing=True)
+        event.record()
+        events.append(event)
         return kwargs
 
     generator = torch.Generator(device=device).manual_seed(args.seed)
@@ -231,11 +236,15 @@ def diffusion(torch, device, args):
         call["width"] = args.width
 
     def run():
-        step_times.clear()
-        last[0] = 0.0
+        events.clear()
         with torch.inference_mode():
             pipeline(**call)
-        return list(step_times)
+        torch.cuda.synchronize()
+        # elapsed_time is milliseconds between two recorded events.
+        return [
+            events[i].elapsed_time(events[i + 1]) / 1000.0
+            for i in range(len(events) - 1)
+        ]
 
     return run, {
         "repo": repo,
@@ -244,6 +253,7 @@ def diffusion(torch, device, args):
         "steps": args.steps,
         "height": args.height,
         "width": args.width,
+        "per_step_timing": "cuda_events",
     }
 
 
@@ -409,6 +419,7 @@ def main() -> int:
         "total_memory_bytes": torch.cuda.get_device_properties(0).total_memory,
         **({"per_step_count": len(last_steps),
             "per_step_mean_s": statistics.mean(last_steps),
+            "per_step_total_s": sum(last_steps),
             **phase_summary(last_steps)} if last_steps else {}),
         "torch": torch.__version__,
         "rocm": rocm_version(),
@@ -429,6 +440,15 @@ def main() -> int:
         record["window_end_wall"] = timed[-1]["end_wall"]
     if "flops_per_step" in record:
         record["tflops"] = record["flops_per_step"] / record["p50_s"] / 1e12
+    if "per_step_total_s" in record:
+        # The denoising steps are a subset of the call, so their total must
+        # fit inside the end-to-end p50. A fraction above 1.0 means the
+        # per-step clock is not measuring what it claims -- which is exactly
+        # how the host-timed version failed, by reporting steps far shorter
+        # than they were and hiding the rest of the call.
+        fraction = record["per_step_total_s"] / record["p50_s"]
+        record["per_step_fraction_of_p50"] = fraction
+        record["per_step_timing_consistent"] = 0.0 < fraction <= 1.0
     # Throughput in items per second is what the saturation test compares
     # across problem sizes; latency alone cannot answer it.
     record["items_per_s"] = args.batch / record["p50_s"]
