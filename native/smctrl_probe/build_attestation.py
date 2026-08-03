@@ -73,6 +73,7 @@ STAMP_FIELD_ORDER = (
     "NVCC",
     "CC",
     "AR",
+    "OBJCOPY",
     "CPPFLAGS",
     "CFLAGS",
     "NVCCFLAGS",
@@ -130,6 +131,9 @@ STAMP_FIELD_ORDER = (
     "AR_EXECUTABLE",
     "AR_EXECUTABLE_SHA256",
     "AR_VERSION_SHA256",
+    "OBJCOPY_EXECUTABLE",
+    "OBJCOPY_EXECUTABLE_SHA256",
+    "OBJCOPY_VERSION_SHA256",
     "PYTHON_EXECUTABLE",
     "PYTHON_EXECUTABLE_SHA256",
     "PYTHON_VERSION_SHA256",
@@ -146,6 +150,7 @@ CONFIG_ENVIRONMENT = {
     "nvcc": "BS_NVCC",
     "cc": "BS_CC",
     "ar": "BS_AR",
+    "objcopy": "BS_OBJCOPY",
     "cppflags": "BS_CPPFLAGS",
     "cflags": "BS_CFLAGS",
     "nvccflags": "BS_NVCCFLAGS",
@@ -1909,12 +1914,14 @@ def collect_identity(
     nvcc = resolve_tool(configuration["nvcc"], "nvcc")
     cc = resolve_tool(configuration["cc"], "host C compiler")
     ar = resolve_tool(configuration["ar"], "archiver")
+    objcopy = resolve_tool(configuration["objcopy"], "objcopy")
     python = required_file(Path(sys.executable), "Python interpreter")
     cuda_driver_link = libcuda_link_library(cc, configuration)
 
     nvcc_version = version_record(nvcc, configuration)
     cc_version = version_record(cc, configuration)
     ar_version = version_record(ar, configuration)
+    objcopy_version = version_record(objcopy, configuration)
     python_version = version_record(
         python,
         configuration,
@@ -1932,6 +1939,7 @@ def collect_identity(
         "NVCC": configuration["nvcc"],
         "CC": configuration["cc"],
         "AR": configuration["ar"],
+        "OBJCOPY": configuration["objcopy"],
         "CPPFLAGS": configuration["cppflags"],
         "CFLAGS": configuration["cflags"],
         "NVCCFLAGS": configuration["nvccflags"],
@@ -1983,6 +1991,9 @@ def collect_identity(
         "AR_EXECUTABLE": str(ar),
         "AR_EXECUTABLE_SHA256": sha256_file(ar),
         "AR_VERSION_SHA256": ar_version["stdout_stderr_sha256"],
+        "OBJCOPY_EXECUTABLE": str(objcopy),
+        "OBJCOPY_EXECUTABLE_SHA256": sha256_file(objcopy),
+        "OBJCOPY_VERSION_SHA256": objcopy_version["stdout_stderr_sha256"],
         "PYTHON_EXECUTABLE": str(python),
         "PYTHON_EXECUTABLE_SHA256": sha256_file(python),
         "PYTHON_VERSION_SHA256": python_version["stdout_stderr_sha256"],
@@ -2003,6 +2014,7 @@ def collect_identity(
             "nvcc": nvcc_version,
             "cc": cc_version,
             "ar": ar_version,
+            "objcopy": objcopy_version,
             "python": python_version,
         },
         "libsmctrl_git_snapshot": libsmctrl_snapshot.to_dict(),

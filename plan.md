@@ -1917,7 +1917,7 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   SHA 记录。因此三个 manifest 的 pin 现在指向一个不存在的产物，
   `test_default_manifest_is_artifact_pinned_but_still_unpromoted` 如实判负。
   **这是拒绝而非放行，行为是安全的**：NVIDIA 侧的 masked 运行现在会被拒。
-  **补救路径（尚未执行，须在不被 GPU 任务打断的时段整体做完）**：
+  **补救路径（已于 2026-08-03 全部执行完毕，见下一条）**：
   (1) 在 `REAL_TARGET` 链接后加一步 `objcopy --wildcard -N 'tmpxft_*'`，并把
   `objcopy` 像 `ar`/`cc` 一样纳入 stamp 与 attestation（`OBJCOPY`、
   `OBJCOPY_EXECUTABLE_SHA256`、`OBJCOPY_VERSION_SHA256`），否则等于在证明体系里
@@ -1932,3 +1932,38 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   `FileNotFoundError` 而非 skip——因为 `require_artifacts()` 只覆盖 `build/`。
   修法已验证（拆成独立测试 + 缺失即 skip），但因会触发上述二进制轮换，
   暂缓到补救路径一并执行，本次已 revert。
+- 2026-08-03 / native-build-reproducibility-restored：上一条的补救**已全部执行**，
+  `smid_probe.real` 现在逐位可复现。
+  改动：`Makefile` 在 `$(REAL_TARGET)` 链接后加一步
+  `$(BUILD_ENV) $(OBJCOPY) --wildcard -N 'tmpxft_*'`；`objcopy` 与 `ar`/`cc`
+  同等纳入构建证明——`OBJCOPY`、`OBJCOPY_EXECUTABLE`、
+  `OBJCOPY_EXECUTABLE_SHA256`、`OBJCOPY_VERSION_SHA256` 四个字段进入
+  `STAMP_FIELD_ORDER`，`BS_OBJCOPY` 进入 `ATTEST_ENV`，版本记录进入
+  attestation 的 `versions`。**不这样做等于在证明体系里留一个未被证明的工具**：
+  一个能改写最终二进制的程序却不在 stamp 内。`smctrl_runner.BUILD_STAMP_FIELDS`
+  这份运行时副本同步更新（既有测试
+  `test_runner_stamp_schema_exactly_matches_native_order` 逐字段比对二者，
+  漏改会被判负——它确实判负了，这是该测试第一次真正发挥作用）。
+  **验证**：连续两次 `make clean && make all`，九个产物（launcher、real probe、
+  exec-test 两个、test helper、两个 identity header、stamp、attestation）
+  **全部逐位相同**。另一次独立验证：构建内 objcopy 步骤产出的
+  `ad2069f0…` 与先前手工对两个不同二进制执行同一 objcopy 命令所得的值完全一致。
+  **一个必须区分清楚的例外**：`build-attestation.json` 在 clean rebuild 之间
+  **不**逐位相同，实测两次共 8 处差异**全部且仅仅是 `inode`**（无其他不确定性）。
+  这是设计使然而非缺陷：attestation 记录产物的 inode/device 正是为了检测产物被
+  替换，它绑定的是「这一次构建产出的这些具体文件」，不是「可重建的构建」。
+  因此 `approved_build_attestation_sha256` 只能靠保留文件本身来核对，
+  而 `approved_real_probe_sha256` / `approved_launcher_sha256` /
+  `approved_build_stamp_sha256` 现在可以靠重建核对——这是本次修复的实质收益。
+  三个 manifest 的四个 pin 已全部更新到新身份：
+  launcher `0cf66b42…`、real probe `ad2069f0…`、stamp `9aba017e…`、
+  attestation `de60bfad…`。**旧二进制 `d367b99f…` 已不可恢复**，故用它跑出的
+  NVIDIA cell **不得与新身份混用**；NVIDIA Gate A 本就欠五项、本就要重跑。
+  连带完成：`test_artifacts_have_exact_permissions_links_and_no_capability`
+  的 tmpfs 缺陷已随本次轮换一并修好（构建锁拆为独立测试，缺失即 skip 并说明
+  原因，而非抛 `FileNotFoundError`）。全量测试 598 项通过（21 skipped）。
+  **值得记住的一般教训**：二进制身份现在只依赖真正影响它的输入——改
+  `tests/test_native_parent_guard.py` 使 stamp 变化（`6b6d4e27…`→`9aba017e…`）
+  但 `smid_probe.real` 保持 `ad2069f0…` 不变，因为该测试文件不参与
+  `smid_probe.cu` 的编译。stamp 记录更广的上下文，产物摘要记录产物本身，
+  两者本就该分层；此前它们同时漂移，掩盖了这一点。

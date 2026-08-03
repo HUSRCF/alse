@@ -83,6 +83,7 @@ override MAKE := /usr/bin/make
 override NVCC := $(CUDA_HOME)/bin/nvcc
 override CC := /usr/bin/cc
 override AR := /usr/bin/ar
+override OBJCOPY := /usr/bin/objcopy
 override PYTHON := /usr/bin/python3
 override ENV := /usr/bin/env
 override FLOCK := /usr/bin/flock
@@ -183,6 +184,7 @@ BS_CUDA_ARCH='$(CUDA_ARCH)' \
 BS_NVCC='$(NVCC)' \
 BS_CC='$(CC)' \
 BS_AR='$(AR)' \
+BS_OBJCOPY='$(OBJCOPY)' \
 BS_CPPFLAGS='$(CPPFLAGS)' \
 BS_CFLAGS='$(CFLAGS)' \
 BS_NVCCFLAGS='$(NVCCFLAGS)' \
@@ -385,6 +387,7 @@ $(REAL_TARGET): FORCE_COMPILE $(PROBE_OBJECT) $(LIBSMCTRL_ARCHIVE) \
 	@tmp='$@.tmp'; $(RM) -f -- "$$tmp"; trap '$(RM) -f -- "$$tmp"' EXIT; \
 	$(BUILD_ENV) $(NVCC) $(NVCCFLAGS) \
 		'$(PROBE_OBJECT)' '$(LIBSMCTRL_ARCHIVE)' $(LDLIBS) -o "$$tmp"; \
+	$(BUILD_ENV) $(OBJCOPY) --wildcard -N 'tmpxft_*' "$$tmp"; \
 	$(CHMOD) 0500 "$$tmp"; $(MV) -f -- "$$tmp" '$@'; trap - EXIT
 
 $(REAL_IDENTITY_HEADER): FORCE_COMPILE $(REAL_TARGET) $(CONFIG_STAMP) \
