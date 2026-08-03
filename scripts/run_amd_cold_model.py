@@ -110,6 +110,28 @@ def weight_bytes_of(torch, pipeline) -> int:
     return total
 
 
+def fault_in_host_pages(torch, pipeline) -> float:
+    """Touch every weight so the timed transfer is not also a disk read.
+
+    safetensors maps the checkpoint rather than copying it, so a freshly
+    loaded pipeline's pages are still on disk and the first .to(device)
+    faults them in on the way past. Timing that and dividing by a
+    host-to-device bandwidth would attribute storage latency to PCIe, and
+    the resulting error would look like a bad bandwidth measurement rather
+    than a mismeasured quantity.
+    """
+    started = time.perf_counter()
+    touched = 0
+    for component in vars(pipeline).values():
+        if isinstance(component, torch.nn.Module):
+            for tensor in list(component.parameters()) + list(component.buffers()):
+                # A read of one element per page would do; summing is
+                # simpler and still cheap next to the transfer being timed.
+                touched += int(tensor.reshape(-1)[:1].abs().sum() >= 0)
+                tensor.data = tensor.data.clone()
+    return time.perf_counter() - started
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", default="sdxl")
@@ -149,6 +171,7 @@ def main() -> int:
         # host->device move, not the disk read and the safetensors parse.
         pipeline = DiffusionPipeline.from_pretrained(repo, **kwargs)
         weights = weight_bytes_of(torch, pipeline)
+        fault_seconds = fault_in_host_pages(torch, pipeline)
 
         torch.cuda.synchronize()
         started = time.perf_counter()
@@ -161,6 +184,9 @@ def main() -> int:
             "repo": repo,
             "weight_bytes": weights,
             "observed_seconds": observed,
+            # Reported so the transfer figure can be checked against the
+            # cost of getting the pages into host memory in the first place.
+            "host_page_fault_seconds": fault_seconds,
             "predicted_seconds_pinned": predict_cold_seconds(weights, pinned_bw),
             "predicted_seconds_pageable": predict_cold_seconds(weights,
                                                                pageable_bw),
