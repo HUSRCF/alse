@@ -148,6 +148,106 @@ class ProducerConsumerAgreementTest(unittest.TestCase):
         produced = self._produced_row_fields()
         self.assertNotIn("definitely_not_a_field_name", produced)
 
+    def _keys_written_by(self, script: str) -> set[str]:
+        import ast
+
+        keys: set[str] = set()
+        tree = ast.parse((self.SCRIPTS / script).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Dict):
+                keys.update(k.value for k in node.keys
+                            if isinstance(k, ast.Constant)
+                            and isinstance(k.value, str))
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                    and node.func.attr == "update":
+                for argument in node.args:
+                    if isinstance(argument, ast.Dict):
+                        keys.update(k.value for k in argument.keys
+                                    if isinstance(k, ast.Constant)
+                                    and isinstance(k.value, str))
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Subscript) and isinstance(
+                        target.slice, ast.Constant
+                    ) and isinstance(target.slice.value, str):
+                        keys.add(target.slice.value)
+        return keys
+
+    def test_the_residency_clause_reads_fields_that_script_writes(self):
+        """The defect this catches actually happened.
+
+        The residency script gained a duration_upper_bound branch that
+        emits no "fit" key, and the clause went on reading report["fit"] --
+        so the first real run of the verifier died with a KeyError instead
+        of judging anything.
+        """
+        produced = self._keys_written_by("run_amd_residency.py")
+        for field in ("status", "basis", "weight_bytes", "tolerance_bytes",
+                      "zero_weight_traffic", "upper_bound_bytes_per_rotation",
+                      "copies_per_rotation", "bound_bandwidth_bps"):
+            with self.subTest(field):
+                self.assertIn(field, produced)
+
+    def test_the_corun_clause_reads_fields_that_script_writes(self):
+        produced = self._keys_written_by("run_amd_corun.py")
+        for field in ("status", "masks", "disjoint", "overlap",
+                      "sufficient_overlap", "overlap_seconds", "externality",
+                      "overlap_fraction_of_longer_window"):
+            with self.subTest(field):
+                self.assertIn(field, produced)
+
+
+class ResidencyBasisTest(unittest.TestCase):
+    """A bound and a measurement are both real, and are not the same."""
+
+    def _report(self, **overrides):
+        report = {"status": "ok", "basis": "duration_upper_bound",
+                  "weight_bytes": 6_937_676_966,
+                  "tolerance_bytes": 69_376_769,
+                  "upper_bound_bytes_per_rotation": 27_320_000,
+                  "copies_per_rotation": 0.0,
+                  "bound_bandwidth_bps": 28.28e9,
+                  "zero_weight_traffic": True}
+        report.update(overrides)
+        return report
+
+    def test_a_bound_that_clears_the_tolerance_passes(self):
+        result = verify.check_residency(self._report())
+        self.assertEqual(result["status"], verify.PASS)
+        self.assertEqual(result["detail"]["basis"], "duration_upper_bound")
+
+    def test_a_bound_that_exceeds_the_tolerance_fails(self):
+        result = verify.check_residency(
+            self._report(upper_bound_bytes_per_rotation=7e9,
+                         zero_weight_traffic=False))
+        self.assertEqual(result["status"], verify.FAIL)
+
+    def test_a_measured_byte_count_is_accepted_too(self):
+        result = verify.check_residency({
+            "status": "ok", "basis": "measured_bytes",
+            "fit": {"bytes_per_rotation": 1000.0},
+            "weight_bytes": 6_937_676_966, "tolerance_bytes": 69_376_769,
+            "zero_weight_traffic": True})
+        self.assertEqual(result["status"], verify.PASS)
+        self.assertEqual(result["detail"]["basis"], "measured_bytes")
+
+    def test_which_basis_was_used_is_always_recorded(self):
+        """A bound must not be reportable as if it were a measurement."""
+        for basis in ("duration_upper_bound", "measured_bytes"):
+            with self.subTest(basis):
+                report = (self._report() if basis == "duration_upper_bound"
+                          else {"status": "ok", "basis": "measured_bytes",
+                                "fit": {"bytes_per_rotation": 0.0},
+                                "weight_bytes": 1, "tolerance_bytes": 1,
+                                "zero_weight_traffic": True})
+                self.assertEqual(
+                    verify.check_residency(report)["detail"]["basis"], basis
+                )
+
+    def test_an_unknown_basis_is_not_measured_rather_than_passing(self):
+        result = verify.check_residency(self._report(basis="something_new"))
+        self.assertEqual(result["status"], verify.NOT_MEASURED)
+
 
 class QuotaCoverageTest(unittest.TestCase):
     def test_the_full_declared_quota_list_passes(self):

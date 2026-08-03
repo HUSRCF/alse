@@ -210,17 +210,37 @@ def check_corun(report) -> dict:
 
 
 def check_residency(report) -> dict:
+    """Accept either a measured byte count or a bound on it.
+
+    rocprofv3 reports no copy sizes on this platform, so the bytes may only
+    be available as an upper bound from copy duration. A bound that clears
+    the tolerance is a real pass -- the true value is at most the bound --
+    but it is a weaker claim than a measurement, so which one was used is
+    recorded rather than flattened away.
+    """
+    name = "resident_rotation_moves_no_weight_bytes"
     if report is None:
-        return clause("resident_rotation_moves_no_weight_bytes", NOT_MEASURED,
-                      "no residency report")
+        return clause(name, NOT_MEASURED, "no residency report")
     if report.get("status") != "ok":
-        return clause("resident_rotation_moves_no_weight_bytes", NOT_MEASURED,
-                      {"status": report.get("status")})
-    status = PASS if report.get("zero_weight_traffic") else FAIL
-    return clause("resident_rotation_moves_no_weight_bytes", status,
-                  {"bytes_per_rotation": report["fit"]["bytes_per_rotation"],
-                   "weight_bytes": report["weight_bytes"],
-                   "tolerance_bytes": report["tolerance_bytes"]})
+        return clause(name, NOT_MEASURED, {"status": report.get("status")})
+
+    basis = report.get("basis")
+    detail = {"basis": basis,
+              "weight_bytes": report.get("weight_bytes"),
+              "tolerance_bytes": report.get("tolerance_bytes")}
+    if basis == "measured_bytes":
+        detail["bytes_per_rotation"] = report["fit"]["bytes_per_rotation"]
+    elif basis == "duration_upper_bound":
+        detail["upper_bound_bytes_per_rotation"] = (
+            report["upper_bound_bytes_per_rotation"])
+        detail["copies_per_rotation"] = report.get("copies_per_rotation")
+        detail["bound_bandwidth_bps"] = report.get("bound_bandwidth_bps")
+    else:
+        return clause(name, NOT_MEASURED,
+                      {"reason": "unrecognised basis", "basis": basis})
+    if report.get("zero_weight_traffic") is None:
+        return clause(name, NOT_MEASURED, detail)
+    return clause(name, PASS if report["zero_weight_traffic"] else FAIL, detail)
 
 
 def check_transition(report) -> dict:
