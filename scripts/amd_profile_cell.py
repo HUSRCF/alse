@@ -5,16 +5,109 @@ because that is the only masking route verified to reach PyTorch. The cell
 reports the coefficient of variation it actually achieved rather than assuming
 the sample count in the plan is enough: a single-card screen on the NVIDIA
 side already showed 5.5% CV at 22 samples, above the 5% Gate B threshold.
+
+Gate B-AMD additionally requires every profile to carry the requested mask
+*and* the ``hipExtStreamGetCUMask`` readback. PyTorch does not expose that
+call, so it is reached through ctypes on the stream torch actually launches
+on -- see :func:`read_cu_mask`. Without it a mask the runtime silently
+dropped is indistinguishable from one it honoured, which is exactly how the
+gfx1201 sweep caught bits 32..63 being ignored.
 """
 
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import statistics
+import subprocess
 import sys
 import time
+
+CELL_SCHEMA_VERSION = "burstserve.amd-profile-cell/v1"
+
+MODEL_REPOS = {
+    "sdxl": "stabilityai/stable-diffusion-xl-base-1.0",
+    "cogvideox-2b": "THUDM/CogVideoX-2b",
+    "cogvideox-5b": "THUDM/CogVideoX-5b",
+    "flux-dev": "black-forest-labs/FLUX.1-dev",
+}
+
+# SDXL publishes fp32 and fp16 weights side by side; without the variant the
+# pipeline loads the fp32 shards and then casts, which doubles load time and
+# host memory for no change in what is measured.
+MODEL_VARIANT = {"sdxl": "fp16"}
+
+
+def read_cu_mask(stream_ptr: int, words: int = 4) -> dict:
+    """Read a stream's CU mask back out of the HIP runtime.
+
+    Returns the mask the runtime reports, not the one that was asked for.
+    A disagreement between the two is the finding, so it is recorded rather
+    than raised here.
+    """
+    try:
+        hip = ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:  # pragma: no cover - depends on the host runtime
+        return {"available": False, "error": str(exc)}
+    fn = hip.hipExtStreamGetCUMask
+    fn.restype = ctypes.c_int
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32)]
+    buffer = (ctypes.c_uint32 * words)()
+    rc = fn(ctypes.c_void_p(stream_ptr), words, buffer)
+    if rc != 0:
+        return {"available": True, "rc": rc, "mask": None}
+    value = 0
+    for index, word in enumerate(buffer):
+        value |= word << (32 * index)
+    return {
+        "available": True,
+        "rc": 0,
+        "mask": hex(value),
+        "popcount": bin(value).count("1"),
+    }
+
+
+def mask_attestation(torch) -> dict:
+    """Bind the requested quota to what the runtime actually installed."""
+    requested = os.environ.get("ROC_GLOBAL_CU_MASK")
+    requested_value = int(requested, 0) if requested else None
+    stream = torch.cuda.current_stream()
+    readback = read_cu_mask(stream.cuda_stream)
+    record = {
+        "requested_cu_mask": requested,
+        "requested_units": (
+            bin(requested_value).count("1") if requested_value is not None else None
+        ),
+        "readback": readback,
+        "stream_ptr": stream.cuda_stream,
+        # A second, independent in-process signal: a masked device reports
+        # popcount/2 here, so it corroborates the readback without sharing
+        # its code path.
+        "multi_processor_count": torch.cuda.get_device_properties(
+            0
+        ).multi_processor_count,
+    }
+    if requested_value is None:
+        record["readback_matches_request"] = None
+    else:
+        record["readback_matches_request"] = (
+            readback.get("mask") is not None
+            and int(readback["mask"], 16) == requested_value
+        )
+    record["units"] = readback.get("popcount") or record["requested_units"]
+    return record
+
+
+def rocm_version() -> str | None:
+    try:
+        out = subprocess.run(
+            ["hipconfig", "--version"], capture_output=True, text=True, timeout=30
+        )
+        return out.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover
+        return None
 
 
 def measure(fn, *, warmup: int, samples: int, sync) -> list[float]:
@@ -55,18 +148,19 @@ def diffusion(torch, device, args):
     """
 
     from diffusers import DiffusionPipeline
+    from huggingface_hub import model_info
 
-    repo = {
-        "sdxl": "stabilityai/stable-diffusion-xl-base-1.0",
-        "cogvideox-2b": "THUDM/CogVideoX-2b",
-        "cogvideox-5b": "THUDM/CogVideoX-5b",
-        "flux-dev": "black-forest-labs/FLUX.1-dev",
-    }[args.model]
+    repo = MODEL_REPOS[args.model]
+    try:
+        revision = model_info(repo).sha
+    except Exception:  # offline or rate-limited; the profile still records it
+        revision = None
 
     load_started = time.perf_counter()
-    pipeline = DiffusionPipeline.from_pretrained(
-        repo, torch_dtype=torch.float16
-    ).to(device)
+    kwargs = {"torch_dtype": torch.float16, "use_safetensors": True}
+    if args.model in MODEL_VARIANT:
+        kwargs["variant"] = MODEL_VARIANT[args.model]
+    pipeline = DiffusionPipeline.from_pretrained(repo, **kwargs).to(device)
     pipeline.set_progress_bar_config(disable=True)
     load_seconds = time.perf_counter() - load_started
 
@@ -91,6 +185,9 @@ def diffusion(torch, device, args):
     }
     if args.model.startswith("cogvideox"):
         call["num_frames"] = args.frames
+    else:
+        call["height"] = args.height
+        call["width"] = args.width
 
     def run():
         step_times.clear()
@@ -101,8 +198,11 @@ def diffusion(torch, device, args):
 
     return run, {
         "repo": repo,
+        "model_revision": revision,
         "load_seconds": load_seconds,
         "steps": args.steps,
+        "height": args.height,
+        "width": args.width,
     }
 
 
@@ -133,6 +233,8 @@ def main() -> int:
     parser.add_argument("--target-cv", type=float, default=0.05)
     parser.add_argument("--max-samples", type=int, default=300)
     parser.add_argument("--frames", type=int, default=49)
+    parser.add_argument("--height", type=int, default=1024)
+    parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--prompt", default="a quiet street at dusk")
     args = parser.parse_args()
@@ -140,13 +242,27 @@ def main() -> int:
     import torch
 
     device = torch.device("cuda")
-    mask = os.environ.get("ROC_GLOBAL_CU_MASK")
-    units = bin(int(mask, 0)).count("1") if mask else None
+    torch.zeros(1, device=device)  # force context creation before the readback
+    attestation = mask_attestation(torch)
+
+    # A requested mask the runtime did not install makes every number below
+    # unattributable, so refuse rather than emit a mislabelled cell.
+    if attestation["readback_matches_request"] is False:
+        print(
+            json.dumps(
+                {
+                    "status": "mask_not_honoured",
+                    "cu_mask": attestation,
+                    "schema_version": CELL_SCHEMA_VERSION,
+                }
+            )
+        )
+        return 3
 
     if args.model == "synthetic":
         step, extra = synthetic(torch, device, args.batch)
         collect_steps = False
-    elif args.model in {"sdxl", "cogvideox-2b", "cogvideox-5b", "flux-dev"}:
+    elif args.model in MODEL_REPOS:
         step, extra = diffusion(torch, device, args)
         collect_steps = True
     else:
@@ -176,14 +292,22 @@ def main() -> int:
         samples += measure(step, warmup=0, samples=len(samples), sync=sync)
         escalations += 1
 
+    # The mask is read again after the workload: a quota that changed mid-cell
+    # would otherwise be attributed to the quota the cell was labelled with.
+    attestation_after = mask_attestation(torch)
+
     samples.sort()
     pick = lambda q: samples[min(len(samples) - 1, int(q * len(samples)))]
     record = {
+        "schema_version": CELL_SCHEMA_VERSION,
         "status": "ok",
         "model": args.model,
         "batch": args.batch,
-        "cu_mask": mask,
-        "units": units,
+        "cu_mask": attestation["requested_cu_mask"],
+        "units": attestation["units"],
+        "cu_mask_attestation": attestation,
+        "cu_mask_stable": attestation_after["readback"].get("mask")
+        == attestation["readback"].get("mask"),
         "samples": len(samples),
         "escalations": escalations,
         "p50_s": pick(0.50),
@@ -200,11 +324,16 @@ def main() -> int:
             "per_step_mean_s": statistics.mean(last_steps),
             **phase_summary(last_steps)} if last_steps else {}),
         "torch": torch.__version__,
+        "rocm": rocm_version(),
         "device_name": torch.cuda.get_device_name(0),
+        "gcn_arch": torch.cuda.get_device_properties(0).gcnArchName,
         **extra,
     }
     if "flops_per_step" in record:
         record["tflops"] = record["flops_per_step"] / record["p50_s"] / 1e12
+    # Throughput in items per second is what the saturation test compares
+    # across problem sizes; latency alone cannot answer it.
+    record["items_per_s"] = args.batch / record["p50_s"]
     print(json.dumps(record))
     return 0
 
