@@ -28,6 +28,13 @@ import sys
 import time
 from pathlib import Path
 
+# Before the first burstserve import, not on the command line: importing this
+# package writes .pyc files into the tree the run is about to bind, and the
+# source policy then refuses the run for untracked paths it created itself.
+# Relying on the caller to export PYTHONDONTWRITEBYTECODE has already failed
+# three times.
+sys.dont_write_bytecode = True
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 

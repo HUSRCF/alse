@@ -12,6 +12,11 @@ import os
 import sys
 from pathlib import Path
 
+# Before the first burstserve import, not on the command line: see the note
+# in run_amd_gate_b.py -- importing the package writes .pyc into the tree the
+# run is about to bind, and the source policy then refuses the run.
+sys.dont_write_bytecode = True
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 

@@ -40,6 +40,77 @@ class MaskPolicyTest(unittest.TestCase):
                 gate_b.mask_for(units)
 
 
+class BytecodeWritingTest(unittest.TestCase):
+    """A driver must not create the untracked files that fail its own gate.
+
+    Importing burstserve writes .pyc into the tree the run is about to bind,
+    and the source policy then refuses the run for paths it created itself.
+    Exporting PYTHONDONTWRITEBYTECODE from the caller has already failed
+    three times, so the guard has to live in the script -- and it only works
+    if it runs before the first burstserve import, which is what this checks.
+    """
+
+    DRIVERS = ("run_amd_gate_b.py", "run_amd_matrix.py")
+
+    def _positions(self, source: str):
+        import ast
+
+        tree = ast.parse(source)
+        guard = first_import = None
+        for node in tree.body:
+            if (
+                guard is None
+                and isinstance(node, ast.Assign)
+                and any(
+                    isinstance(t, ast.Attribute)
+                    and t.attr == "dont_write_bytecode"
+                    for t in node.targets
+                )
+                and isinstance(node.value, ast.Constant)
+                and node.value.value is True
+            ):
+                guard = node.lineno
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            if first_import is None and any(
+                n.startswith("burstserve") for n in names
+            ):
+                first_import = node.lineno
+        return guard, first_import
+
+    def test_every_driver_disables_bytecode_before_importing_burstserve(self):
+        root = Path(__file__).resolve().parent.parent / "scripts"
+        for name in self.DRIVERS:
+            with self.subTest(name):
+                guard, first_import = self._positions(
+                    (root / name).read_text(encoding="utf-8")
+                )
+                self.assertIsNotNone(
+                    guard, f"{name} never sets sys.dont_write_bytecode = True"
+                )
+                self.assertIsNotNone(
+                    first_import, f"{name} no longer imports burstserve"
+                )
+                self.assertLess(
+                    guard,
+                    first_import,
+                    f"{name} sets the guard after importing burstserve, "
+                    "which is too late to stop the .pyc it just wrote",
+                )
+
+    def test_the_check_rejects_a_guard_placed_after_the_import(self):
+        """The assertion above must be able to fail."""
+        guard, first_import = self._positions(
+            "import sys\n"
+            "from burstserve.provenance import canonical_json\n"
+            "sys.dont_write_bytecode = True\n"
+        )
+        self.assertGreater(guard, first_import)
+
+
 class SaturationTest(unittest.TestCase):
     def test_a_flat_throughput_response_to_more_work_is_saturating(self):
         rows = [_cell(32, 1, 0.214), _cell(32, 2, 0.216)]
