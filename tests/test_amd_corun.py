@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import sys
+import time
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+import amd_profile_cell as cell  # noqa: E402
 import run_amd_corun as corun  # noqa: E402
 
 
@@ -35,6 +37,108 @@ class DisjointMaskTest(unittest.TestCase):
         for pair in ((0, 16), (16, 0), (-4, 16)):
             with self.subTest(pair=pair), self.assertRaises(ValueError):
                 corun.disjoint_masks(*pair)
+
+
+class BarrierTest(unittest.TestCase):
+    """Neither side may start measuring before the other is warmed up.
+
+    Without the barrier the faster process finishes its whole sample set
+    and exits before the slower one starts, and the result is reported as
+    a co-run while measuring nothing of the kind.
+    """
+
+    def test_neither_side_is_released_until_both_arrive(self):
+        import tempfile
+        import threading
+
+        with tempfile.TemporaryDirectory() as tmp:
+            released = {}
+
+            def side(name, peer, delay):
+                time.sleep(delay)
+                released[name] = cell.wait_at_barrier(tmp, name, peer, 30.0)
+
+            threads = [
+                threading.Thread(target=side, args=("a", "b", 0.0)),
+                threading.Thread(target=side, args=("b", "a", 0.25)),
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=30)
+
+            self.assertEqual(set(released), {"a", "b"})
+            # The early arrival must not have been released at its own
+            # ready time -- it has to have waited for the late one.
+            self.assertGreaterEqual(
+                released["a"]["released_at"], released["b"]["self_ready_at"]
+            )
+
+    def test_a_peer_that_never_arrives_times_out_rather_than_proceeding(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(TimeoutError):
+                cell.wait_at_barrier(tmp, "a", "never", 0.2)
+
+    def test_each_side_records_when_both_became_ready(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "b.ready").write_text(repr(time.time()), encoding="utf-8")
+            record = cell.wait_at_barrier(tmp, "a", "b", 5.0)
+            self.assertIn("self_ready_at", record)
+            self.assertIn("peer_ready_at", record)
+            self.assertGreaterEqual(record["released_at"],
+                                    record["self_ready_at"])
+
+
+class DeadlineSamplingTest(unittest.TestCase):
+    """Co-run cells sample for a duration, not for a count.
+
+    Equal sample counts would let the faster side finish early and leave
+    the slower one running alone for the tail, which is the part that would
+    read as contention-free.
+    """
+
+    def test_it_stops_on_the_deadline_not_on_a_count(self):
+        calls = []
+        samples = cell.measure(
+            lambda: (time.sleep(0.01), calls.append(1)),
+            warmup=0, samples=0, sync=lambda: None,
+            deadline=time.time() + 0.15,
+        )
+        self.assertGreater(len(samples), 2)
+        self.assertLess(len(samples), 40)
+        self.assertEqual(len(samples), len(calls))
+
+    def test_every_sample_carries_the_window_it_ran_in(self):
+        samples = cell.measure(
+            lambda: time.sleep(0.005), warmup=0, samples=3,
+            sync=lambda: None,
+        )
+        self.assertEqual(len(samples), 3)
+        for entry in samples:
+            self.assertLessEqual(entry["start_wall"], entry["end_wall"])
+            self.assertAlmostEqual(
+                entry["end_wall"] - entry["start_wall"], entry["s"], places=6
+            )
+
+    def test_the_windows_are_ordered_and_do_not_overlap_each_other(self):
+        samples = cell.measure(
+            lambda: time.sleep(0.005), warmup=0, samples=4,
+            sync=lambda: None,
+        )
+        for earlier, later in zip(samples, samples[1:]):
+            self.assertLessEqual(earlier["end_wall"], later["start_wall"])
+
+    def test_warmup_samples_are_not_returned(self):
+        calls = []
+        samples = cell.measure(
+            lambda: calls.append(1), warmup=5, samples=3, sync=lambda: None
+        )
+        self.assertEqual(len(samples), 3)
+        self.assertEqual(len(calls), 8)
 
 
 class OverlapTest(unittest.TestCase):
