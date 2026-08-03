@@ -193,5 +193,66 @@ class ReportIsSerialisableTest(unittest.TestCase):
             canonical_json({"a": {1: 2}})
         self.assertIn('"1"', canonical_json({"a": {"1": 2}}))
 
+
+class QuotaAttributionTest(unittest.TestCase):
+    """Which quota an interval belongs to, and the off-by-one that hid.
+
+    The callback fires when step `index` ends, so the interval starting at
+    that event is step index+1. Attributing it to the quota in force before
+    the handover charges every interval to the previous step's quota. The
+    smoke run showed the signature: 2.39% error on the step following a
+    change and 78.89% on settled steps -- exactly backwards, because the
+    labels were shifted by one.
+    """
+
+    def _attribute(self, plan, *, record_after_switch):
+        """Replay the callback's bookkeeping over a schedule."""
+        current = plan[0]
+        at_quota = []
+        for index in range(len(plan)):
+            if not record_after_switch:
+                at_quota.append(current)
+            if index + 1 < len(plan):
+                current = plan[index + 1]
+            if record_after_switch:
+                at_quota.append(current)
+        # Interval i spans event i to event i+1.
+        return at_quota[: len(plan) - 1]
+
+    def test_an_interval_carries_the_quota_of_the_step_it_measures(self):
+        plan = [8, 8, 32, 32]
+        # Intervals measure steps 1, 2, 3 -> quotas 8, 32, 32.
+        self.assertEqual(
+            self._attribute(plan, record_after_switch=True), [8, 32, 32]
+        )
+
+    def test_recording_before_the_switch_shifts_every_label(self):
+        """The bug, stated as a test so it cannot come back silently."""
+        plan = [8, 8, 32, 32]
+        self.assertEqual(
+            self._attribute(plan, record_after_switch=False), [8, 8, 32]
+        )
+
+    def test_the_first_interval_after_a_change_is_identified(self):
+        plan = [8, 8, 32, 32, 8, 8]
+        boundaries = {i for i in range(1, len(plan)) if plan[i] != plan[i - 1]}
+        per_call = len(plan) - 1
+        labels = [
+            ((position % per_call) + 1) in boundaries
+            for position in range(per_call)
+        ]
+        # Steps 1..5; steps 2 and 4 begin a new quota.
+        self.assertEqual(labels, [False, True, False, True, False])
+
+    def test_the_script_records_after_the_handover(self):
+        source = ast.unparse(_function("main"))
+        switch = source.index("set_stream(streams[nxt])")
+        record = source.index("at_quota.append")
+        self.assertLess(
+            switch, record,
+            "at_quota is recorded before the handover, which shifts every "
+            "interval's label by one step",
+        )
+
 if __name__ == "__main__":
     unittest.main()

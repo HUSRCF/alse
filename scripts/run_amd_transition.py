@@ -155,7 +155,6 @@ def main() -> int:
             event = torch.cuda.Event(enable_timing=True)
             event.record()
             events.append(event)
-            at_quota.append(current[0])
             if plan is not None and index + 1 < len(plan):
                 nxt = plan[index + 1]
                 if nxt != current[0]:
@@ -167,6 +166,14 @@ def main() -> int:
                     streams[nxt].wait_event(done)
                     current[0] = nxt
                     torch.cuda.set_stream(streams[nxt])
+            # After the handover, not before. This callback fires when step
+            # `index` ends, so the interval that starts here is step
+            # index+1, and it runs at the quota in force *after* the switch.
+            # Recording it before attributed every interval to the previous
+            # step's quota -- an off-by-one that made the step following a
+            # change look accurately predicted and every settled step look
+            # badly predicted.
+            at_quota.append(current[0])
             return cb
 
         start = fixed if fixed is not None else plan[0]
@@ -228,7 +235,10 @@ def main() -> int:
     per_call = len(plan) - 1
     first_after, settled = [], []
     for position, (units, seconds) in enumerate(observed):
-        (first_after if (position % per_call) in boundaries else settled).append(
+        # Interval `position` within a call is step position+1, so it is the
+        # first step at a new quota exactly when position+1 is a boundary.
+        step_index = (position % per_call) + 1
+        (first_after if step_index in boundaries else settled).append(
             (seconds, steady_median[units])
         )
 
