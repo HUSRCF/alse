@@ -65,6 +65,70 @@ class PredictorHasNoFreeParametersTest(unittest.TestCase):
                 cold.predict_cold_seconds(*args)
 
 
+class SizeDependentBandwidthTest(unittest.TestCase):
+    """One aggregate bandwidth is the wrong term for a pipeline move.
+
+    .to(device) issues one copy per tensor, and SDXL's tensors have a
+    median far below a bandwidth benchmark's block, so the big-block figure
+    over-predicted by 72.5% against a 10% gate. Making bandwidth a function
+    of size introduces no fitted constant: every value is still measured.
+    """
+
+    CURVE = [(65_536, 2e9), (1_048_576, 10e9), (268_435_456, 28e9)]
+
+    def test_it_picks_the_measured_size_at_or_below_the_request(self):
+        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 65_536), 2e9)
+        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 100_000), 2e9)
+        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 1_048_576), 10e9)
+        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 1e9), 28e9)
+
+    def test_a_tensor_below_every_measured_size_uses_the_smallest(self):
+        """Never the large-block figure -- that is the direction that
+        under-predicts the transfer time and flatters the gate."""
+        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 1024), 2e9)
+
+    def test_many_small_tensors_cost_more_than_their_byte_count_suggests(self):
+        total = 64 * 65_536
+        aggregate = cold.predict_cold_seconds(total, 28e9)
+        per_tensor = cold.predict_cold_seconds_by_tensor(
+            [65_536] * 64, self.CURVE
+        )
+        self.assertGreater(per_tensor, aggregate)
+        self.assertAlmostEqual(per_tensor, total / 2e9)
+
+    def test_one_large_tensor_agrees_with_the_aggregate_form(self):
+        """The two forms must not disagree where they should not."""
+        self.assertAlmostEqual(
+            cold.predict_cold_seconds_by_tensor([1_000_000_000], self.CURVE),
+            cold.predict_cold_seconds(1_000_000_000, 28e9),
+        )
+
+    def test_zero_sized_tensors_do_not_break_the_sum(self):
+        self.assertEqual(cold.predict_cold_seconds_by_tensor([], self.CURVE), 0)
+        self.assertEqual(
+            cold.predict_cold_seconds_by_tensor([0, 0], self.CURVE), 0
+        )
+
+    def test_an_unmeasured_curve_is_refused(self):
+        with self.assertRaises(ValueError):
+            cold.bandwidth_for_size([], 1024)
+
+    def test_the_per_tensor_form_still_has_no_fitted_constant(self):
+        import ast
+        import inspect
+
+        tree = ast.parse(
+            inspect.getsource(cold.predict_cold_seconds_by_tensor)
+        )
+        literals = [
+            n.value for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, (int, float))
+            and not isinstance(n.value, bool)
+        ]
+        # The only numeric literal permitted is the `size > 0` guard.
+        self.assertEqual(literals, [0])
+
+
 class BandwidthSelectionTest(unittest.TestCase):
     def test_it_takes_the_widest_transfer_of_the_requested_kind(self):
         samples = [
