@@ -9,17 +9,20 @@
   R9700 / gfx1201），NVIDIA 线的成果保留但不再是推进重心
 - Current gate: **Gate B-AMD**(NVIDIA 侧仍停在 Gate A)。九条的当前状态
   (2026-08-03):
-  **已通过 6 条** — quota 列表与逐进程掩码;每 cell 记录饱和状态(8/8
-  canonical 全部 eligible);稳态 CV ≤5%(实测全部 ≤1.26%,零加采样);
-  held-out solo p50 MAPE 1.5–2.6%(阈值 10%);resident 轮转零权重流量
-  (1/3/5 轮转的 HtoD 拷贝次数恒为 1199,斜率精确为 0);co-run 双进程
-  不相交掩码且实测重叠 99.5%,外部性 +22.8% / +23.7%。
-  **已判负 1 条** — cold-model 预测 MAPE 15%(阈值 10%),原因已定位为
-  61% 的时长是框架开销而非传输,须先定条文意图再做(见 decision log)。
-  **待测 1 条** — transition prediction(harness 已就绪并有测试,合成负载
-  3.7%,真实模型待跑)。
-  **待重跑 1 项** — quota 表须以修好 per-step 计时(CUDA events)后的代码
-  重出一版,并取得 `source_revision_stable`。
+  **已通过 9 条**(证据 `gate_b_amd_verdict_final_20260803.json`,
+  source revision `271e4426`,`source_revision_stable=True`):
+  quota 列表与逐进程掩码;每 cell 记录饱和状态(8/8 canonical 全部 eligible);
+  稳态 CV ≤5%(实测全部 **≤0.18%**,零加采样);held-out solo p50 MAPE
+  **1.5–2.6%**;**transition prediction MAPE 7.75%**(87 个 step 样本,
+  且 `steady_8`=`steady_32`=`switching` 三者 latent 校验和逐位相同);
+  resident 轮转零权重流量(1/3/5 轮转 HtoD 拷贝次数恒为 1199,斜率精确为 0);
+  每 profile 带硬件/驱动/ROCm/Torch/固件/模型 revision/schema 与掩码读回值;
+  co-run 双进程不相交掩码,512² 与 1024² 两个规模均实测重叠 >99%,
+  外部性稳定在 **23–24%**;source tree 未在扫描期间移动。
+  **仅剩 1 条判负** — cold-model 预测 MAPE 17.4%(阈值 10%)。原因已定位:
+  61% 的时长是框架开销而非传输;加入独立标定的框架项后总误差看似降到 3.8%,
+  但逐项校验显示传输项高估 46%、框架项低估 68%,是**抵消出来的假准确**。
+  **须先定条文意图再做,不得以调模型迎合阈值**(见 decision log 两条)。
 - 历史:**NVIDIA 侧 TPC→SM 映射已取得正式证据并接受**
   （三模式 36 格，`gate_a_masked_all_modes_gpu1_attested_offset_20260802`）；
   **AMD 侧 CU 映射已取得正式证据并接受**（双机制 24 格，
