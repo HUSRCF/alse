@@ -2,11 +2,25 @@
 
 ## 执行状态
 
-- Last updated: 2026-08-02
-- Current phase: 第 2 周——libsmctrl 高风险可行性闸门（masked Gate A）。
+- Last updated: 2026-08-03
+- Current phase: **第 3–4 周——Gate B profiling（AMD 线）**;Gate A-AMD 已于
+  2026-08-02 全条通过。
   **主推进平台自 2026-08-02 起转为 AMD**（`husrcf@X570`，Radeon AI PRO
   R9700 / gfx1201），NVIDIA 线的成果保留但不再是推进重心
-- Current gate: Gate A。**NVIDIA 侧 TPC→SM 映射已取得正式证据并接受**
+- Current gate: **Gate B-AMD**(NVIDIA 侧仍停在 Gate A)。九条的当前状态
+  (2026-08-03):
+  **已通过 6 条** — quota 列表与逐进程掩码;每 cell 记录饱和状态(8/8
+  canonical 全部 eligible);稳态 CV ≤5%(实测全部 ≤1.26%,零加采样);
+  held-out solo p50 MAPE 1.5–2.6%(阈值 10%);resident 轮转零权重流量
+  (1/3/5 轮转的 HtoD 拷贝次数恒为 1199,斜率精确为 0);co-run 双进程
+  不相交掩码且实测重叠 99.5%,外部性 +22.8% / +23.7%。
+  **已判负 1 条** — cold-model 预测 MAPE 15%(阈值 10%),原因已定位为
+  61% 的时长是框架开销而非传输,须先定条文意图再做(见 decision log)。
+  **待测 1 条** — transition prediction(harness 已就绪并有测试,合成负载
+  3.7%,真实模型待跑)。
+  **待重跑 1 项** — quota 表须以修好 per-step 计时(CUDA events)后的代码
+  重出一版,并取得 `source_revision_stable`。
+- 历史:**NVIDIA 侧 TPC→SM 映射已取得正式证据并接受**
   （三模式 36 格，`gate_a_masked_all_modes_gpu1_attested_offset_20260802`）；
   **AMD 侧 CU 映射已取得正式证据并接受**（双机制 24 格，
   `amd_r9700_cu_mask_20260802`，sha256 `bfbeb8e3…8362`）。
