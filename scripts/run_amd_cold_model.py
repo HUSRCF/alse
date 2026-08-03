@@ -154,6 +154,33 @@ def tensor_sizes_of(torch, pipeline) -> list[int]:
     return sizes
 
 
+def replay_transfers(torch, tensor_sizes: list[int]) -> float:
+    """Move the same sizes as raw copies, without the framework in between.
+
+    .to(device) does more than copy: it walks the module tree in Python,
+    allocates a destination per tensor, and rebinds each parameter. This
+    replays only the transfers, so the difference between the two isolates
+    what is not transfer -- which decides whether a bytes-and-bandwidth
+    predictor can reach the gate at all, or whether the residual is
+    framework cost that no bandwidth model can express.
+    """
+    if not tensor_sizes:
+        return 0.0
+    largest = max(tensor_sizes)
+    host = torch.empty(largest, dtype=torch.uint8)
+    device = torch.empty(largest, dtype=torch.uint8, device="cuda")
+    torch.cuda.synchronize()
+    started = time.perf_counter()
+    for size in tensor_sizes:
+        if size:
+            device[:size].copy_(host[:size])
+    torch.cuda.synchronize()
+    elapsed = time.perf_counter() - started
+    del host, device
+    torch.cuda.empty_cache()
+    return elapsed
+
+
 def fault_in_host_pages(torch, pipeline) -> float:
     """Touch every weight so the timed transfer is not also a disk read.
 
@@ -226,6 +253,8 @@ def main() -> int:
         weights = sum(tensor_sizes)
         fault_seconds = fault_in_host_pages(torch, pipeline)
 
+        replay_seconds = replay_transfers(torch, tensor_sizes)
+
         torch.cuda.synchronize()
         started = time.perf_counter()
         pipeline = pipeline.to("cuda")
@@ -243,6 +272,14 @@ def main() -> int:
             # Reported so the transfer figure can be checked against the
             # cost of getting the pages into host memory in the first place.
             "host_page_fault_seconds": fault_seconds,
+            # Same sizes, raw copies only. observed minus this is the cost
+            # that is not transfer.
+            "replay_transfer_seconds": replay_seconds,
+            "framework_overhead_seconds": observed - replay_seconds,
+            "framework_overhead_per_tensor_s": (
+                (observed - replay_seconds) / len(tensor_sizes)
+                if tensor_sizes else None
+            ),
             # Aggregate: one bandwidth for the whole byte count. Kept
             # because it is the form the plan states, and because its error
             # is the evidence that the form is wrong.
@@ -271,7 +308,10 @@ def main() -> int:
               f"      aggregate  {entry['predicted_seconds_pageable']:.3f}s "
               f"APE {entry['absolute_percentage_error_pageable']*100:5.1f}%\n"
               f"      per-tensor {entry['predicted_seconds_per_tensor_pageable']:.3f}s "
-              f"APE {entry['absolute_percentage_error_per_tensor_pageable']*100:5.1f}%",
+              f"APE {entry['absolute_percentage_error_per_tensor_pageable']*100:5.1f}%\n"
+              f"      replay(raw copies) {replay_seconds:.3f}s   "
+              f"framework {observed - replay_seconds:.3f}s "
+              f"({(observed-replay_seconds)/len(tensor_sizes)*1e6:.1f} us/tensor)",
               flush=True)
         del pipeline
         torch.cuda.empty_cache()
