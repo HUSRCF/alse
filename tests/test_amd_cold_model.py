@@ -155,5 +155,60 @@ class BandwidthSelectionTest(unittest.TestCase):
             cold.widest_transfer([_bw(1024, True, 20e9)], pinned=False)
 
 
+
+class FrameworkOverheadCalibrationTest(unittest.TestCase):
+    """The residual is proportional to tensor count, so it is calibrated
+    on synthetic modules rather than derived from the target model.
+
+    Deriving it from the target would be circular: framework cost computed
+    as observed-minus-transfer, then added back to predict observed. What
+    makes the calibrated form a prediction is that both terms were measured
+    on something other than the model being predicted.
+    """
+
+    def _slope(self, points):
+        n = len(points)
+        mean_x = sum(c for c, _ in points) / n
+        mean_y = sum(t for _, t in points) / n
+        variance = sum((c - mean_x) ** 2 for c, _ in points)
+        return sum((c - mean_x) * (t - mean_y) for c, t in points) / variance
+
+    def test_the_slope_recovers_a_known_per_tensor_cost(self):
+        per_tensor, per_call = 215e-6, 0.01
+        points = [(n, per_call + n * per_tensor) for n in (200, 800, 3200)]
+        self.assertAlmostEqual(self._slope(points), per_tensor, places=9)
+
+    def test_the_calibration_never_reads_the_target_model(self):
+        import ast
+        import inspect
+
+        source = inspect.getsource(cold.calibrate_framework_overhead)
+        tree = ast.parse(source)
+        names = {
+            node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
+        }
+        for forbidden in ("pipeline", "tensor_sizes", "observed", "weights"):
+            self.assertNotIn(
+                forbidden, names,
+                f"the calibration reads {forbidden}, making it a fit rather "
+                "than an independent measurement",
+            )
+
+    def test_the_strict_clause_still_decides_the_gate(self):
+        """The overhead term must not quietly become the headline.
+
+        The plan's clause is bytes and bandwidth alone. Adding a measured
+        overhead term is a different claim, and reporting it as `mape`
+        would relax the gate without saying so.
+        """
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "run_amd_cold_model.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('report["mape"] = report["mape_per_tensor_pageable"]',
+                      source)
+        self.assertNotIn('report["mape"] = report["mape_with_overhead"]',
+                         source)
+
 if __name__ == "__main__":
     unittest.main()

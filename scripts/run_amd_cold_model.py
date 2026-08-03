@@ -154,6 +154,53 @@ def tensor_sizes_of(torch, pipeline) -> list[int]:
     return sizes
 
 
+def calibrate_framework_overhead(torch, *, counts, element_bytes: int) -> dict:
+    """Measure the per-tensor cost of .to(device) on synthetic modules.
+
+    The residual that the bytes-and-bandwidth predictor cannot express is
+    framework work: walking the module tree, allocating per tensor,
+    rebinding parameters. It is proportional to the tensor *count*, not to
+    bytes, so it can be calibrated on modules that have nothing to do with
+    any real model -- which is what keeps applying it to SDXL a prediction
+    rather than a fit to SDXL's own observation.
+
+    The tensors are kept tiny so that transfer time is negligible next to
+    the per-tensor cost being measured; the slope against count is the
+    quantity, and the intercept absorbs whatever is per-call.
+    """
+    points = []
+    for count in counts:
+        module = torch.nn.Module()
+        for index in range(count):
+            module.register_parameter(
+                f"p{index}",
+                torch.nn.Parameter(
+                    torch.empty(element_bytes // 2, dtype=torch.float16),
+                    requires_grad=False,
+                ),
+            )
+        torch.cuda.synchronize()
+        started = time.perf_counter()
+        module.to("cuda")
+        torch.cuda.synchronize()
+        points.append((count, time.perf_counter() - started))
+        del module
+        torch.cuda.empty_cache()
+
+    n = len(points)
+    mean_x = sum(c for c, _ in points) / n
+    mean_y = sum(t for _, t in points) / n
+    variance = sum((c - mean_x) ** 2 for c, _ in points)
+    slope = sum((c - mean_x) * (t - mean_y) for c, t in points) / variance
+    return {
+        "counts": [c for c, _ in points],
+        "seconds": [t for _, t in points],
+        "seconds_per_tensor": slope,
+        "per_call_seconds": mean_y - slope * mean_x,
+        "element_bytes": element_bytes,
+    }
+
+
 def replay_transfers(torch, tensor_sizes: list[int]) -> float:
     """Move the same sizes as raw copies, without the framework in between.
 
@@ -212,6 +259,8 @@ def main() -> int:
     parser.add_argument("--sizes-mb",
                         default="0.0625,0.25,1,4,16,64,256,1024")
     parser.add_argument("--bandwidth-repeats", type=int, default=15)
+    parser.add_argument("--overhead-counts", default="200,800,3200")
+    parser.add_argument("--overhead-element-bytes", type=int, default=4096)
     parser.add_argument("--mape-threshold", type=float, default=0.10)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
@@ -235,6 +284,15 @@ def main() -> int:
 
     pinned_bw = widest_transfer(bandwidth, pinned=True)["bytes_per_second"]
     pageable_bw = widest_transfer(bandwidth, pinned=False)["bytes_per_second"]
+    overhead = calibrate_framework_overhead(
+        torch,
+        counts=[int(c) for c in args.overhead_counts.split(",") if c.strip()],
+        element_bytes=args.overhead_element_bytes,
+    )
+    print(f"  framework overhead {overhead['seconds_per_tensor']*1e6:.1f} "
+          f"us/tensor (calibrated on synthetic modules, "
+          f"{overhead['counts']} tensors)", flush=True)
+
     pinned_curve = [(e["bytes"], e["bytes_per_second"]) for e in bandwidth
                     if e["pinned"]]
     pageable_curve = [(e["bytes"], e["bytes_per_second"]) for e in bandwidth
@@ -293,9 +351,17 @@ def main() -> int:
                 tensor_sizes, pinned_curve),
             "predicted_seconds_per_tensor_pageable": predict_cold_seconds_by_tensor(
                 tensor_sizes, pageable_curve),
+            # Transfer plus the independently calibrated framework cost.
+            # Still nothing fitted to this model: both terms were measured
+            # on something else.
+            "predicted_seconds_with_overhead": (
+                predict_cold_seconds_by_tensor(tensor_sizes, pageable_curve)
+                + len(tensor_sizes) * overhead["seconds_per_tensor"]
+                + overhead["per_call_seconds"]
+            ),
         }
         for label in ("pinned", "pageable", "per_tensor_pinned",
-                      "per_tensor_pageable"):
+                      "per_tensor_pageable", "with_overhead"):
             predicted = entry[f"predicted_seconds_{label}"]
             entry[f"absolute_percentage_error_{label}"] = (
                 abs(predicted - observed) / observed
@@ -309,6 +375,8 @@ def main() -> int:
               f"APE {entry['absolute_percentage_error_pageable']*100:5.1f}%\n"
               f"      per-tensor {entry['predicted_seconds_per_tensor_pageable']:.3f}s "
               f"APE {entry['absolute_percentage_error_per_tensor_pageable']*100:5.1f}%\n"
+              f"      +overhead  {entry['predicted_seconds_with_overhead']:.3f}s "
+              f"APE {entry['absolute_percentage_error_with_overhead']*100:5.1f}%\n"
               f"      replay(raw copies) {replay_seconds:.3f}s   "
               f"framework {observed - replay_seconds:.3f}s "
               f"({(observed-replay_seconds)/len(tensor_sizes)*1e6:.1f} us/tensor)",
@@ -321,6 +389,7 @@ def main() -> int:
         "device_name": torch.cuda.get_device_name(0),
         "torch": torch.__version__,
         "bandwidth": bandwidth,
+        "framework_overhead": overhead,
         "bandwidth_used_pinned_bps": pinned_bw,
         "bandwidth_used_pageable_bps": pageable_bw,
         "predictor": "weight_bytes / measured_host_to_device_bandwidth",
@@ -333,7 +402,7 @@ def main() -> int:
     }
     if results:
         for label in ("pinned", "pageable", "per_tensor_pinned",
-                      "per_tensor_pageable"):
+                      "per_tensor_pageable", "with_overhead"):
             report[f"mape_{label}"] = statistics.mean(
                 r[f"absolute_percentage_error_{label}"] for r in results
             )
@@ -345,7 +414,8 @@ def main() -> int:
         report["predictor_form"] = "sum_i bytes_i / measured_bandwidth(bytes_i)"
         report["meets_threshold"] = report["mape"] <= args.mape_threshold
         print(f"\nMAPE  aggregate pageable {report['mape_pageable']*100:5.1f}%   "
-              f"per-tensor pageable {report['mape_per_tensor_pageable']*100:5.1f}%   "
+              f"per-tensor {report['mape_per_tensor_pageable']*100:5.1f}%   "
+              f"+overhead {report['mape_with_overhead']*100:5.1f}%   "
               f"threshold {args.mape_threshold*100:.0f}%")
 
     out = Path(args.out)
