@@ -213,6 +213,21 @@ def main() -> int:
 
     classify(rows, args.saturation_epsilon)
 
+    # Bind the tree again now that the sweep is over. Each cell is a fresh
+    # subprocess that re-reads the profile script from disk, so a tree edited
+    # while the sweep was running would have been executed under a revision
+    # the header no longer describes -- and the opening bind cannot see that.
+    revision_after = source_revision(
+        REPO,
+        expected_gitlinks={"vendor/libsmctrl": libsmctrl_pin},
+        attested_build_files=attested,
+        git=GIT,
+    )
+    stable = revision_after == revision
+    if not stable:
+        print(f"SOURCE MOVED DURING THE SWEEP: {revision} -> {revision_after}",
+              flush=True)
+
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     header = {
@@ -220,6 +235,8 @@ def main() -> int:
         "record": "header",
         "model": args.model,
         "source_revision": revision,
+        "source_revision_after": revision_after,
+        "source_revision_stable": stable,
         "maskable_units": MASKABLE_UNITS,
         "quotas": quotas,
         "mask_policy": "contiguous low bits ((1<<q)-1)",
@@ -246,6 +263,10 @@ def main() -> int:
               f"cv={row['cv']*100:5.2f}% sat={row['saturating_regime']} "
               f"mono={row['quota_monotone']}")
     print(f"table: {out}")
+    if not stable:
+        # The rows are kept -- they still have diagnostic value -- but the
+        # sweep cannot be cited as evidence for a revision it did not run on.
+        return 2
     return 0
 
 

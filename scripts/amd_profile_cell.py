@@ -110,18 +110,59 @@ def rocm_version() -> str | None:
         return None
 
 
-def measure(fn, *, warmup: int, samples: int, sync) -> list[float]:
+def measure(fn, *, warmup: int, samples: int, sync, deadline: float | None = None):
+    """Time ``fn``, recording when each sample ran and not only how long.
+
+    Wall-clock start and end are kept because a co-run cell has to prove the
+    two processes were actually resident at the same time. A pair of
+    durations alone cannot distinguish genuine contention from two runs that
+    politely took turns.
+    """
     for _ in range(warmup):
         fn()
     sync()
-    out = []
-    for _ in range(samples):
+    out: list[dict] = []
+    while True:
+        if deadline is not None:
+            if time.time() >= deadline:
+                break
+        elif len(out) >= samples:
+            break
         sync()
+        start_wall = time.time()
         started = time.perf_counter()
         fn()
         sync()
-        out.append(time.perf_counter() - started)
+        elapsed = time.perf_counter() - started
+        out.append({"s": elapsed, "start_wall": start_wall,
+                    "end_wall": start_wall + elapsed})
     return out
+
+
+def wait_at_barrier(directory: str, name: str, peer: str, timeout: float) -> dict:
+    """Hold until the peer process is also warmed up and ready to be measured.
+
+    Without this the faster process finishes its warmup, runs its whole
+    sample set, and exits before the slower one starts -- which would be
+    reported as a co-run while measuring nothing of the kind.
+    """
+    from pathlib import Path
+
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    mine = root / f"{name}.ready"
+    mine.write_text(repr(time.time()), encoding="utf-8")
+    theirs = root / f"{peer}.ready"
+    deadline = time.time() + timeout
+    while not theirs.exists():
+        if time.time() > deadline:
+            raise TimeoutError(f"peer {peer!r} never reached the barrier")
+        time.sleep(0.005)
+    return {
+        "released_at": time.time(),
+        "self_ready_at": float(mine.read_text(encoding="utf-8")),
+        "peer_ready_at": float(theirs.read_text(encoding="utf-8")),
+    }
 
 
 def synthetic(torch, device, batch: int):
@@ -237,6 +278,19 @@ def main() -> int:
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--prompt", default="a quiet street at dusk")
+    # Co-run support. Gate B-AMD requires two processes with disjoint masks,
+    # not one process with two streams, so the synchronisation has to be
+    # out-of-process too.
+    parser.add_argument("--barrier-dir")
+    parser.add_argument("--barrier-name")
+    parser.add_argument("--barrier-peer")
+    parser.add_argument("--barrier-timeout", type=float, default=1800.0)
+    parser.add_argument(
+        "--co-run-seconds", type=float,
+        help="sample for this long after the barrier instead of for a fixed "
+             "sample count, so both processes stay resident for the whole "
+             "measurement window",
+    )
     args = parser.parse_args()
 
     import torch
@@ -278,26 +332,56 @@ def main() -> int:
             last_steps.extend(inner())
 
     sync = torch.cuda.synchronize
-    samples = measure(step, warmup=args.warmup, samples=args.samples, sync=sync)
 
-    # Escalate rather than report a CV that misses the gate: the plan requires
-    # each cell to record the CV it reached, and to raise the sample count when
-    # it does not meet the threshold.
-    escalations = 0
-    while True:
-        mean = statistics.mean(samples)
-        cv = statistics.stdev(samples) / mean if len(samples) > 1 and mean else float("inf")
-        if cv <= args.target_cv or len(samples) >= args.max_samples:
-            break
-        samples += measure(step, warmup=0, samples=len(samples), sync=sync)
-        escalations += 1
+    barrier = None
+    if args.barrier_dir:
+        # Warm up before the barrier: the first iterations pay for autotuning
+        # and allocator growth, and paying for them inside the shared window
+        # would be charged to the peer as contention.
+        for _ in range(args.warmup):
+            step()
+        sync()
+        barrier = wait_at_barrier(
+            args.barrier_dir, args.barrier_name, args.barrier_peer,
+            args.barrier_timeout,
+        )
+
+    if args.co_run_seconds:
+        timed = measure(step, warmup=0, samples=0, sync=sync,
+                        deadline=time.time() + args.co_run_seconds)
+        escalations = 0
+    else:
+        timed = measure(step, warmup=0 if barrier else args.warmup,
+                        samples=args.samples, sync=sync)
+        # Escalate rather than report a CV that misses the gate: the plan
+        # requires each cell to record the CV it reached, and to raise the
+        # sample count when it does not meet the threshold.
+        escalations = 0
+        while True:
+            values = [entry["s"] for entry in timed]
+            mean = statistics.mean(values)
+            cv = (
+                statistics.stdev(values) / mean
+                if len(values) > 1 and mean
+                else float("inf")
+            )
+            if cv <= args.target_cv or len(values) >= args.max_samples:
+                break
+            timed += measure(step, warmup=0, samples=len(values), sync=sync)
+            escalations += 1
+
+    if not timed:
+        print(json.dumps({"status": "no_samples",
+                          "schema_version": CELL_SCHEMA_VERSION}))
+        return 4
+    samples = [entry["s"] for entry in timed]
 
     # The mask is read again after the workload: a quota that changed mid-cell
     # would otherwise be attributed to the quota the cell was labelled with.
     attestation_after = mask_attestation(torch)
 
-    samples.sort()
-    pick = lambda q: samples[min(len(samples) - 1, int(q * len(samples)))]
+    ordered = sorted(samples)
+    pick = lambda q: ordered[min(len(ordered) - 1, int(q * len(ordered)))]
     record = {
         "schema_version": CELL_SCHEMA_VERSION,
         "status": "ok",
@@ -329,6 +413,17 @@ def main() -> int:
         "gcn_arch": torch.cuda.get_device_properties(0).gcnArchName,
         **extra,
     }
+    if barrier is not None:
+        record["barrier"] = barrier
+        # Every sample's window, so the driver can keep only the ones that
+        # ran while the peer was demonstrably also running.
+        record["sample_windows"] = [
+            {"start_wall": e["start_wall"], "end_wall": e["end_wall"],
+             "s": e["s"]}
+            for e in timed
+        ]
+        record["window_start_wall"] = timed[0]["start_wall"]
+        record["window_end_wall"] = timed[-1]["end_wall"]
     if "flops_per_step" in record:
         record["tflops"] = record["flops_per_step"] / record["p50_s"] / 1e12
     # Throughput in items per second is what the saturation test compares

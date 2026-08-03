@@ -155,10 +155,25 @@ def main() -> int:
     print(f"  cells accepted: {len(observations)}  rejected: {len(rejected)}")
     print(f"  ACCEPTED: {verdict['accepted']}")
 
+    # Bind the tree again: every cell is a fresh subprocess reading the probe
+    # from disk, so a tree edited mid-matrix would have been executed under a
+    # revision the aggregate no longer describes, and the opening bind cannot
+    # see that.
+    revision_after = source_revision(
+        REPO,
+        expected_gitlinks={"vendor/libsmctrl": libsmctrl_pin},
+        attested_build_files=attested,
+        git=GIT,
+    )
+    if revision_after != revision:
+        print(f"SOURCE MOVED DURING THE MATRIX: {revision} -> {revision_after}")
+
     report = {
         "schema_version": "burstserve.amd-cu-aggregate/v1",
         "manifest_id": manifest["manifest_id"],
         "source_revision": revision,
+        "source_revision_after": revision_after,
+        "source_revision_stable": revision_after == revision,
         "baseline_run_id": baseline["run_id"],
         "baseline_unit_count": len(dense),
         "dense_index_map": {str(k): v for k, v in sorted(dense.items())},
@@ -173,6 +188,8 @@ def main() -> int:
     out = run_root / f"{manifest['manifest_id']}-aggregate.json"
     out.write_text(canonical_json(report) + "\n")
     print(f"aggregate: {out}")
+    if not report["source_revision_stable"]:
+        return 2
     return 0 if verdict["accepted"] else 1
 
 

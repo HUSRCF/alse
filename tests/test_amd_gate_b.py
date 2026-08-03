@@ -111,6 +111,59 @@ class BytecodeWritingTest(unittest.TestCase):
         self.assertGreater(guard, first_import)
 
 
+class SourceRebindTest(unittest.TestCase):
+    """A driver must notice a tree that moved while it was running.
+
+    source_revision binds once, at the start, but every cell is a fresh
+    subprocess that re-reads its script from disk. A tree edited mid-run --
+    a sync, a hotfix -- is therefore executed under a revision the report
+    still claims, and the opening bind cannot see it. Each driver has to
+    bind again at the end and record whether the two agree.
+    """
+
+    DRIVERS = ("run_amd_gate_b.py", "run_amd_matrix.py", "run_amd_corun.py")
+
+    def _source(self, name):
+        root = Path(__file__).resolve().parent.parent / "scripts"
+        return (root / name).read_text(encoding="utf-8")
+
+    def test_every_driver_binds_the_tree_twice(self):
+        import ast
+
+        for name in self.DRIVERS:
+            with self.subTest(name):
+                tree = ast.parse(self._source(name))
+                calls = [
+                    node for node in ast.walk(tree)
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "source_revision"
+                ]
+                self.assertGreaterEqual(
+                    len(calls), 2,
+                    f"{name} binds the source tree only {len(calls)} time(s); "
+                    "a mid-run edit would go unnoticed",
+                )
+
+    def test_every_driver_records_and_reports_the_comparison(self):
+        for name in self.DRIVERS:
+            with self.subTest(name):
+                source = self._source(name)
+                self.assertIn("source_revision_after", source)
+                self.assertIn("source_revision_stable", source)
+
+    def test_a_moved_revision_is_a_distinct_nonzero_exit(self):
+        """Exit 2, not the same code as an ordinary rejection.
+
+        The rows are still written -- they have diagnostic value -- so the
+        exit status is the only thing that separates 'ran, but not on the
+        revision claimed' from 'ran and failed the gate'.
+        """
+        for name in self.DRIVERS:
+            with self.subTest(name):
+                self.assertIn("return 2", self._source(name))
+
+
 class SaturationTest(unittest.TestCase):
     def test_a_flat_throughput_response_to_more_work_is_saturating(self):
         rows = [_cell(32, 1, 0.214), _cell(32, 2, 0.216)]
