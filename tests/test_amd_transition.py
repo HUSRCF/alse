@@ -164,5 +164,34 @@ class ResultInvarianceTest(unittest.TestCase):
         }
         self.assertTrue(matched)
 
+
+class ReportIsSerialisableTest(unittest.TestCase):
+    """The report is written last, so a serialisation error costs the run.
+
+    The first smoke run measured everything and then died writing the file:
+    quotas are ints and canonical_json requires string keys. Nothing about
+    the measurement was wrong, and all of it was lost.
+    """
+
+    def test_every_quota_keyed_map_is_stringified(self):
+        source = ast.unparse(_function("main"))
+        for field in ("masks", "steady_per_step_median_s", "steady_samples"):
+            with self.subTest(field):
+                index = source.index(f"'{field}'")
+                window = source[index:index + 200]
+                self.assertIn(
+                    "str(", window,
+                    f"{field} is keyed by an int quota and canonical_json "
+                    "rejects non-string keys",
+                )
+
+    def test_canonical_json_still_rejects_int_keys(self):
+        """The constraint this guards against must still exist."""
+        from burstserve.provenance import canonical_json
+
+        with self.assertRaises(TypeError):
+            canonical_json({"a": {1: 2}})
+        self.assertIn('"1"', canonical_json({"a": {"1": 2}}))
+
 if __name__ == "__main__":
     unittest.main()
