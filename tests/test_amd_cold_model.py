@@ -210,5 +210,53 @@ class FrameworkOverheadCalibrationTest(unittest.TestCase):
         self.assertNotIn('report["mape"] = report["mape_with_overhead"]',
                          source)
 
+
+class CancellingErrorsTest(unittest.TestCase):
+    """An accurate total can come from two terms that are wrong opposite ways.
+
+    Measured on SDXL: the transfer term over-predicted by 46% and the
+    framework term under-predicted by 68%, and their sum landed within
+    3.8% of the observation. Quoting that 3.8% as a working model would be
+    wrong in both halves at once.
+    """
+
+    OBSERVED, REPLAY = 0.615, 0.349          # measured
+    PREDICTED_TRANSFER, PREDICTED_FRAMEWORK = 0.508, 0.084
+
+    def _terms(self, transfer, framework):
+        measured_framework = self.OBSERVED - self.REPLAY
+        return (
+            abs(transfer - self.REPLAY) / self.REPLAY,
+            abs(framework - measured_framework) / measured_framework,
+        )
+
+    def test_the_measured_case_totals_well_and_fails_term_by_term(self):
+        total = self.PREDICTED_TRANSFER + self.PREDICTED_FRAMEWORK
+        self.assertLess(abs(total - self.OBSERVED) / self.OBSERVED, 0.05)
+        transfer_error, framework_error = self._terms(
+            self.PREDICTED_TRANSFER, self.PREDICTED_FRAMEWORK
+        )
+        self.assertGreater(transfer_error, 0.10)
+        self.assertGreater(framework_error, 0.10)
+        self.assertFalse(
+            all(e <= 0.10 for e in (transfer_error, framework_error))
+        )
+
+    def test_a_genuinely_correct_model_passes_term_by_term(self):
+        transfer_error, framework_error = self._terms(
+            self.REPLAY, self.OBSERVED - self.REPLAY
+        )
+        self.assertLess(transfer_error, 1e-9)
+        self.assertLess(framework_error, 1e-9)
+
+    def test_the_script_scores_each_term_against_what_it_models(self):
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "run_amd_cold_model.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("terms_individually_accurate", source)
+        self.assertIn("transfer_measured_s", source)
+        self.assertIn("framework_measured_s", source)
+
 if __name__ == "__main__":
     unittest.main()

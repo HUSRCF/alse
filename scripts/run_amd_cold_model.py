@@ -366,6 +366,36 @@ def main() -> int:
             entry[f"absolute_percentage_error_{label}"] = (
                 abs(predicted - observed) / observed
             )
+
+        # A total can be right because two terms are wrong in opposite
+        # directions. The replay splits the observation into transfer and
+        # framework, so each term is scored against the part it claims to
+        # model -- otherwise a cancelling pair reads as a correct model.
+        measured_framework = observed - replay_seconds
+        predicted_transfer = entry["predicted_seconds_per_tensor_pageable"]
+        predicted_framework = (
+            len(tensor_sizes) * overhead["seconds_per_tensor"]
+            + overhead["per_call_seconds"]
+        )
+        entry["term_errors"] = {
+            "transfer_predicted_s": predicted_transfer,
+            "transfer_measured_s": replay_seconds,
+            "transfer_error": (
+                abs(predicted_transfer - replay_seconds) / replay_seconds
+                if replay_seconds > 0 else None
+            ),
+            "framework_predicted_s": predicted_framework,
+            "framework_measured_s": measured_framework,
+            "framework_error": (
+                abs(predicted_framework - measured_framework)
+                / measured_framework if measured_framework > 0 else None
+            ),
+        }
+        errors = [entry["term_errors"]["transfer_error"],
+                  entry["term_errors"]["framework_error"]]
+        entry["terms_individually_accurate"] = all(
+            e is not None and e <= args.mape_threshold for e in errors
+        )
         results.append(entry)
         print(f"  {name}: weights {weights/1e9:.2f} GB in "
               f"{len(tensor_sizes)} tensors (median "
@@ -379,7 +409,11 @@ def main() -> int:
               f"APE {entry['absolute_percentage_error_with_overhead']*100:5.1f}%\n"
               f"      replay(raw copies) {replay_seconds:.3f}s   "
               f"framework {observed - replay_seconds:.3f}s "
-              f"({(observed-replay_seconds)/len(tensor_sizes)*1e6:.1f} us/tensor)",
+              f"({(observed-replay_seconds)/len(tensor_sizes)*1e6:.1f} us/tensor)\n"
+              f"      term errors: transfer "
+              f"{entry['term_errors']['transfer_error']*100:5.1f}%   framework "
+              f"{entry['term_errors']['framework_error']*100:5.1f}%   "
+              f"both accurate: {entry['terms_individually_accurate']}",
               flush=True)
         del pipeline
         torch.cuda.empty_cache()
@@ -412,6 +446,11 @@ def main() -> int:
         # the transfer the scheduler actually pays for.
         report["mape"] = report["mape_per_tensor_pageable"]
         report["predictor_form"] = "sum_i bytes_i / measured_bandwidth(bytes_i)"
+        # Reported next to mape_with_overhead so a total that is accurate
+        # only because its terms cancel cannot be quoted as a working model.
+        report["terms_individually_accurate"] = all(
+            r.get("terms_individually_accurate") for r in results
+        )
         report["meets_threshold"] = report["mape"] <= args.mape_threshold
         print(f"\nMAPE  aggregate pageable {report['mape_pageable']*100:5.1f}%   "
               f"per-tensor {report['mape_per_tensor_pageable']*100:5.1f}%   "
