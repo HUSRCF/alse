@@ -334,11 +334,19 @@ $$
 - 稳态 solo cell 的 CV 不超过 5%，且**必须记录实际达到的 CV 与加采样次数**，
   不得只声称满足 30 采样的约定。
 - held-out solo p50 MAPE 不超过 10%；transition prediction MAPE 不超过 10%。
-- resident 同模型轮转观测到零权重 PCIe 流量。
-- cold-model 预测严格使用缺失字节和实测带宽。
+- resident 同模型轮转观测到零权重传输；cold-model 预测严格使用缺失字节和
+  实测带宽。**取证手段与 NVIDIA 侧不同**：R9700 无可用硬件 PCIe 计数器
+  （`rsmi_dev_pci_throughput_get` 返回 NOT_SUPPORTED，`--showmetrics` 中
+  PCIe 带宽项全为 N/A，2026-08-03 实测），故改用
+  `rocprofv3 --memory-copy-trace --stats` 按进程统计 HtoD 字节。判据不变，
+  仍是「权重字节数为零」；copy trace 因归属到进程而**比整卡计数器更严格**。
 - 每个 profile 带硬件、驱动、ROCm、Torch、模型 revision 与 schema version；
   **掩码须同时记录请求值与 `hipExtStreamGetCUMask` 读回值**（NVIDIA 侧无此项）。
-- co-run cell 用两个各带不相交掩码的进程，而非单进程多 stream。
+- co-run cell 用两个各带不相交掩码的进程，而非单进程多 stream。**必须证明
+  两进程确有时间重叠**：不重叠的两次运行会给出与「零外部性」完全相同的数字。
+  取证方式为 warmup 后 barrier 同步、按固定墙钟时长而非固定样本数采样，且
+  只统计完全落在双方共同采样窗口内的样本；跨窗口边界的样本一律丢弃而不按
+  比例折算——折算会把外部性稀释向零，即让结果好看的方向。
 
 ### 第 5–6 周：2026-08-27 至 09-09——Trace Simulator 与算法冻结
 
@@ -1865,3 +1873,26 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   两个离群格在配额与批量上无明显规律（一个高配额、一个低配额），成因待
   真实模型 profile 阶段用 per-step 数据与时钟/功耗遥测拆解。
   原始记录 `experiments/probes/amd-r9700-cu-mask/quota_table_synthetic_20260802.jsonl`。
+- 2026-08-03 / amd-has-no-pcie-telemetry：R9700（gfx1201）**没有可用的硬件
+  PCIe 流量计数器**，因此 Gate B 与 Gate B-AMD 中「resident 同模型轮转观测到
+  零权重 PCIe 流量」「cold-model 预测严格使用缺失字节和实测带宽」两条在 AMD
+  侧不能照搬 NVIDIA 的取证手段。实测:
+  `rsmi_dev_pci_throughput_get` 返回 `rc=2`（`RSMI_STATUS_NOT_SUPPORTED`）；
+  `rocm-smi --showbw` 报 `get_PCIe_bandwidth, Not supported on the given
+  system`；`--showmetrics` 中 `pcie_bandwidth_acc` / `pcie_bandwidth_inst` /
+  `pcie_replay_count_acc` 全为 `N/A`（链路本身正常：16 lanes、160×0.1 GT/s）。
+  这类遥测主要在 Instinct MI 系列上实现，不是本机配置错误。
+  **替代手段是 `rocprofv3 --memory-copy-trace --stats`**，按进程统计 HtoD /
+  DtoH 拷贝字节。**这不是阈值放松,判据仍是「权重字节数为零」**——而且
+  copy trace 比整卡 PCIe 计数器**更严格**：整卡计数器会把同机其他进程的流量
+  一并计入，从而把本该判负的残余权重传输掩盖在噪声里，copy trace 则归属到
+  进程。NVIDIA 侧仍按原条文用 PCIe 计数器取证，两条线各自记录手段。
+- 2026-08-03 / amd-sdxl-has-a-large-serial-floor：SDXL（1024²、20 步、fp16、
+  batch=1）在 R9700 上的 quota→latency **不接近线性**：4 单元 p50 = 24.828 s
+  （CV 0.43%，30 采样零加采样），32 单元约 4.67 s，比值仅 5.3×，而配额比是
+  8×。按 Amdahl 形式 `latency = serial + parallel/q` 反解，**serial ≈ 1.8 s，
+  约占 32 单元时延的 38%**。含义有二：(1) 高配额段边际收益很低，调度器不能
+  假设配额与延迟成反比；(2) Gate B 的 held-out MAPE 必须用含 serial 项的
+  两参数模型评分，纯比例模型会在高配额端系统性低估延迟。该模型与评分实现
+  在 `src/burstserve/quota_model.py`，对两种空洞通过都做了拒绝：三点以下不
+  拟合（两参数模型在两点上必然零残差），留出集为空不评分（MAPE 恒为 0）。
