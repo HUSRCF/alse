@@ -31,9 +31,13 @@ REQUIRED_QUOTAS = [4, 8, 12, 16, 20, 24, 28, 32]
 CV_THRESHOLD = 0.05
 MAPE_THRESHOLD = 0.10
 
+# The clause names hardware, driver, ROCm and Torch separately, so the
+# kernel driver is required alongside the runtime -- they move
+# independently, and a masking behaviour that changed with the driver
+# would otherwise be unattributable.
 REQUIRED_METADATA = (
-    "device_name", "gcn_arch", "rocm", "torch", "model_revision",
-    "schema_version",
+    "device_name", "gcn_arch", "amdgpu_driver", "rocm", "torch",
+    "model_revision", "schema_version",
 )
 
 # Every row field this verifier reads. Declared rather than left implicit so

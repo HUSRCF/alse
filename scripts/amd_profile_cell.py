@@ -24,6 +24,7 @@ import statistics
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 CELL_SCHEMA_VERSION = "burstserve.amd-profile-cell/v1"
 
@@ -98,6 +99,50 @@ def mask_attestation(torch) -> dict:
         )
     record["units"] = readback.get("popcount") or record["requested_units"]
     return record
+
+
+def amdgpu_driver_version() -> str | None:
+    """The kernel driver, which is not the same thing as the ROCm runtime.
+
+    Gate B-AMD asks each profile to carry hardware, driver, ROCm and Torch
+    separately. hipconfig reports the HIP runtime; the amdgpu module has
+    its own version, and the two move independently.
+    """
+    try:
+        return Path("/sys/module/amdgpu/version").read_text(
+            encoding="utf-8"
+        ).strip() or None
+    except OSError:
+        return None
+
+
+def firmware_versions() -> dict:
+    """Per-node firmware, from the KFD topology.
+
+    Masking is a firmware-mediated behaviour, so a firmware change is a
+    reason for a mapping to differ and belongs in the record.
+    """
+    out: dict = {}
+    root = Path("/sys/devices/virtual/kfd/kfd/topology/nodes")
+    try:
+        nodes = sorted(root.iterdir())
+    except OSError:
+        return out
+    for node in nodes:
+        try:
+            text = (node / "properties").read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fields = {}
+        for line in text.splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[0] in (
+                "fw_version", "sdma_fw_version", "gfx_target_version"
+            ):
+                fields[parts[0]] = parts[1]
+        if fields.get("gfx_target_version", "0") != "0":
+            out[node.name] = fields
+    return out
 
 
 def rocm_version() -> str | None:
@@ -422,7 +467,10 @@ def main() -> int:
             "per_step_total_s": sum(last_steps),
             **phase_summary(last_steps)} if last_steps else {}),
         "torch": torch.__version__,
+        "torch_hip": torch.version.hip,
         "rocm": rocm_version(),
+        "amdgpu_driver": amdgpu_driver_version(),
+        "firmware": firmware_versions(),
         "device_name": torch.cuda.get_device_name(0),
         "gcn_arch": torch.cuda.get_device_properties(0).gcnArchName,
         **extra,
