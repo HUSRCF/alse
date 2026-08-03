@@ -2011,3 +2011,22 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   并把 observed 改为多次重载取分布而非单次;若条文意在只验证传输项,
   则应以 replay 而非 `.to()` 为观测目标。这是条文形式问题,须先定,不得
   以调模型迎合阈值。
+- 2026-08-03 / amd-cu-partition-is-not-isolation：**CU 掩码不相交 ≠ 性能隔离**。
+  两个各持 16 个不相交单元的独立 SDXL 进程(512²、20 步、各自 30 采样 solo
+  基线 + 180 s 并发窗口)实测:
+  a 侧 solo p50 **1.786 s → co-run 2.194 s(+22.8%)**,
+  b 侧 solo p50 **1.802 s → co-run 2.228 s(+23.7%)**。
+  两侧 CV 分别 0.51% / 0.37%,重叠窗口 **180.6 s = 较长窗口的 99.5%**,
+  各自 82/83 与 80/81 个样本完全落在共同窗口内——即该数字**不是**「两进程
+  错开跑」的假象(错开会给出与零外部性完全相同的读数,这正是必须证明重叠的原因)。
+  分区的只有 CU;**L2、显存带宽与命令处理器仍然共享**,约 23% 的外部性由此而来。
+  **对调度器的直接约束**:solo 的 quota→latency 表**不能直接用于 co-run 场景**,
+  必须带 pairwise externality 修正项;把 CU 配额当作完全隔离的资源会系统性
+  低估并发下的延迟约 23%。这也是 Gate B 要求 pairwise externality table 的原因。
+  尚未测:externality 是否随配额比例、负载类型(compute-bound vs
+  bandwidth-bound)、以及模型对(SDXL+CogVideoX)而变——这些是 externality
+  table 的其余条目。
+  附带记录:1024² 下两个 16 单元 cell 各需 19.92 GB,合计 39.8 GB **超出 32 GB
+  显存**,故 co-run 在 512² 进行。显存是 co-run 的硬约束,harness 现在在
+  solo 阶段就据实测峰值预检并拒绝装不下的配对——否则要么 OOM 一无所得,
+  要么测到的是 allocator 抖动却被记成 CU 竞争。
