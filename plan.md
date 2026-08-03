@@ -2044,3 +2044,17 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   显存**,故 co-run 在 512² 进行。显存是 co-run 的硬约束,harness 现在在
   solo 阶段就据实测峰值预检并拒绝装不下的配对——否则要么 OOM 一无所得,
   要么测到的是 allocator 抖动却被记成 CU 竞争。
+- 2026-08-03 / flux-does-not-fit-on-r9700：**FLUX.1-dev 无法在 R9700 上做
+  resident profiling**。实测卡上 VRAM 总量 **34.21 GB**（34208743424 B），
+  而 FLUX.1-dev 的 fp16 权重合计 **33.74 GB**（transformer 23.8 + T5-XXL 9.5
+  + CLIP 0.2 + VAE 0.2），已占 98.6%,不剩激活空间。四个模型的权重量实测:
+  SDXL **6.94 GB** ✅ / CogVideoX-2b **13.77 GB** ✅ /
+  CogVideoX-5b **21.53 GB**（21.5+激活,偏紧,须实测）/ FLUX **33.74 GB** ❌。
+  影响与处置:Gate B 原文要求 profile 四个模型,FLUX 一项在本硬件上**只能**
+  以 CPU offload 方式跑,而 offload 会引入 PCIe 传输,测得的就不再是 resident
+  solo 延迟——**不得把 offload 结果混入 resident quota→latency canonical
+  table**,须另行标注为 state-only / cold residency 档（plan 第 3–4 周本就
+  区分 resident / state-only / cold 三档,offload 结果归入后两档是自洽的）。
+  这条独立地加强了「第二 GPU SKU 仍须覆盖」这个 Phase 0 硬门的理由:
+  H100-80G 能容纳 FLUX 的 resident 全量,R9700 不能,故 AMD 线**在模型覆盖上
+  也不足以替代** NVIDIA 线,与此前「AMD 是补充而非替代」的决定一致。
