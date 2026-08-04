@@ -377,5 +377,86 @@ class VideoSizeAxisTest(unittest.TestCase):
                 return
         self.fail("probe_differs is not computed anywhere")
 
+class CallSignatureTest(unittest.TestCase):
+    """Every run_cell call must supply every argument run_cell requires.
+
+    The previous test checked that probe_differs mentions frames, and
+    passed while run_cell still took no frames argument and the call site
+    passed one -- a TypeError on the first cell of a sweep that has already
+    claimed its GPU. Checking the text of one expression is not checking
+    that the code runs.
+    """
+
+    def test_run_cell_calls_match_its_signature(self):
+        import ast
+
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "run_amd_gate_b.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        required = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "run_cell":
+                defaults = len(node.args.kw_defaults or [])
+                names = [a.arg for a in node.args.kwonlyargs]
+                required = set(
+                    names[: len(names) - defaults] if defaults else names
+                )
+        self.assertIsNotNone(required, "run_cell not found")
+
+        calls = 0
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id",
+                                                      None) == "run_cell":
+                calls += 1
+                supplied = {kw.arg for kw in node.keywords if kw.arg}
+                self.assertEqual(
+                    required - supplied, set(),
+                    f"run_cell call is missing {sorted(required - supplied)}",
+                )
+                self.assertEqual(
+                    supplied - required - {"cell_script"}, set(),
+                    f"run_cell call passes unknown "
+                    f"{sorted(supplied - required)}",
+                )
+        self.assertGreater(calls, 0, "run_cell is never called")
+
+    def test_the_plan_tuples_match_what_the_loop_unpacks(self):
+        """A plan tuple of the wrong width fails at the first iteration."""
+        import ast
+
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "run_amd_gate_b.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        widths, unpack = set(), None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and any(
+                getattr(t, "id", None) == "plan" for t in node.targets
+            ):
+                for element in ast.walk(node.value):
+                    if isinstance(element, ast.Tuple):
+                        widths.add(len(element.elts))
+            if isinstance(node, ast.Call) and isinstance(
+                node.func, ast.Attribute
+            ) and node.func.attr == "append" and getattr(
+                node.func.value, "id", None
+            ) == "plan":
+                for element in node.args:
+                    if isinstance(element, ast.Tuple):
+                        widths.add(len(element.elts))
+            if isinstance(node, ast.For) and isinstance(node.target, ast.Tuple):
+                if any(getattr(e, "id", "") == "role" for e in node.target.elts):
+                    unpack = len(node.target.elts)
+        self.assertIsNotNone(unpack, "the plan loop was not found")
+        self.assertEqual(
+            widths, {unpack},
+            f"plan tuples are {sorted(widths)} wide but the loop unpacks "
+            f"{unpack}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

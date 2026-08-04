@@ -73,7 +73,7 @@ def problem_scale(*, batch: int, height: int, width: int, frames: int,
 
 
 def run_cell(cell_script: Path, *, units: int, batch: int, args, samples: int,
-             warmup: int, height: int, width: int) -> dict:
+             warmup: int, height: int, width: int, frames: int) -> dict:
     env = dict(os.environ)
     env["ROC_GLOBAL_CU_MASK"] = mask_for(units)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -88,13 +88,13 @@ def run_cell(cell_script: Path, *, units: int, batch: int, args, samples: int,
         "--max-samples", str(args.max_samples),
         "--height", str(height),
         "--width", str(width),
-        "--frames", str(args.frames),
+        "--frames", str(frames),
         "--seed", str(args.seed),
     ]
     if args.vae_tiling:
         argv.append("--vae-tiling")
     scale = problem_scale(batch=batch, height=height, width=width,
-                          frames=args.frames, model=args.model)
+                          frames=frames, model=args.model)
     started = time.time()
     proc = subprocess.run(argv, env=env, capture_output=True, text=True)
     body = [ln for ln in proc.stdout.splitlines() if ln.startswith("{")]
@@ -106,6 +106,7 @@ def run_cell(cell_script: Path, *, units: int, batch: int, args, samples: int,
             "batch": batch,
             "height": height,
             "width": width,
+            "frames": frames,
             "problem_scale": scale,
             "stderr_tail": proc.stderr[-2000:],
             "stdout_tail": proc.stdout[-1000:],
@@ -228,21 +229,24 @@ def main() -> int:
     rows: list[dict] = []
     probe_height = args.probe_height or args.height
     probe_width = args.probe_width or args.width
+    probe_frames = args.probe_frames or args.frames
     plan = [(args.canonical_batch, args.samples, args.warmup, "canonical",
-             args.height, args.width)]
+             args.height, args.width, args.frames)]
     probe_differs = (
         args.probe_batch != args.canonical_batch
         or probe_height != args.height or probe_width != args.width
+        or probe_frames != args.frames
     )
     if probe_differs:
         plan.append((args.probe_batch, args.probe_samples, args.probe_warmup,
-                     "saturation_probe", probe_height, probe_width))
+                     "saturation_probe", probe_height, probe_width,
+                     probe_frames))
 
-    for batch, samples, warmup, role, height, width in plan:
+    for batch, samples, warmup, role, height, width, frames in plan:
         for units in quotas:
             row = run_cell(cell_script, units=units, batch=batch, args=args,
                            samples=samples, warmup=warmup,
-                           height=height, width=width)
+                           height=height, width=width, frames=frames)
             row["role"] = role
             rows.append(row)
             if row.get("status") == "ok":
