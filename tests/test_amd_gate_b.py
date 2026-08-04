@@ -463,5 +463,69 @@ class CallSignatureTest(unittest.TestCase):
         )
 
 
+class ArgparseAgreementTest(unittest.TestCase):
+    """Every args.X the code reads must be a flag the parser defines.
+
+    This exact mismatch cost a launch: the driver read args.probe_frames
+    while add_argument("--probe-frames") had never landed, so argparse
+    rejected the flag and the sweep never started. Nothing catches that
+    until the command line is typed.
+    """
+
+    DRIVERS = ("run_amd_gate_b.py", "run_amd_corun.py",
+               "run_amd_cold_model.py", "run_amd_residency.py",
+               "run_amd_transition.py", "amd_profile_cell.py",
+               "measure_load_transfer.py", "amd_framework_calibration.py")
+
+    def _defined_and_used(self, name):
+        import ast
+
+        source = (
+            Path(__file__).resolve().parent.parent / "scripts" / name
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        defined, used = set(), set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "add_argument"
+            ):
+                for argument in node.args:
+                    if isinstance(argument, ast.Constant) and isinstance(
+                        argument.value, str
+                    ) and argument.value.startswith("--"):
+                        defined.add(argument.value[2:].replace("-", "_"))
+                for keyword in node.keywords:
+                    if keyword.arg == "dest" and isinstance(
+                        keyword.value, ast.Constant
+                    ):
+                        defined.add(keyword.value.value)
+            if (
+                isinstance(node, ast.Attribute)
+                and getattr(node.value, "id", None) == "args"
+            ):
+                used.add(node.attr)
+        return defined, used
+
+    def test_no_driver_reads_an_option_its_parser_does_not_define(self):
+        for name in self.DRIVERS:
+            with self.subTest(name):
+                defined, used = self._defined_and_used(name)
+                if not defined:
+                    continue  # not an argparse script
+                missing = sorted(used - defined)
+                self.assertEqual(
+                    missing, [],
+                    f"{name} reads options the parser never defines: {missing}",
+                )
+
+    def test_the_check_can_fail(self):
+        """It must not be vacuous -- the driver does define options."""
+        defined, used = self._defined_and_used("run_amd_gate_b.py")
+        self.assertIn("probe_frames", defined)
+        self.assertIn("probe_frames", used)
+
+
 if __name__ == "__main__":
     unittest.main()

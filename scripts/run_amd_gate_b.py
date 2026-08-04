@@ -192,6 +192,9 @@ def main() -> int:
     # pose a strictly larger problem at the same quota.
     parser.add_argument("--probe-height", type=int)
     parser.add_argument("--probe-width", type=int)
+    # Frames are the size axis for video models: their resolution is
+    # fixed by the pipeline and a second batch does not fit.
+    parser.add_argument("--probe-frames", type=int)
     parser.add_argument("--samples", type=int, default=30)
     parser.add_argument("--warmup", type=int, default=5)
     # The larger problem only has to decide a boolean about the regime, not
