@@ -398,12 +398,17 @@ class CallSignatureTest(unittest.TestCase):
         required = None
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "run_cell":
-                defaults = len(node.args.kw_defaults or [])
-                names = [a.arg for a in node.args.kwonlyargs]
-                required = set(
-                    names[: len(names) - defaults] if defaults else names
-                )
+                # kw_defaults holds None for arguments that have no default,
+                # so a required argument is one whose slot is None -- not one
+                # that is absent from the list.
+                required = {
+                    argument.arg
+                    for argument, default in zip(node.args.kwonlyargs,
+                                                 node.args.kw_defaults)
+                    if default is None
+                }
         self.assertIsNotNone(required, "run_cell not found")
+        self.assertIn("frames", required)
 
         calls = 0
         for node in ast.walk(tree):
