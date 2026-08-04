@@ -248,6 +248,16 @@ def diffusion(torch, device, args):
         kwargs["variant"] = MODEL_VARIANT[args.model]
     pipeline = DiffusionPipeline.from_pretrained(repo, **kwargs).to(device)
     pipeline.set_progress_bar_config(disable=True)
+    # Video VAEs decode every frame at once: CogVideoX-2b asked for 20 GiB
+    # at 17 frames on a 32 GB card and failed. Tiling is the vendor's own
+    # remedy, but it changes the memory and speed profile of the decode, so
+    # it is recorded in the cell rather than applied silently -- a table
+    # mixing tiled and untiled cells would not be comparable.
+    tiled = False
+    if args.vae_tiling and hasattr(pipeline, "vae"):
+        if hasattr(pipeline.vae, "enable_tiling"):
+            pipeline.vae.enable_tiling()
+            tiled = True
     load_seconds = time.perf_counter() - load_started
 
     # Per-step device time, captured from inside the denoising loop so that
@@ -299,6 +309,7 @@ def diffusion(torch, device, args):
         "height": args.height,
         "width": args.width,
         "per_step_timing": "cuda_events",
+        "vae_tiling": tiled,
     }
 
 
@@ -333,6 +344,10 @@ def main() -> int:
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--prompt", default="a quiet street at dusk")
+    parser.add_argument("--vae-tiling", action="store_true",
+                        help="tile the VAE decode; required for video models "
+                             "whose decode does not fit, and recorded in the "
+                             "cell because it changes what is measured")
     # Co-run support. Gate B-AMD requires two processes with disjoint masks,
     # not one process with two streams, so the synchronisation has to be
     # out-of-process too.

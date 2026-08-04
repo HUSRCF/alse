@@ -91,6 +91,8 @@ def run_cell(cell_script: Path, *, units: int, batch: int, args, samples: int,
         "--frames", str(args.frames),
         "--seed", str(args.seed),
     ]
+    if args.vae_tiling:
+        argv.append("--vae-tiling")
     scale = problem_scale(batch=batch, height=height, width=width,
                           frames=args.frames, model=args.model)
     started = time.time()
@@ -199,6 +201,7 @@ def main() -> int:
     parser.add_argument("--target-cv", type=float, default=0.05)
     parser.add_argument("--max-samples", type=int, default=300)
     parser.add_argument("--saturation-epsilon", type=float, default=0.05)
+    parser.add_argument("--vae-tiling", action="store_true")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -289,6 +292,8 @@ def main() -> int:
         "steps": args.steps,
         "height": args.height,
         "width": args.width,
+        "frames": args.frames,
+        "vae_tiling": args.vae_tiling,
         "canonical_batch": args.canonical_batch,
         "probe_batch": args.probe_batch,
         "probe_height": probe_height,
