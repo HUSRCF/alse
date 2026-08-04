@@ -284,7 +284,11 @@ def diffusion(torch, device, args):
         "generator": generator,
         "callback_on_step_end": on_step,
     }
-    if args.model.startswith("cogvideox"):
+    # Video pipelines take a frame count and use their own native
+    # resolution; recording the unused --height/--width would describe a
+    # cell by a parameter that had no effect on it.
+    video = args.model.startswith("cogvideox")
+    if video:
         call["num_frames"] = args.frames
     else:
         call["height"] = args.height
@@ -306,8 +310,9 @@ def diffusion(torch, device, args):
         "model_revision": revision,
         "load_seconds": load_seconds,
         "steps": args.steps,
-        "height": args.height,
-        "width": args.width,
+        "height": None if video else args.height,
+        "width": None if video else args.width,
+        "frames": args.frames if video else None,
         "per_step_timing": "cuda_events",
         "vae_tiling": tiled,
     }
