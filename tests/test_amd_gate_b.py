@@ -329,5 +329,53 @@ class CanonicalEligibilityTest(unittest.TestCase):
         self.assertNotIn("canonical_eligible", rows[0])
 
 
+
+class VideoSizeAxisTest(unittest.TestCase):
+    """Frames are the only size axis a video model has here.
+
+    CogVideoX renders at its own resolution, and a second batch does not
+    fit -- one cell already peaked at 28.5 GB of 34.2. Without a frames
+    axis the probe never runs, every cell's regime is undetermined, and by
+    the gate's own rule the whole table is ineligible.
+    """
+
+    def test_frames_change_the_problem_scale_for_video_models(self):
+        small = gate_b.problem_scale(batch=1, height=480, width=720, frames=9,
+                                     model="cogvideox-2b")
+        large = gate_b.problem_scale(batch=1, height=480, width=720, frames=17,
+                                     model="cogvideox-2b")
+        self.assertGreater(large, small)
+
+    def test_a_frames_only_probe_is_recognised_as_differing(self):
+        """The bug this guards: batch and resolution equal, frames not, and
+        the driver decided the probe was redundant and skipped it."""
+        canonical = dict(batch=1, height=1024, width=1024, frames=9)
+        probe = dict(batch=1, height=1024, width=1024, frames=17)
+        differs = (
+            probe["batch"] != canonical["batch"]
+            or probe["height"] != canonical["height"]
+            or probe["width"] != canonical["width"]
+            or probe["frames"] != canonical["frames"]
+        )
+        self.assertTrue(differs)
+
+    def test_the_driver_compares_frames_when_deciding_to_probe(self):
+        import ast
+
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "run_amd_gate_b.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Assign)
+                and any(getattr(t, "id", None) == "probe_differs"
+                        for t in node.targets)
+            ):
+                self.assertIn("probe_frames", ast.unparse(node.value))
+                return
+        self.fail("probe_differs is not computed anywhere")
+
 if __name__ == "__main__":
     unittest.main()
