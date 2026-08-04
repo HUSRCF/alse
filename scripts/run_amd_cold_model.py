@@ -233,28 +233,36 @@ def predict_framework_seconds(tensor_sizes: list[int],
 
 
 def replay_transfers(torch, tensor_sizes: list[int]) -> float:
-    """Move the same sizes as raw copies, without the framework in between.
+    """Move the same tensors as raw copies, without the framework.
 
-    .to(device) does more than copy: it walks the module tree in Python,
-    allocates a destination per tensor, and rebinds each parameter. This
-    replays only the transfers, so the difference between the two isolates
-    what is not transfer -- which decides whether a bytes-and-bandwidth
-    predictor can reach the gate at all, or whether the residual is
-    framework cost that no bandwidth model can express.
+    The host side must be allocated the way the real weights are -- one
+    tensor each -- and not as slices of a single large buffer. A shared
+    buffer is contiguous and already resident, so copying from it is faster
+    than copying from thousands of separately allocated tensors, and the
+    difference lands in whatever this is subtracted from. Measured with a
+    shared buffer, the residual came to 18.7 us/tensor against a framework
+    cost that direct measurement puts at 3.9, so most of that residual was
+    a transfer artefact rather than framework work.
+
+    Destinations are preallocated, which is the one thing this deliberately
+    excludes: allocation belongs to the framework term.
     """
     if not tensor_sizes:
         return 0.0
-    largest = max(tensor_sizes)
-    host = torch.empty(largest, dtype=torch.uint8)
-    device = torch.empty(largest, dtype=torch.uint8, device="cuda")
+    hosts, devices = [], []
+    for size in tensor_sizes:
+        elements = max(1, size // 2)
+        hosts.append(torch.empty(elements, dtype=torch.float16))
+        devices.append(
+            torch.empty(elements, dtype=torch.float16, device="cuda")
+        )
     torch.cuda.synchronize()
     started = time.perf_counter()
-    for size in tensor_sizes:
-        if size:
-            device[:size].copy_(host[:size])
+    for host, device in zip(hosts, devices):
+        device.copy_(host)
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - started
-    del host, device
+    del hosts, devices
     torch.cuda.empty_cache()
     return elapsed
 
@@ -481,9 +489,15 @@ def main() -> int:
               f"framework {observed - replay_seconds:.3f}s "
               f"({(observed-replay_seconds)/len(tensor_sizes)*1e6:.1f} us/tensor)\n"
               f"      term errors: transfer "
-              f"{entry['term_errors']['transfer_error']*100:5.1f}%   framework "
-              f"{entry['term_errors']['framework_error']*100:5.1f}%   "
-              f"both accurate: {entry['terms_individually_accurate']}",
+              + (f"{entry['term_errors']['transfer_error']*100:5.1f}%"
+                 if entry['term_errors']['transfer_error'] is not None
+                 else "  n/a")
+              + "   framework "
+              + (f"{entry['term_errors']['framework_error']*100:5.1f}%"
+                 if entry['term_errors']['framework_error'] is not None
+                 else "  n/a (replay >= observed: the replay is not a lower "
+                      "bound on the transfer)")
+              + f"   both accurate: {entry['terms_individually_accurate']}",
               flush=True)
 
     report = {
