@@ -76,16 +76,37 @@ class SizeDependentBandwidthTest(unittest.TestCase):
 
     CURVE = [(65_536, 2e9), (1_048_576, 10e9), (268_435_456, 28e9)]
 
-    def test_it_picks_the_measured_size_at_or_below_the_request(self):
-        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 65_536), 2e9)
-        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 100_000), 2e9)
-        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 1_048_576), 10e9)
-        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 1e9), 28e9)
+    def test_it_returns_the_measured_value_at_a_measured_size(self):
+        for size, bps in self.CURVE:
+            with self.subTest(size=size):
+                self.assertAlmostEqual(
+                    cold.bandwidth_for_size(self.CURVE, size), bps, places=3
+                )
+
+    def test_between_measured_sizes_it_interpolates(self):
+        """A step function over-predicts every size between two points.
+
+        At a doubling grid that cost 13.4% on the transfer term, so the
+        value between two measurements lies strictly between them.
+        """
+        value = cold.bandwidth_for_size(self.CURVE, 100_000)
+        self.assertGreater(value, 2e9)
+        self.assertLess(value, 10e9)
+
+    def test_it_never_extrapolates_past_the_measured_range(self):
+        """An extrapolated bandwidth is not a measured one."""
+        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 1), 2e9)
+        self.assertEqual(cold.bandwidth_for_size(self.CURVE, 10**12), 28e9)
 
     def test_a_tensor_below_every_measured_size_uses_the_smallest(self):
         """Never the large-block figure -- that is the direction that
         under-predicts the transfer time and flatters the gate."""
         self.assertEqual(cold.bandwidth_for_size(self.CURVE, 1024), 2e9)
+
+    def test_it_is_monotone_in_size_when_the_measurements_are(self):
+        sizes = [1024, 65_536, 100_000, 500_000, 1_048_576, 10**8, 10**9]
+        values = [cold.bandwidth_for_size(self.CURVE, s) for s in sizes]
+        self.assertEqual(values, sorted(values))
 
     def test_many_small_tensors_cost_more_than_their_byte_count_suggests(self):
         total = 64 * 65_536
@@ -94,7 +115,7 @@ class SizeDependentBandwidthTest(unittest.TestCase):
             [65_536] * 64, self.CURVE
         )
         self.assertGreater(per_tensor, aggregate)
-        self.assertAlmostEqual(per_tensor, total / 2e9)
+        self.assertAlmostEqual(per_tensor, total / 2e9, places=6)
 
     def test_one_large_tensor_agrees_with_the_aggregate_form(self):
         """The two forms must not disagree where they should not."""
@@ -182,17 +203,36 @@ class FrameworkOverheadCalibrationTest(unittest.TestCase):
         import ast
         import inspect
 
-        source = inspect.getsource(cold.calibrate_framework_overhead)
+        source = inspect.getsource(cold.calibrate_framework_curve)
         tree = ast.parse(source)
         names = {
             node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
         }
-        for forbidden in ("pipeline", "tensor_sizes", "observed", "weights"):
+        for forbidden in ("pipeline", "observed", "weights"):
             self.assertNotIn(
                 forbidden, names,
                 f"the calibration reads {forbidden}, making it a fit rather "
                 "than an independent measurement",
             )
+
+    def test_the_framework_curve_is_read_the_same_way_as_bandwidth(self):
+        """Both are per-size measurements, interpolated, never extrapolated."""
+        curve = [(2048, 8e-6), (131072, 20e-6)]
+        self.assertEqual(cold.framework_for_size(curve, 1), 8e-6)
+        self.assertEqual(cold.framework_for_size(curve, 10**9), 20e-6)
+        middle = cold.framework_for_size(curve, 16384)
+        self.assertGreater(middle, 8e-6)
+        self.assertLess(middle, 20e-6)
+
+    def test_an_unmeasured_framework_curve_is_refused(self):
+        with self.assertRaises(ValueError):
+            cold.framework_for_size([], 4096)
+
+    def test_the_framework_prediction_sums_per_tensor_costs(self):
+        curve = [(2048, 10e-6)]
+        self.assertAlmostEqual(
+            cold.predict_framework_seconds([2048] * 100, curve), 100 * 10e-6
+        )
 
     def test_the_strict_clause_still_decides_the_gate(self):
         """The overhead term must not quietly become the headline.

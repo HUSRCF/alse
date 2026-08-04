@@ -88,27 +88,36 @@ def predict_cold_seconds(weight_bytes: int, bandwidth_bps: float) -> float:
 
 
 def bandwidth_for_size(curve: list[tuple[int, float]], size_bytes: int) -> float:
-    """The measured bandwidth at the transfer size closest from below.
+    """Bandwidth at a transfer size, interpolated between measured points.
 
-    A single aggregate bandwidth is the wrong term for a pipeline move.
-    .to(device) copies each parameter separately, and a model's tensors are
-    mostly far smaller than the multi-hundred-megabyte block a bandwidth
-    benchmark uses, so one big-block figure over-predicts badly -- measured
-    at 72.5% error on SDXL, against a 10% gate.
-
-    Using bandwidth as a function of size keeps the predictor free of fitted
-    constants: every value here was measured, just at more than one size.
+    A step function takes the measured point at or below each tensor, which
+    over-predicts every size that falls between two points -- it cost 13.4%
+    on the transfer term at a doubling grid. Bandwidth against size is
+    close to linear in log-log, so interpolating there is the natural
+    reading of the same measurements. Nothing is fitted: outside the
+    measured range the nearest endpoint is used rather than extrapolated,
+    since an extrapolated bandwidth is not a measured one.
     """
     if not curve:
         raise ValueError("no bandwidth curve was measured")
     ordered = sorted(curve)
-    chosen = ordered[0][1]
-    for measured_size, bps in ordered:
-        if measured_size <= size_bytes:
-            chosen = bps
-        else:
-            break
-    return chosen
+    if size_bytes <= ordered[0][0]:
+        return ordered[0][1]
+    if size_bytes >= ordered[-1][0]:
+        return ordered[-1][1]
+    import math
+
+    for (low_size, low_bps), (high_size, high_bps) in zip(ordered, ordered[1:]):
+        if low_size <= size_bytes <= high_size:
+            if low_size == high_size:
+                return low_bps
+            span = math.log(high_size) - math.log(low_size)
+            position = (math.log(size_bytes) - math.log(low_size)) / span
+            return math.exp(
+                math.log(low_bps)
+                + position * (math.log(high_bps) - math.log(low_bps))
+            )
+    return ordered[-1][1]  # pragma: no cover - covered by the guards above
 
 
 def predict_cold_seconds_by_tensor(
@@ -154,68 +163,73 @@ def tensor_sizes_of(torch, pipeline) -> list[int]:
     return sizes
 
 
-def calibrate_framework_overhead(torch, *, counts, element_bytes: int) -> dict:
-    """Measure the per-tensor cost of .to(device) on synthetic modules.
+def calibrate_framework_curve(torch, *, sizes, count) -> list[tuple[int, float]]:
+    """Per-tensor framework cost as a function of tensor size.
 
-    The residual that the bytes-and-bandwidth predictor cannot express is
-    framework work: walking the module tree, allocating per tensor,
-    rebinding parameters. It is proportional to the tensor *count*, not to
-    bytes, so it can be calibrated on modules that have nothing to do with
-    any real model -- which is what keeps applying it to SDXL a prediction
-    rather than a fit to SDXL's own observation.
+    Symmetric with the bandwidth curve, and for the same reason. A single
+    per-tensor constant calibrated at one size missed by 80%: the constant
+    measured on 4 KB tensors does not describe a model whose tensors
+    average 2.6 MB. So the cost is measured at several sizes and read off
+    the curve for each tensor.
 
-    The tensors are kept tiny so that transfer time is negligible next to
-    the per-tensor cost being measured; the slope against count is the
-    quantity, and the intercept absorbs whatever is per-call.
+    At each size the framework cost is ``.to(device)`` minus a replay of the
+    same transfers into buffers that already exist, which isolates what is
+    not transfer: the allocation and the Python traversal. The modules are
+    synthetic and none of the target model's timings are read.
     """
-    # Shaped like a pipeline, not like a flat parameter list. A pipeline
-    # holds several components and moves each separately, and a flat module
-    # measured 31.7 us/tensor against 100.6 us in the real thing. The shape
-    # is copied; none of the target model's measurements are read, so this
-    # stays a calibration rather than a fit.
-    components = 8
-    depth = 3
-    points = []
-    for count in counts:
-        per_component = max(1, count // components)
-        modules = []
-        for _ in range(components):
-            inner = torch.nn.Sequential(*[
-                torch.nn.Sequential(*[
-                    torch.nn.Identity() for _ in range(depth)
-                ]) for _ in range(2)
-            ])
-            for index in range(per_component):
-                inner.register_parameter(
-                    f"p{index}",
-                    torch.nn.Parameter(
-                        torch.empty(element_bytes // 2, dtype=torch.float16),
-                        requires_grad=False,
-                    ),
-                )
-            modules.append(inner)
+    curve = []
+    for size in sizes:
+        module = torch.nn.Module()
+        for index in range(count):
+            module.register_parameter(
+                f"p{index}",
+                torch.nn.Parameter(
+                    torch.empty(max(1, size // 2), dtype=torch.float16),
+                    requires_grad=False,
+                ),
+            )
+        sizes_here = [size] * count
+        replayed = replay_transfers(torch, sizes_here)
         torch.cuda.synchronize()
         started = time.perf_counter()
-        for module in modules:
-            module.to("cuda")
+        module.to("cuda")
         torch.cuda.synchronize()
-        points.append((components * per_component,
-                       time.perf_counter() - started))
-        del modules
-        torch.cuda.empty_cache()
+        moved = time.perf_counter() - started
+        del module
+        # Deliberately no empty_cache: the target runs with a warm caching
+        # allocator, and returning blocks to the driver here would
+        # calibrate a cold one against a warm observation.
+        curve.append((size, max(0.0, moved - replayed) / count))
+    return curve
 
-    n = len(points)
-    mean_x = sum(c for c, _ in points) / n
-    mean_y = sum(t for _, t in points) / n
-    variance = sum((c - mean_x) ** 2 for c, _ in points)
-    slope = sum((c - mean_x) * (t - mean_y) for c, t in points) / variance
-    return {
-        "counts": [c for c, _ in points],
-        "seconds": [t for _, t in points],
-        "seconds_per_tensor": slope,
-        "per_call_seconds": mean_y - slope * mean_x,
-        "element_bytes": element_bytes,
-    }
+
+def framework_for_size(curve: list[tuple[int, float]], size_bytes: int) -> float:
+    """Interpolated per-tensor framework cost, never extrapolated."""
+    if not curve:
+        raise ValueError("no framework curve was measured")
+    ordered = sorted(curve)
+    if size_bytes <= ordered[0][0]:
+        return ordered[0][1]
+    if size_bytes >= ordered[-1][0]:
+        return ordered[-1][1]
+    import math
+
+    for (low_size, low), (high_size, high) in zip(ordered, ordered[1:]):
+        if low_size <= size_bytes <= high_size:
+            if low_size == high_size or low <= 0 or high <= 0:
+                return low
+            span = math.log(high_size) - math.log(low_size)
+            position = (math.log(size_bytes) - math.log(low_size)) / span
+            return math.exp(
+                math.log(low) + position * (math.log(high) - math.log(low))
+            )
+    return ordered[-1][1]  # pragma: no cover
+
+
+def predict_framework_seconds(tensor_sizes: list[int],
+                              curve: list[tuple[int, float]]) -> float:
+    """Each tensor at the framework cost measured for its own size."""
+    return sum(framework_for_size(curve, size) for size in tensor_sizes)
 
 
 def replay_transfers(torch, tensor_sizes: list[int]) -> float:
@@ -283,9 +297,14 @@ def main() -> int:
                 "0.03125,0.0625,0.125,0.25,0.5,1,2,4,8,16,32,64,128,256,"
                 "512,1024")
     parser.add_argument("--bandwidth-repeats", type=int, default=15)
-    parser.add_argument("--overhead-counts", default="200,800,3200")
-    parser.add_argument("--overhead-element-bytes", type=int, default=4096)
+    parser.add_argument("--overhead-sizes-bytes",
+                        default="2048,16384,131072,1048576,8388608,67108864")
+    parser.add_argument("--overhead-count", type=int, default=64)
     parser.add_argument("--mape-threshold", type=float, default=0.10)
+    # A cold load can only be timed once per load, so the only way to see
+    # its distribution is to load again. Single-shot runs of this measured
+    # 0.615, 0.630 and 0.725 s.
+    parser.add_argument("--reload-repeats", type=int, default=3)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -308,14 +327,14 @@ def main() -> int:
 
     pinned_bw = widest_transfer(bandwidth, pinned=True)["bytes_per_second"]
     pageable_bw = widest_transfer(bandwidth, pinned=False)["bytes_per_second"]
-    overhead = calibrate_framework_overhead(
+    overhead_curve = calibrate_framework_curve(
         torch,
-        counts=[int(c) for c in args.overhead_counts.split(",") if c.strip()],
-        element_bytes=args.overhead_element_bytes,
+        sizes=[int(b) for b in args.overhead_sizes_bytes.split(",") if b.strip()],
+        count=args.overhead_count,
     )
-    print(f"  framework overhead {overhead['seconds_per_tensor']*1e6:.1f} "
-          f"us/tensor (calibrated on synthetic modules, "
-          f"{overhead['counts']} tensors)", flush=True)
+    print("  framework curve (us/tensor): " + "  ".join(
+        f"{size//1024}K:{cost*1e6:.1f}" for size, cost in overhead_curve
+    ), flush=True)
 
     pinned_curve = [(e["bytes"], e["bytes_per_second"]) for e in bandwidth
                     if e["pinned"]]
@@ -330,18 +349,36 @@ def main() -> int:
             kwargs["variant"] = MODEL_VARIANT[name]
         # Load to host first: the cold cost the scheduler models is the
         # host->device move, not the disk read and the safetensors parse.
-        pipeline = DiffusionPipeline.from_pretrained(repo, **kwargs)
-        tensor_sizes = tensor_sizes_of(torch, pipeline)
+        observations, replays, fault_times = [], [], []
+        tensor_sizes = None
+        for _ in range(max(1, args.reload_repeats)):
+            pipeline = DiffusionPipeline.from_pretrained(repo, **kwargs)
+            tensor_sizes = tensor_sizes_of(torch, pipeline)
+            fault_times.append(fault_in_host_pages(torch, pipeline))
+            replays.append(replay_transfers(torch, tensor_sizes))
+
+            torch.cuda.synchronize()
+            started = time.perf_counter()
+            pipeline = pipeline.to("cuda")
+            torch.cuda.synchronize()
+            observations.append(time.perf_counter() - started)
+
+            del pipeline
+            torch.cuda.empty_cache()
+
         weights = sum(tensor_sizes)
-        fault_seconds = fault_in_host_pages(torch, pipeline)
-
-        replay_seconds = replay_transfers(torch, tensor_sizes)
-
-        torch.cuda.synchronize()
-        started = time.perf_counter()
-        pipeline = pipeline.to("cuda")
-        torch.cuda.synchronize()
-        observed = time.perf_counter() - started
+        fault_seconds = statistics.median(fault_times)
+        # Two states, not one distribution with noise. The first load in a
+        # process pays hipMalloc for every block; later loads reuse cached
+        # ones. Measured over nine reloads: 0.585 s once, then 0.404-0.410
+        # with a CV under 1%. Taking a median across both would describe
+        # neither, so the steady state is what the terms are scored against
+        # -- a scheduler's swap loop is warm -- and the first load is
+        # reported separately as the admission cost.
+        warm = observations[1:] or observations
+        warm_replays = replays[1:] or replays
+        observed = statistics.median(warm)
+        replay_seconds = statistics.median(warm_replays)
 
         entry = {
             "model": name,
@@ -351,6 +388,18 @@ def main() -> int:
             "tensor_median_bytes": statistics.median(tensor_sizes),
             "tensor_p90_bytes": sorted(tensor_sizes)[int(0.9 * len(tensor_sizes))],
             "observed_seconds": observed,
+            "observed_samples_s": observations,
+            "replay_samples_s": replays,
+            "reload_repeats": len(observations),
+            # The first load in a process pays hipMalloc for every block;
+            # later loads reuse cached ones. Both are real situations -- a
+            # scheduler's first admission is cold, its swap loop is warm --
+            # so neither is averaged away.
+            "first_load_seconds": observations[0],
+            "first_load_framework_seconds": observations[0] - replays[0],
+            "warm_load_median_seconds": observed,
+            "warm_load_framework_seconds": observed - replay_seconds,
+            "scored_state": "warm",
             # Reported so the transfer figure can be checked against the
             # cost of getting the pages into host memory in the first place.
             "host_page_fault_seconds": fault_seconds,
@@ -380,8 +429,7 @@ def main() -> int:
             # on something else.
             "predicted_seconds_with_overhead": (
                 predict_cold_seconds_by_tensor(tensor_sizes, pageable_curve)
-                + len(tensor_sizes) * overhead["seconds_per_tensor"]
-                + overhead["per_call_seconds"]
+                + predict_framework_seconds(tensor_sizes, overhead_curve)
             ),
         }
         for label in ("pinned", "pageable", "per_tensor_pinned",
@@ -397,10 +445,8 @@ def main() -> int:
         # model -- otherwise a cancelling pair reads as a correct model.
         measured_framework = observed - replay_seconds
         predicted_transfer = entry["predicted_seconds_per_tensor_pageable"]
-        predicted_framework = (
-            len(tensor_sizes) * overhead["seconds_per_tensor"]
-            + overhead["per_call_seconds"]
-        )
+        predicted_framework = predict_framework_seconds(
+            tensor_sizes, overhead_curve)
         entry["term_errors"] = {
             "transfer_predicted_s": predicted_transfer,
             "transfer_measured_s": replay_seconds,
@@ -439,15 +485,14 @@ def main() -> int:
               f"{entry['term_errors']['framework_error']*100:5.1f}%   "
               f"both accurate: {entry['terms_individually_accurate']}",
               flush=True)
-        del pipeline
-        torch.cuda.empty_cache()
 
     report = {
         "schema_version": SCHEMA_VERSION,
         "device_name": torch.cuda.get_device_name(0),
         "torch": torch.__version__,
         "bandwidth": bandwidth,
-        "framework_overhead": overhead,
+        "framework_curve": [{"size_bytes": s_, "seconds_per_tensor": c}
+                            for s_, c in overhead_curve],
         "bandwidth_used_pinned_bps": pinned_bw,
         "bandwidth_used_pageable_bps": pageable_bw,
         "predictor": "weight_bytes / measured_host_to_device_bandwidth",
