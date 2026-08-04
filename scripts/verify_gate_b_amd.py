@@ -260,16 +260,48 @@ def check_transition(report) -> dict:
 
 
 def check_cold_model(report) -> dict:
+    """Three errors, each scored against the half of the observation it
+    claims to model, and all three must clear the threshold.
+
+    A total alone can be accurate because its terms are wrong in opposite
+    directions -- measured at 3.8% overall from a 46% over-prediction of
+    transfer and a 68% under-prediction of framework cost. Requiring each
+    term separately is strictly stronger than requiring the total.
+    """
+    name = "cold_model_predicts_transfer_and_framework_separately"
     if report is None:
-        return clause("cold_model_uses_missing_bytes_and_measured_bandwidth",
-                      NOT_MEASURED, "no cold-model report")
-    mape = report.get("mape")
-    if mape is None:
-        return clause("cold_model_uses_missing_bytes_and_measured_bandwidth",
-                      NOT_MEASURED, "report carries no mape")
-    status = PASS if mape <= MAPE_THRESHOLD else FAIL
-    return clause("cold_model_uses_missing_bytes_and_measured_bandwidth",
-                  status, report)
+        return clause(name, NOT_MEASURED, "no cold-model report")
+    results = report.get("results") or []
+    if not results:
+        return clause(name, NOT_MEASURED, "report carries no results")
+
+    rows = []
+    for entry in results:
+        terms = entry.get("term_errors")
+        total = entry.get("absolute_percentage_error_with_overhead")
+        if terms is None or total is None:
+            return clause(name, NOT_MEASURED,
+                          {"model": entry.get("model"),
+                           "reason": "report predates the per-term split"})
+        rows.append({
+            "model": entry.get("model"),
+            "transfer_error": terms.get("transfer_error"),
+            "framework_error": terms.get("framework_error"),
+            "total_error": total,
+        })
+
+    def over(key):
+        return [r for r in rows
+                if r[key] is None or r[key] > MAPE_THRESHOLD]
+
+    failing = {key: over(key) for key in
+               ("transfer_error", "framework_error", "total_error")}
+    detail = {"rows": rows, "threshold": MAPE_THRESHOLD,
+              "failing_terms": {k: [r["model"] for r in v]
+                                for k, v in failing.items() if v}}
+    if any(failing.values()):
+        return clause(name, FAIL, detail)
+    return clause(name, PASS, detail)
 
 
 def _maybe(path: str | None):

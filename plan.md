@@ -351,12 +351,30 @@ $$
 - 稳态 solo cell 的 CV 不超过 5%，且**必须记录实际达到的 CV 与加采样次数**，
   不得只声称满足 30 采样的约定。
 - held-out solo p50 MAPE 不超过 10%；transition prediction MAPE 不超过 10%。
-- resident 同模型轮转观测到零权重传输；cold-model 预测严格使用缺失字节和
-  实测带宽。**取证手段与 NVIDIA 侧不同**：R9700 无可用硬件 PCIe 计数器
-  （`rsmi_dev_pci_throughput_get` 返回 NOT_SUPPORTED，`--showmetrics` 中
-  PCIe 带宽项全为 N/A，2026-08-03 实测），故改用
-  `rocprofv3 --memory-copy-trace --stats` 按进程统计 HtoD 字节。判据不变，
-  仍是「权重字节数为零」；copy trace 因归属到进程而**比整卡计数器更严格**。
+- resident 同模型轮转观测到零权重传输。**取证手段与 NVIDIA 侧不同**：R9700
+  无可用硬件 PCIe 计数器（`rsmi_dev_pci_throughput_get` 返回 NOT_SUPPORTED，
+  `--showmetrics` 中 PCIe 带宽项全为 N/A，2026-08-03 实测），故改用
+  `rocprofv3 --memory-copy-trace` 按进程统计 HtoD 拷贝。判据不变，仍是
+  「权重字节数为零」；copy trace 因归属到进程而**比整卡计数器更严格**。
+- **cold-model 预测须分项各自达标，不得只看总误差**（2026-08-04 修订，
+  **收紧而非放松**：原条文只要求一个总数落在 10% 内，现要求三项都落在
+  10% 内）。用「同一尺寸序列的纯拷贝」(replay) 把观测拆成两半后，三项
+  **各自**的 MAPE 都不得超过 10%：
+  1. **传输项** 对照 replay 实测。仅用缺失字节与实测带宽，零拟合常数；
+     带宽是传输尺寸的函数而非单一标量（实测跨 1400 倍，见 decision log）。
+  2. **框架项** 对照 `observed − replay`。须**独立标定**（在与目标模型无关的
+     负载上测 μs/张量），不得由 `observed − transfer` 反推——那是用观测预测
+     观测的循环论证。
+  3. **总和** 对照 `observed`，即调度器实际承担的墙钟时间。
+  修订理由：原条文措辞隐含「传输主导」的假设，该假设已被数据证伪——
+  diffusion pipeline 的 6.94 GB 摊在 2643 个中位仅 2.6 KB 的张量上，
+  **61% 的加载时长是框架开销而非传输**，任何「字节 ÷ 带宽」形式都无法表达它。
+  且 2026-08-03 实测证明只看总数会被**抵消误差**骗过：传输项高估 46%、
+  框架项低估 68%，总误差却只有 3.8%。
+  分项的另一个收益：传输项是**硬件属性**（换软件栈仍成立），框架项是
+  **实现属性**（可被预分配 / 批量传输 / CUDA graph 优化掉）。把两者分开
+  记录，才能说出「这张卡的 cold start 物理下界是 X，当前实现是 Y」这种
+  对调度与优化都有用的结论；揉进一个总数就看不见了。
 - 每个 profile 带硬件、驱动、ROCm、Torch、模型 revision 与 schema version；
   **掩码须同时记录请求值与 `hipExtStreamGetCUMask` 读回值**（NVIDIA 侧无此项）。
 - co-run cell 用两个各带不相交掩码的进程，而非单进程多 stream。**必须证明

@@ -416,5 +416,65 @@ class SourceStabilityTest(unittest.TestCase):
         self.assertEqual(self._run({}, []), verify.NOT_MEASURED)
 
 
+class ColdModelPerTermTest(unittest.TestCase):
+    """Requiring three terms is strictly stronger than requiring the total.
+
+    Scored only on the total, a 46% over-prediction of transfer and a 68%
+    under-prediction of framework cost read as 3.8% and passed. Each term
+    is now scored against the half of the observation it models.
+    """
+
+    def _report(self, transfer, framework, total):
+        return {"results": [{
+            "model": "sdxl",
+            "term_errors": {"transfer_error": transfer,
+                            "framework_error": framework},
+            "absolute_percentage_error_with_overhead": total,
+        }]}
+
+    def test_all_three_within_threshold_passes(self):
+        result = verify.check_cold_model(self._report(0.05, 0.07, 0.03))
+        self.assertEqual(result["status"], verify.PASS)
+
+    def test_the_measured_cancelling_case_now_fails(self):
+        """The exact numbers that used to pass on the total alone."""
+        result = verify.check_cold_model(self._report(0.46, 0.68, 0.038))
+        self.assertEqual(result["status"], verify.FAIL)
+        failing = result["detail"]["failing_terms"]
+        self.assertIn("transfer_error", failing)
+        self.assertIn("framework_error", failing)
+        self.assertNotIn("total_error", failing)
+
+    def test_either_term_alone_can_fail_it(self):
+        for label, args in (
+            ("transfer bad", (0.30, 0.05, 0.05)),
+            ("framework bad", (0.05, 0.30, 0.05)),
+            ("total bad", (0.05, 0.05, 0.30)),
+        ):
+            with self.subTest(label):
+                self.assertEqual(
+                    verify.check_cold_model(self._report(*args))["status"],
+                    verify.FAIL,
+                )
+
+    def test_a_missing_term_is_not_measured_rather_than_passing(self):
+        stale = {"results": [{"model": "sdxl", "mape": 0.02}]}
+        self.assertEqual(
+            verify.check_cold_model(stale)["status"], verify.NOT_MEASURED
+        )
+
+    def test_a_none_error_is_treated_as_failing_not_as_absent(self):
+        """A term that could not be computed must not slip through."""
+        result = verify.check_cold_model(self._report(None, 0.05, 0.05))
+        self.assertEqual(result["status"], verify.FAIL)
+
+    def test_the_clause_is_renamed_so_stale_verdicts_are_not_confused(self):
+        result = verify.check_cold_model(self._report(0.05, 0.05, 0.05))
+        self.assertEqual(
+            result["clause"],
+            "cold_model_predicts_transfer_and_framework_separately",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
