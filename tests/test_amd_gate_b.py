@@ -527,5 +527,66 @@ class ArgparseAgreementTest(unittest.TestCase):
         self.assertIn("probe_frames", used)
 
 
+class ScaleAxesAreRecordedTest(unittest.TestCase):
+    """Every axis that moves problem_scale must appear in the record.
+
+    The CogVideoX sweep ran correctly -- canonical at 9 frames, probe at 17,
+    scale 9437184 against 35651584 -- while the header recorded no
+    probe_frames and the saturation basis recorded no compared_frames. The
+    numbers were right and the evidence did not say why, which is the same
+    defect as a wrong number for anyone reading it later.
+    """
+
+    def _axes(self):
+        import ast
+
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "run_amd_gate_b.py"
+        ).read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.FunctionDef) and node.name == "problem_scale":
+                return {a.arg for a in node.args.kwonlyargs} - {"model"}
+        self.fail("problem_scale not found")
+
+    def _dict_keys_near(self, marker: str) -> set:
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "run_amd_gate_b.py"
+        ).read_text(encoding="utf-8")
+        import ast
+
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Dict):
+                keys = {k.value for k in node.keys
+                        if isinstance(k, ast.Constant)
+                        and isinstance(k.value, str)}
+                if marker in keys:
+                    return keys
+        return set()
+
+    def test_the_header_declares_every_probe_axis(self):
+        axes = self._axes()
+        header = self._dict_keys_near("mask_policy")
+        missing = [a for a in axes if f"probe_{a}" not in header]
+        self.assertEqual(
+            missing, [],
+            f"the header does not say what the probe used for: {missing}",
+        )
+
+    def test_the_saturation_basis_names_every_axis_it_compared(self):
+        axes = self._axes()
+        basis = self._dict_keys_near("throughput_gain")
+        missing = [a for a in axes if f"compared_{a}" not in basis]
+        self.assertEqual(
+            missing, [],
+            f"the saturation basis does not say what it compared: {missing}",
+        )
+
+    def test_the_axes_are_the_ones_expected(self):
+        """Not vacuous: if problem_scale gains an axis, this notices."""
+        self.assertEqual(self._axes(), {"batch", "height", "width", "frames"})
+
+
 if __name__ == "__main__":
     unittest.main()

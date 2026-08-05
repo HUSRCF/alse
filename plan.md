@@ -2268,3 +2268,19 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   **cold-model 条的处置建议**:先把加载路径改为 pinned/异步(那是 runtime
   要做的工作,不只是测量工作),再按 C 验收;在此之前该条如实判负,并记录
   上述机理。**不得在同步路径上继续调标定——被分离的量不存在。**
+- 2026-08-05 / cogvideox2b-quota-table：**CogVideoX-2b 的 quota 表已产出,
+  16/16 全格接受、8 个 canonical 全部 eligible**(9 帧 canonical / 17 帧 probe,
+  10 步,VAE tiling 开启并记录,`source_revision_stable=True`,
+  source revision `11410e82`)。
+  p50(秒):`41.770 / 21.348 / 14.604 / 11.283 / 9.669 / 8.630 / 7.889 / 7.413`
+  (配额 4→32),全部单调;**CV 全部 0.02–0.19%,零加采样**;
+  per-step 三段一致(516.5 / 517.1 / 517.6 ms),per-step 合计占 p50 的 62.8%。
+  **held-out solo p50 MAPE 1.74–3.17%**(阈值 10%)。
+  Amdahl 拟合 **serial = 1.882 s,占 32 单元延迟的 25.4%**;4→32 加速比
+  **5.63×**(配额比 8×)。与 SDXL 对照(serial 占 37.3%,加速比 5.05×):
+  **两个模型的 serial 占比不同但同为次线性**,说明「配额与延迟不成反比」不是
+  SDXL 特有,而 serial 占比本身是**模型相关**的量,调度器须逐模型标定,
+  不能用一个全局系数。
+  显存:canonical 28.54 GB,probe(batch=2 × 17 帧)**31.57 GB**,逼近 34.2 GB
+  上限但未 OOM——CogVideoX 上**不可能做 co-run**(两份 28.5 GB 装不下),
+  这条限制须写进 pairwise externality table 的适用范围。

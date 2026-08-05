@@ -158,6 +158,7 @@ def classify(rows: list[dict], epsilon: float) -> None:
                     "compared_batch": peer["batch"],
                     "compared_height": peer.get("height"),
                     "compared_width": peer.get("width"),
+                    "compared_frames": peer.get("frames"),
                     "throughput_gain": gain,
                     "epsilon": epsilon,
                 }
@@ -305,6 +306,7 @@ def main() -> int:
         "probe_batch": args.probe_batch,
         "probe_height": probe_height,
         "probe_width": probe_width,
+        "probe_frames": probe_frames,
         "reduced_contract": "docs/amd-reduced-contract.md",
     }
     with out.open("w", encoding="utf-8") as handle:
