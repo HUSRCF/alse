@@ -145,6 +145,30 @@ def firmware_versions() -> dict:
     return out
 
 
+def package_power_watts() -> float | None:
+    """Board power, which is the only telemetry that reflects the mask.
+
+    rocm-smi's "GPU use (%)" reports whether the device has work in flight,
+    not how much of it is busy, so it reads 100% at four active units and
+    at thirty-two alike -- useless for a masking experiment. Power does
+    track the mask, and it is a third evidence path independent of both the
+    readback and the timings.
+    """
+    try:
+        out = subprocess.run(["rocm-smi", "--showpower"], capture_output=True,
+                             text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover
+        return None
+    for line in out.stdout.splitlines():
+        if "Power" in line and ":" in line:
+            tail = line.rsplit(":", 1)[1].strip()
+            try:
+                return float(tail)
+            except ValueError:
+                continue
+    return None
+
+
 def rocm_version() -> str | None:
     try:
         out = subprocess.run(
@@ -407,6 +431,7 @@ def main() -> int:
             last_steps.extend(inner())
 
     sync = torch.cuda.synchronize
+    idle_power_w = package_power_watts()
 
     barrier = None
     if args.barrier_dir:
@@ -451,6 +476,10 @@ def main() -> int:
         return 4
     samples = [entry["s"] for entry in timed]
 
+    # Sampled while the last samples were still running, so it reflects the
+    # cell's own load rather than an idle device.
+    busy_power_w = package_power_watts()
+
     # The mask is read again after the workload: a quota that changed mid-cell
     # would otherwise be attributed to the quota the cell was labelled with.
     attestation_after = mask_attestation(torch)
@@ -489,6 +518,8 @@ def main() -> int:
         "torch": torch.__version__,
         "torch_hip": torch.version.hip,
         "rocm": rocm_version(),
+        "package_power_w": busy_power_w,
+        "idle_package_power_w": idle_power_w,
         "amdgpu_driver": amdgpu_driver_version(),
         "firmware": firmware_versions(),
         "device_name": torch.cuda.get_device_name(0),
