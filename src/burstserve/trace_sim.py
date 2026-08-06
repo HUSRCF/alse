@@ -170,6 +170,11 @@ class RequestState:
     # What the scheduler was told, refreshed before each decision. Never
     # used to charge or to advance time -- only to choose.
     predicted_step_seconds: dict[int, float] = field(default_factory=dict)
+    # This tenant's running charge, refreshed before each decision. A policy
+    # that has to keep tenants even needs to see how far apart they already
+    # are, and deriving it from steps_done would be wrong: a step is worth a
+    # different amount of die-time in every model and at every quota.
+    tenant_quota_seconds: float = 0.0
 
     @property
     def complete(self) -> bool:
@@ -301,6 +306,9 @@ class SimulationResult:
     steps_executed: int
     unmeasured_pairings: list[tuple[int, int]]
     predictor_relative_error: float = 0.0
+    granted_unit_seconds: float = 0.0
+    quantum_s: float = 0.25
+    peak_lag_unit_seconds: float = 0.0
 
     def jain_index(self) -> float:
         """Fairness over the accounting currency, not over wall time.
@@ -343,6 +351,60 @@ class SimulationResult:
         if self.horizon_s <= 0:
             return 0.0
         return self.full_die_equivalent_seconds() / self.horizon_s
+
+    def accounting_error(self) -> float:
+        """Relative gap between what was charged and what was handed out.
+
+        Gate C bounds this at 1%. It is a self-consistency check, not a
+        performance metric: if the sum of every tenant's quota-seconds does
+        not match the units the scheduler actually granted, some tenant is
+        being charged for capacity it did not get, or is holding capacity
+        nobody is charged for -- and the fairness index cannot see either.
+        """
+        charged = sum(self.quota_seconds_by_tenant.values())
+        if self.granted_unit_seconds <= 0:
+            return 0.0 if charged == 0 else float("inf")
+        return abs(charged - self.granted_unit_seconds) / self.granted_unit_seconds
+
+    def service_lag_quanta(self, backlogged: Sequence[str] | None = None) -> float:
+        """Worst deviation from an equal share, in quanta, among backlogged
+        tenants.
+
+        Gate C bounds this at two quanta absent deadline overrides, and the
+        definition matters. The gap between the largest and smallest total
+        is not lag: two tenants submitting different amounts of work should
+        receive different amounts of service, and charging that as unfairness
+        would make every heterogeneous trace look broken. Lag is the
+        distance from the share a tenant was owed.
+
+        A tenant is owed an equal share only while it is backlogged. One
+        that had nothing to run cannot be behind, so the caller names which
+        tenants were continuously demanding; with no such list the measure
+        covers every tenant and is an upper bound.
+        """
+        names = (
+            [t for t in self.quota_seconds_by_tenant if t in set(backlogged)]
+            if backlogged is not None
+            else list(self.quota_seconds_by_tenant)
+        )
+        if len(names) < 2 or self.quantum_s <= 0:
+            return 0.0
+        values = [self.quota_seconds_by_tenant[n] for n in names]
+        fair_share = sum(values) / len(values)
+        full_die_quantum = 32 * self.quantum_s
+        return max(abs(v - fair_share) for v in values) / full_die_quantum
+
+    def peak_service_lag_quanta(self) -> float:
+        """The bound Gate C actually states: worst lag at any instant.
+
+        Sampled every round over the tenants that were backlogged at that
+        moment. The end-of-run figure cannot serve: a policy that runs one
+        tenant to completion and then the other finishes exactly even,
+        having been maximally unfair the whole way.
+        """
+        if self.quantum_s <= 0:
+            return 0.0
+        return self.peak_lag_unit_seconds / (32 * self.quantum_s)
 
     def deadline_misses(self) -> list[RequestState]:
         missed = []
@@ -402,6 +464,15 @@ def simulate(
     service_seconds: dict[str, float] = {t: 0.0 for t in tenants_in_trace}
     unmeasured: list[tuple[int, int]] = []
     steps_executed = 0
+    # Units actually handed out, times the seconds they were held. The
+    # accounting must reconcile against this: a tenant charged less than it
+    # held is being subsidised by the others, and the fairness index would
+    # not see it.
+    granted_unit_seconds = 0.0
+    # Peak lag, sampled every round. The final lag is not the bound: a
+    # policy that serves one tenant to completion and then the other ends
+    # perfectly even while having been maximally unfair throughout.
+    peak_lag_unit_seconds = 0.0
 
     now = 0.0
     while now < horizon_s:
@@ -412,6 +483,10 @@ def simulate(
             states[request.request_id] = state
             runnable.append(state)
 
+        for state in runnable:
+            state.tenant_quota_seconds = quota_seconds.get(
+                state.request.tenant, 0.0
+            )
         if not runnable:
             if not pending:
                 break
@@ -446,6 +521,7 @@ def simulate(
             continue
 
         round_seconds = 0.0
+        round_spent: dict[int, float] = {}
 
         # Externality needs each tenant's peer. Only pairs are measured, so
         # a triple is reported rather than approximated.
@@ -490,13 +566,34 @@ def simulate(
             if state.complete:
                 state.finished_s = now + spent
             round_seconds = max(round_seconds, spent)
+            round_spent[rid] = spent
 
         # Advance by the work actually done, not by a fixed quantum. A
         # fixed advance charges the horizon for time nobody used: at 0.152 s
         # per step against a 0.25 s quantum the die would idle 39% of every
         # round, and utilisation would read 0.61 for a policy that never
         # left it idle.
-        now += round_seconds if round_seconds > 0 else quantum_s
+        advance = round_seconds if round_seconds > 0 else quantum_s
+        # Everyone holding units holds them for the whole round, including
+        # a tenant whose own step finished early. Charging only the time a
+        # tenant was computing would let a fast tenant occupy the die for
+        # free while a slower peer sets the round length.
+        granted_unit_seconds += sum(granted.values()) * advance
+        for rid, units in granted.items():
+            tenant = states[rid].request.tenant
+            held_over = advance - round_spent.get(rid, 0.0)
+            if held_over > 0:
+                quota_seconds[tenant] = (
+                    quota_seconds.get(tenant, 0.0) + units * held_over
+                )
+        now += advance
+        backlogged_now = {s.request.tenant for s in runnable}
+        if len(backlogged_now) > 1:
+            charged = [quota_seconds.get(t, 0.0) for t in sorted(backlogged_now)]
+            fair = sum(charged) / len(charged)
+            peak_lag_unit_seconds = max(
+                peak_lag_unit_seconds, max(abs(c - fair) for c in charged)
+            )
         newly_done = [s for s in runnable if s.complete]
         for state in newly_done:
             runnable.remove(state)
@@ -511,4 +608,7 @@ def simulate(
         steps_executed=steps_executed,
         unmeasured_pairings=sorted(unmeasured),
         predictor_relative_error=predictor.relative_error,
+        granted_unit_seconds=granted_unit_seconds,
+        quantum_s=quantum_s,
+        peak_lag_unit_seconds=peak_lag_unit_seconds,
     )
