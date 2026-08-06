@@ -1,0 +1,399 @@
+"""A trace-driven simulator whose costs come from measurement, not guesses.
+
+Gate C asks for byte-identical results from the same seed, and for
+canonical service accounting to track SM quota within 1%. Both are
+properties of the simulator's construction rather than of its tuning, so
+they are built in here:
+
+* every quantity that varies is drawn from a seeded PRNG owned by the
+  simulator, and the event loop breaks ties by a total order over
+  (time, sequence, tenant), so no result depends on dict iteration,
+  floating-point summation order, or wall-clock timing;
+
+* step costs come from the Gate B quota tables via
+  :class:`QuotaCostModel`, and co-run costs from the measured externality
+  table. Where the table has no entry the simulator says so rather than
+  interpolating silently -- the measured penalty spans 22.3% to 192.6%
+  across four pairs, so an invented value in between could be wrong by a
+  factor of eight.
+
+The scheduler itself is deliberately not decided here. This module
+provides the world; policies are separate so that baselines and an oracle
+can be compared on identical traces.
+"""
+
+from __future__ import annotations
+
+import heapq
+import random
+from dataclasses import dataclass, field
+from typing import Callable, Iterable, Sequence
+
+# Measured on gfx1201, 2026-08-03/04. serial is the fraction of solo time
+# that does not shrink with quota, taken from the fitted Amdahl parameters.
+MEASURED_MODELS: dict[str, dict[str, float]] = {
+    "sdxl": {
+        "serial_fraction": 0.391,
+        "step_seconds_at_full": 0.1521,   # 1024x1024, 32 units
+        "maskable_units": 32,
+    },
+    "cogvideox-2b": {
+        "serial_fraction": 0.276,
+        "step_seconds_at_full": 0.5171,   # 9 frames, 32 units
+        "maskable_units": 32,
+    },
+}
+
+# Measured pairwise externality: (own units, peer units) -> slowdown factor
+# applied to this tenant's step time. From the 2026-08-06 table.
+MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
+    (16, 16): 1.223,
+    (8, 24): 1.495,
+    (24, 8): 1.280,
+    (4, 28): 1.307,
+    (28, 4): 1.926,
+}
+
+
+class UnmeasuredPairing(LookupError):
+    """Raised when a co-run pairing has no measured externality.
+
+    Deliberately not interpolated. Across the measured pairs the penalty
+    ranges from 1.22x to 1.93x and is not monotone in either quota, so a
+    value invented between two entries could be wrong by a large factor in
+    an unknown direction.
+    """
+
+
+@dataclass(frozen=True)
+class QuotaCostModel:
+    """Step time as a function of quota, from a measured quota table."""
+
+    serial_fraction: float
+    step_seconds_at_full: float
+    maskable_units: int = 32
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.serial_fraction < 1.0:
+            raise ValueError("serial_fraction must be in [0, 1)")
+        if self.step_seconds_at_full <= 0:
+            raise ValueError("step_seconds_at_full must be positive")
+
+    def step_seconds(self, units: int) -> float:
+        """Amdahl: serial + parallel/share, normalised to full-die time."""
+        if not 1 <= units <= self.maskable_units:
+            raise ValueError(
+                f"quota {units} outside 1..{self.maskable_units}"
+            )
+        share = units / self.maskable_units
+        serial = self.serial_fraction
+        return self.step_seconds_at_full * (serial + (1.0 - serial) / share)
+
+    @classmethod
+    def for_model(cls, name: str) -> "QuotaCostModel":
+        if name not in MEASURED_MODELS:
+            raise KeyError(
+                f"no measured quota table for {name!r}; "
+                f"have {sorted(MEASURED_MODELS)}"
+            )
+        return cls(**MEASURED_MODELS[name])
+
+
+def externality(own_units: int, peer_units: int | None) -> float:
+    """Slowdown factor for a tenant sharing the die with one peer."""
+    if peer_units is None:
+        return 1.0
+    key = (own_units, peer_units)
+    if key not in MEASURED_EXTERNALITY:
+        raise UnmeasuredPairing(
+            f"no measured externality for {own_units}+{peer_units}; "
+            f"measured pairs are {sorted(MEASURED_EXTERNALITY)}"
+        )
+    return MEASURED_EXTERNALITY[key]
+
+
+@dataclass(frozen=True)
+class Request:
+    """One inference request. Immutable so a trace cannot drift."""
+
+    request_id: int
+    tenant: str
+    model: str
+    arrival_s: float
+    steps: int
+    deadline_s: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.steps <= 0:
+            raise ValueError("a request needs at least one step")
+        if self.arrival_s < 0:
+            raise ValueError("arrival must not be negative")
+
+
+@dataclass
+class RequestState:
+    request: Request
+    steps_done: int = 0
+    started_s: float | None = None
+    finished_s: float | None = None
+    service_seconds: float = 0.0
+    quota_seconds: float = 0.0     # units x seconds, the accounting currency
+
+    @property
+    def complete(self) -> bool:
+        return self.steps_done >= self.request.steps
+
+
+@dataclass(order=True)
+class _Event:
+    """Ordered by (time, sequence) so ties never depend on insertion luck."""
+
+    time_s: float
+    sequence: int
+    kind: str = field(compare=False)
+    payload: object = field(compare=False, default=None)
+
+
+class Trace:
+    """A reproducible request stream.
+
+    Generated from a seed rather than from wall-clock timing, and sorted
+    into a total order, so the same seed yields the same trace on any host.
+    """
+
+    def __init__(self, requests: Sequence[Request]):
+        self.requests = tuple(
+            sorted(requests, key=lambda r: (r.arrival_s, r.request_id))
+        )
+
+    def __len__(self) -> int:
+        return len(self.requests)
+
+    def __iter__(self):
+        return iter(self.requests)
+
+    @classmethod
+    def poisson(
+        cls,
+        *,
+        seed: int,
+        tenants: Sequence[tuple[str, str]],
+        rate_per_s: float,
+        horizon_s: float,
+        steps: int,
+        deadline_slack: float | None = None,
+    ) -> "Trace":
+        """A Poisson arrival stream, round-robin across tenants.
+
+        Uses its own Random instance seeded explicitly: the global random
+        module is process state, and a simulation that reads it is not
+        reproducible in a process that used random for anything else.
+        """
+        if rate_per_s <= 0:
+            raise ValueError("rate must be positive")
+        rng = random.Random(seed)
+        requests: list[Request] = []
+        now = 0.0
+        index = 0
+        while True:
+            now += rng.expovariate(rate_per_s)
+            if now > horizon_s:
+                break
+            tenant, model = tenants[index % len(tenants)]
+            deadline = None
+            if deadline_slack is not None:
+                nominal = QuotaCostModel.for_model(model).step_seconds(
+                    MEASURED_MODELS[model]["maskable_units"]
+                ) * steps
+                deadline = now + nominal * deadline_slack
+            requests.append(Request(
+                request_id=index, tenant=tenant, model=model,
+                arrival_s=now, steps=steps, deadline_s=deadline,
+            ))
+            index += 1
+        return cls(requests)
+
+
+# A policy sees the runnable requests and the die, and returns a quota per
+# request. Returning fewer entries than requests leaves the rest unserved.
+Policy = Callable[[Sequence[RequestState], int, float], dict[int, int]]
+
+
+@dataclass
+class SimulationResult:
+    """Everything a Gate C criterion is judged on, and nothing derived."""
+
+    completed: list[RequestState]
+    unfinished: list[RequestState]
+    horizon_s: float
+    quota_seconds_by_tenant: dict[str, float]
+    service_seconds_by_tenant: dict[str, float]
+    steps_executed: int
+    unmeasured_pairings: list[tuple[int, int]]
+
+    def jain_index(self) -> float:
+        """Fairness over the accounting currency, not over wall time.
+
+        Wall time charges a tenant for being slowed by a peer; quota-seconds
+        charge it for capacity it was given. The 2026-08-06 externality
+        table makes the difference concrete -- at an 8+24 split the larger
+        tenant is slowed 128% by a peer it did not choose.
+        """
+        values = [v for v in self.quota_seconds_by_tenant.values()]
+        if not values:
+            return 1.0
+        total = sum(values)
+        if total <= 0:
+            return 1.0
+        return total ** 2 / (len(values) * sum(v ** 2 for v in values))
+
+    def deadline_misses(self) -> list[RequestState]:
+        missed = []
+        for state in self.completed:
+            deadline = state.request.deadline_s
+            if deadline is not None and state.finished_s is not None:
+                if state.finished_s > deadline:
+                    missed.append(state)
+        # An unfinished request with a deadline in the past has missed it.
+        for state in self.unfinished:
+            if state.request.deadline_s is not None:
+                if self.horizon_s > state.request.deadline_s:
+                    missed.append(state)
+        return missed
+
+
+def simulate(
+    trace: Trace,
+    policy: Policy,
+    *,
+    horizon_s: float,
+    maskable_units: int = 32,
+    quantum_s: float = 0.25,
+    seed: int = 0,
+) -> SimulationResult:
+    """Run a trace under a policy.
+
+    Time advances in fixed quanta rather than to the next step boundary.
+    A step-boundary loop would let a tenant with short steps be rescheduled
+    more often than one with long steps, which silently favours it; a fixed
+    quantum gives every tenant the same decision points. The quantum is
+    recorded in the result because Gate C bounds service lag in units of it.
+    """
+    if horizon_s <= 0:
+        raise ValueError("horizon must be positive")
+    if quantum_s <= 0:
+        raise ValueError("quantum must be positive")
+
+    rng = random.Random(seed)          # owned, never the global module
+    del rng                            # reserved for predictor error later
+
+    costs = {name: QuotaCostModel.for_model(name) for name in MEASURED_MODELS}
+    pending = list(trace.requests)
+    states: dict[int, RequestState] = {}
+    runnable: list[RequestState] = []
+    completed: list[RequestState] = []
+    # Seeded with every tenant in the trace, at zero. A tenant that is
+    # never served would otherwise be absent from the dict, and a fairness
+    # index computed over the survivors cannot see starvation at all -- it
+    # reports 1.0 for a policy that fed one tenant and ignored the other.
+    tenants_in_trace = {r.tenant for r in trace.requests}
+    quota_seconds: dict[str, float] = {t: 0.0 for t in tenants_in_trace}
+    service_seconds: dict[str, float] = {t: 0.0 for t in tenants_in_trace}
+    unmeasured: list[tuple[int, int]] = []
+    steps_executed = 0
+
+    now = 0.0
+    while now < horizon_s:
+        # Admit everything that has arrived, in trace order.
+        while pending and pending[0].arrival_s <= now:
+            request = pending.pop(0)
+            state = RequestState(request=request)
+            states[request.request_id] = state
+            runnable.append(state)
+
+        if not runnable:
+            if not pending:
+                break
+            now = max(now + quantum_s, pending[0].arrival_s)
+            continue
+
+        # Sorted before the policy sees it: a policy must not be able to
+        # depend on the order requests happened to be appended in.
+        ordered = sorted(
+            runnable, key=lambda s: (s.request.arrival_s, s.request.request_id)
+        )
+        assignment = policy(ordered, maskable_units, now)
+        granted = {
+            rid: units for rid, units in sorted(assignment.items())
+            if units > 0
+        }
+        if sum(granted.values()) > maskable_units:
+            raise ValueError(
+                f"policy assigned {sum(granted.values())} of "
+                f"{maskable_units} units"
+            )
+
+        if not granted:
+            now += quantum_s
+            continue
+
+        # Externality needs each tenant's peer. Only pairs are measured, so
+        # a triple is reported rather than approximated.
+        active = sorted(granted.items())
+        for rid, units in active:
+            peer = None
+            if len(active) == 2:
+                peer = next(u for r, u in active if r != rid)
+            elif len(active) > 2:
+                unmeasured.append((units, -len(active)))
+                peer = None
+            state = states[rid]
+            try:
+                factor = externality(units, peer)
+            except UnmeasuredPairing:
+                unmeasured.append((units, peer if peer is not None else -1))
+                factor = 1.0
+            step_cost = costs[state.request.model].step_seconds(units) * factor
+            # Whole steps only: a partially executed denoising step is not
+            # a state the runtime can checkpoint.
+            affordable = int(quantum_s // step_cost)
+            remaining = state.request.steps - state.steps_done
+            taken = max(0, min(affordable, remaining))
+            if taken == 0:
+                # Charge the quantum anyway: the tenant held the units.
+                quota_seconds[state.request.tenant] = (
+                    quota_seconds.get(state.request.tenant, 0.0)
+                    + units * quantum_s
+                )
+                continue
+            if state.started_s is None:
+                state.started_s = now
+            state.steps_done += taken
+            spent = taken * step_cost
+            state.service_seconds += spent
+            state.quota_seconds += units * spent
+            steps_executed += taken
+            quota_seconds[state.request.tenant] = (
+                quota_seconds.get(state.request.tenant, 0.0) + units * spent
+            )
+            service_seconds[state.request.tenant] = (
+                service_seconds.get(state.request.tenant, 0.0) + spent
+            )
+            if state.complete:
+                state.finished_s = now + spent
+
+        now += quantum_s
+        newly_done = [s for s in runnable if s.complete]
+        for state in newly_done:
+            runnable.remove(state)
+            completed.append(state)
+
+    return SimulationResult(
+        completed=sorted(completed, key=lambda s: s.request.request_id),
+        unfinished=sorted(runnable, key=lambda s: s.request.request_id),
+        horizon_s=min(now, horizon_s),
+        quota_seconds_by_tenant=dict(sorted(quota_seconds.items())),
+        service_seconds_by_tenant=dict(sorted(service_seconds.items())),
+        steps_executed=steps_executed,
+        unmeasured_pairings=sorted(unmeasured),
+    )
