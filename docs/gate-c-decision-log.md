@@ -627,3 +627,50 @@ choice.
 
 The source comment records the condition alongside the number: a runtime
 that does not control launch alignment does not get this value.
+
+### 2026-08-06 — the launch stagger is not the control variable either (retraction)
+
+A warmup control run at `stagger=0, warmup=3` — the exact setting that
+produced three consecutive high-state results earlier — produced two
+**low**-state results:
+
+| setting | result |
+| --- | --- |
+| stagger 0, warmup 3 (earlier, 3 runs) | high, +73.7 to +77.8% |
+| stagger 0, warmup 3 (this batch, 2 runs) | **low, +24.8, +26.4%** |
+| stagger 0, warmup 30 (this batch, 2 runs) | high, +72.8, +76.6% |
+
+So the stagger does not select the state. The clean 9/9 and 11/11 split
+reported in the previous entry was real as data and wrong as
+explanation: the batches happened to be ordered so that stagger
+correlated with something else.
+
+Looking at the batches by position rather than by parameter, two of the
+three show early runs low and later runs high — the fine scan (2, 2, 3,
+3, 5, 5 low; 8, 8, 10, 10 high) and this warmup batch (3, 3 low; 30, 30
+high). The first stagger batch does not fit that either, going high-low-
+high across 0, 5, 15 s. No single ordering explains all of it.
+
+Ten consecutive runs at one fixed setting are now running, which is the
+measurement that should have come first: it separates "the state is
+drawn per run" from "the state depends on run history" without any
+parameter to confound it.
+
+**This is the fourth explanation retracted for this one phenomenon**
+(working set, power cap, uncontrollable bistability, launch stagger).
+The pattern in my own errors is consistent: each time I varied a
+parameter, saw a clean split, and reported the parameter as the cause
+without first establishing what the measurement does when nothing is
+varied at all. The baseline comes first; that is the lesson, and it is
+cheaper than any of the four investigations that skipped it.
+
+Standing facts, unchanged by this retraction:
+
+- The two states are real, disjoint, and each internally stable —
+  low +21.8 to +26.4%, high +72.8 to +83.4%, cv 0.2% and 2% respectively.
+- The state is fixed before the first measured step.
+- Temperature, power, clocks, GPU utilisation and the CU mask do not
+  distinguish them.
+- `MEASURED_EXTERNALITY[(16,16)] = 1.2362` is the low-state mean over 20
+  side measurements and is unaffected; what is unknown is how to
+  guarantee the low state, not what its value is.
