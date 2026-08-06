@@ -2536,3 +2536,20 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   标定。这降低了新模型上线所需的 profiling 量。
   **Gate C 的第一项工作据此确定**:把 toy bench 的 quota→speed 由幂律替换为
   Amdahl 形式,参数取自实测 quota 表,而非沿用假设常数。
+- 2026-08-06 / toy-bench-calibrated-and-its-residual：toy bench 的 quota→speed
+  已按 Gate B 实测校准为 Amdahl 形式(`serial_fraction` 取自拟合参数
+  `serial/(serial + parallel/32)`,SDXL **0.391**、CogVideoX-2b **0.276**),
+  并新增两个实测标定的 workload(`MEASURED_SDXL`、`MEASURED_COGVIDEOX_2B`,
+  per-step 时间与 contention 灵敏度亦取自实测)。
+  **MAPE 由幂律的 22.0% / 18.0% 降至 4.3% / 7.2%。**
+  **残差有方向,须记录而非掩盖**:校准后模型**逐点低估**实测速度
+  (SDXL 4 单元 0.190 对 0.198、16 单元 0.622 对 0.665;CogVideoX-2b
+  16 单元 0.580 对 0.657)。成因已知且与 `power-wall-starts-at-12-units`
+  一致:**纯 Amdahl 假设每 CU 效率恒定,而实测每单元吞吐随配额单调下降**
+  (4 单元 5.69 → 32 单元 3.82 TFLOPS/单元)——低配额既不撞功耗墙、每 CU 又
+  分到更多 wave,故实际比 Amdahl 预测的更快。
+  **暂不为此增加参数**。理由:形式已从「方向错误」(幂律高估切分代价)修正为
+  「方向正确、幅度略保守」,而残差方向使调度器**低估**低配额性能——
+  与幂律同向但幅度仅其 1/4,属安全侧偏差。若 Gate C 的 canonical service
+  记账要求(SM quota 记账差异 < 1%)无法在此残差下满足,再引入
+  `efficiency(q)` 项,并以功耗墙位置(12 单元)为其物理依据。

@@ -38,10 +38,30 @@ class Workload:
     contention_sensitivity: float = 0.5
     sm_partition_exponent: float = 1.08
     bandwidth_saturation_share: float = 0.35
+    # Fraction of solo time that does not shrink with quota, taken from the
+    # fitted Amdahl parameters rather than from the observed 32-unit cell:
+    # serial / (serial + parallel/32). Measured on gfx1201, 0.391 for SDXL
+    # and 0.276 for CogVideoX-2b (2026-08-03/04).
+    # None keeps the historical power-law behaviour for the synthetic
+    # workloads, whose curves were never calibrated against hardware.
+    serial_fraction: float | None = None
 
     def solo_speed(self, sm_share: float) -> float:
-        """Normalized work rate relative to solo execution on the full GPU."""
+        """Normalized work rate relative to solo execution on the full GPU.
+
+        With a measured serial fraction this is Amdahl's law, which fits
+        the hardware to 2-3% where the power law below misses by 18-22%
+        (2026-08-06). The power law's error has a direction: it
+        under-predicts speed at small quotas, so it over-predicts what
+        partitioning costs, and a scheduler reading it is too conservative
+        to split a die that in fact keeps 65% of its throughput across four
+        tenants.
+        """
         sm_share = min(1.0, max(1e-6, sm_share))
+        if self.serial_fraction is not None:
+            # t(q) = serial + parallel/q, normalised so t(1) == 1.
+            serial = self.serial_fraction
+            return 1.0 / (serial + (1.0 - serial) / sm_share)
         compute = sm_share**self.sm_partition_exponent
         bandwidth = min(1.0, sm_share / self.bandwidth_saturation_share)
         if self.curve == "compute":
@@ -98,6 +118,28 @@ BANDWIDTH_JOB = Workload(
     solo_step_ms=6.0,
     bw_pressure=0.95,
     contention_sensitivity=0.95,
+)
+
+# Calibrated against the Gate B quota tables rather than assumed. Serial
+# fractions and step times come from the measured 32-unit cells; the
+# contention sensitivities from the co-run externality of about 23% at an
+# even split (experiments/probes/amd-r9700-cu-mask/).
+MEASURED_SDXL = Workload(
+    name="sdxl_measured",
+    curve="compute",
+    solo_step_ms=152.1,          # per denoising step at 32 units, 1024x1024
+    bw_pressure=0.45,
+    contention_sensitivity=0.68,
+    serial_fraction=0.391,
+)
+
+MEASURED_COGVIDEOX_2B = Workload(
+    name="cogvideox2b_measured",
+    curve="compute",
+    solo_step_ms=517.1,          # per denoising step at 32 units, 9 frames
+    bw_pressure=0.60,
+    contention_sensitivity=0.70,
+    serial_fraction=0.276,
 )
 
 
