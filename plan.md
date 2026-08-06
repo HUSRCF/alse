@@ -2492,3 +2492,22 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   本次 sizing 用 `--warmup 0 --samples 2` 测得 5 帧峰值 25.92 GB 并判定可行,
   而正式配置(`--warmup 5 --samples 30`)在同一帧数下 OOM——**低采样的 sizing
   会低估峰值需求**,据此排定的 3.5 小时扫描在第一格即全数失败。
+- 2026-08-06 / scope-is-the-32gb-class-not-four-models（**方向决定**）：
+  **模型覆盖不再以「四个模型」为目标;适用范围明确界定为 32 GB 级单卡。**
+  依据:32 GB 是「算力受限」场景的典型配置,**需要 80 GB 才能 resident 的模型
+  本就不属于该场景**——若一张 32 GB 卡跑不动,则在算力受限情境下不存在能跑动
+  它的卡。故 CogVideoX-5b(推理峰值 ~32 GB)与 FLUX(权重 33.74 GB)
+  **不是覆盖缺口,而是落在适用范围之外**,此前 `flux-does-not-fit-on-r9700`
+  与 `cogvideox5b-cannot-complete-a-gate-b-matrix` 两条记录的**事实不变,
+  但其性质由「缺陷」改判为「范围界定」**。
+  **随之调整的三点**:
+  (a) **Gate B-AMD 的验收范围明确写为 SDXL 与 CogVideoX-2b 两个模型**,
+  不含糊地宣称「Gate B-AMD 通过」;
+  (b) **暂不引入 CPU offload**——offload 会把 resident 延迟测量变成
+  含 PCIe 传输的混合量,为了凑模型数而牺牲测量的干净程度不划算;
+  (c) **NVIDIA 线暂不推进**,其 Gate A 剩余五条与第二 SKU 预约转为待定;
+  若最终不需要 NVIDIA 覆盖,则 AMD 单平台即为本工作的完整平台论证。
+  **对既有硬门的影响**:此前 `flux-does-not-fit-on-r9700` 等条目曾以
+  「独立支持第二 GPU SKU 硬门」作为论据,**该论据随本决定失效**——
+  第二 SKU 的必要性此后须由别的理由支撑(例如跨厂商机制的可移植性主张),
+  不能再以模型装不下为由。
