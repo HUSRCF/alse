@@ -132,6 +132,15 @@ def corun(args, side_a: dict, side_b: dict, mask_a: str, mask_b: str) -> tuple:
                 "--barrier-timeout", str(args.barrier_timeout),
                 "--co-run-seconds", str(args.co_run_seconds),
             ]
+            if procs and args.stagger_seconds:
+                # Diagnostic for the bistability. The two processes are
+                # launched back to back and the measurement lands in one
+                # of two states, decided before the first step. Whether
+                # separating the launches changes the distribution
+                # distinguishes a launch-time race from something else;
+                # the barrier still synchronises the measured window
+                # either way, so a stagger does not weaken the co-run.
+                time.sleep(args.stagger_seconds)
             procs.append((launch(argv, mask), name))
         return tuple(collect(proc, name) for proc, name in procs)
     finally:
@@ -372,6 +381,11 @@ def main() -> int:
                              "hot run measures the power limit rather than "
                              "the pairing")
     parser.add_argument("--cool-timeout", type=float, default=600.0)
+    parser.add_argument("--stagger-seconds", type=float, default=0.0,
+                        help="delay between launching the two cells. The "
+                             "barrier still aligns the measured window, so "
+                             "this changes only what the two processes "
+                             "race for at startup")
     parser.add_argument("--force", action="store_true",
                         help="run the pair even when it does not fit")
     parser.add_argument("--out", required=True)
