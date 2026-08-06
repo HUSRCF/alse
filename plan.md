@@ -2469,3 +2469,26 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   与 `partitioning-costs-aggregate-throughput` 合读:切分到 4 租户仍保
   65% 总吞吐,而单租户 4 单元只有满卡的 18.6%——**空闲的 CU 才是浪费,
   切分本身不是**。
+- 2026-08-06 / cogvideox5b-cannot-complete-a-gate-b-matrix：**CogVideoX-5b 在
+  R9700 上无法产出完整的 Gate B quota 表**,原因是显存,且边界由 CogVideoX 的
+  latent 帧数量化关系决定,不是连续可调的。
+  **(1) 帧数是量化的**:CogVideoX 的 latent 帧数 = `(num_frames-1)//4 + 1`。
+  故 **1 帧与 3 帧同为 1 个 latent frame,计算量相同**——实测 p50 分别为
+  **3.26 s 与 3.24 s**(峰值 25.02 / 24.20 GB),差异在噪声内。
+  下一档 5 帧 = 2 个 latent frames,**峰值需求翻倍并 OOM**
+  (已分配 23.32 GiB,再请求 8.90 GiB,可用仅 7.82 GiB)。
+  `PYTORCH_ALLOC_CONF=expandable_segments:True` **无效**——错误显示
+  「保留未用仅 180 MiB」,即瓶颈是真实分配量而非碎片。
+  **(2) 故饱和判据不可实施**:canonical 只能取 1–4 帧,而 probe 需要严格更大的
+  问题(≥5 帧),必 OOM;CogVideoX 的分辨率由 pipeline 固定,没有第二条规模轴。
+  按 Gate B-AMD 条文,无饱和标注的 cell 不得进入 canonical table,故该模型
+  **只能产出单点测量,不能产出合规的 quota 表**。
+  **(3) 模型覆盖的最终结论**:Gate B 要求 profile 四个模型,在本硬件上
+  **只有两个可完整完成**——SDXL(6.94 GB)、CogVideoX-2b(13.77 GB);
+  CogVideoX-5b(21.53 GB 权重,推理峰值 ~32 GB)与 FLUX(33.74 GB 权重)
+  均不可 resident profile。**这是 32 GB 卡的硬约束,再次独立地支持
+  「第二 GPU SKU(H100-80G 优先)仍须覆盖」这一 Phase 0 硬门。**
+  **(4) 方法学教训:sizing 必须用与正式运行相同的 warmup/samples 配置。**
+  本次 sizing 用 `--warmup 0 --samples 2` 测得 5 帧峰值 25.92 GB 并判定可行,
+  而正式配置(`--warmup 5 --samples 30`)在同一帧数下 OOM——**低采样的 sizing
+  会低估峰值需求**,据此排定的 3.5 小时扫描在第一格即全数失败。
