@@ -151,6 +151,8 @@ def run_once(args, rotations: int, workdir: Path) -> dict:
         "--width", str(args.width),
         "--frames", str(args.frames),
     ]
+    if args.vae_tiling:
+        argv.append("--vae-tiling")
     # Run from outside the repository: rocprofv3 drops a .rocprofv3 directory
     # into its working directory, and an untracked path inside the bound tree
     # makes the next run refuse to bind -- a profiler should not be able to
@@ -198,6 +200,7 @@ def main() -> int:
     # rocprofv3 7.x reports no copy sizes, only timestamps. Supplying a
     # measured bandwidth lets the copy durations bound the bytes.
     parser.add_argument("--bound-bandwidth-bps", type=float, default=0.0)
+    parser.add_argument("--vae-tiling", action="store_true")
     parser.add_argument("--keep-traces", action="store_true")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()

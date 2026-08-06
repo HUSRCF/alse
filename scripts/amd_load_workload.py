@@ -33,6 +33,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="sdxl")
     parser.add_argument("--reloads", type=int, default=4)
+    parser.add_argument("--vae-tiling", action="store_true",
+                        help="required for video pipelines, whose "
+                             "decode does not fit on a 32 GB card")
     args = parser.parse_args()
 
     import torch
@@ -48,6 +51,10 @@ def main() -> int:
     seconds, tensors, weight_bytes = [], 0, 0
     for _ in range(max(1, args.reloads)):
         pipeline = DiffusionPipeline.from_pretrained(repo, **kwargs)
+        if args.vae_tiling and hasattr(pipeline, "vae") and hasattr(
+            pipeline.vae, "enable_tiling"
+        ):
+            pipeline.vae.enable_tiling()
 
         sizes = []
         for component in vars(pipeline).values():

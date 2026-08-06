@@ -54,6 +54,8 @@ def run_once(args, workdir: Path, index: int) -> dict:
         "--model", args.model,
         "--reloads", str(args.reloads),
     ]
+    if args.vae_tiling:
+        argv.append("--vae-tiling")
     # From outside the repository: rocprofv3 writes .rocprofv3 into its
     # working directory, and an untracked path in the bound tree stops the
     # next run from binding its source.
@@ -72,6 +74,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="sdxl")
     parser.add_argument("--reloads", type=int, default=4)
+    parser.add_argument("--vae-tiling", action="store_true")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 

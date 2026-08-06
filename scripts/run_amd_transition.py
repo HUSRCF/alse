@@ -107,6 +107,7 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--prompt", default="a quiet street at dusk")
     parser.add_argument("--mape-threshold", type=float, default=0.10)
+    parser.add_argument("--vae-tiling", action="store_true")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -124,6 +125,10 @@ def main() -> int:
         kwargs["variant"] = MODEL_VARIANT[args.model]
     pipeline = DiffusionPipeline.from_pretrained(repo, **kwargs).to("cuda")
     pipeline.set_progress_bar_config(disable=True)
+    if args.vae_tiling and hasattr(pipeline, "vae") and hasattr(
+        pipeline.vae, "enable_tiling"
+    ):
+        pipeline.vae.enable_tiling()
 
     handles, streams, masks = {}, {}, {}
     for units in quotas:

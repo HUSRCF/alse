@@ -36,6 +36,9 @@ def main() -> int:
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--frames", type=int, default=49)
     parser.add_argument("--prompt", default="a quiet street at dusk")
+    parser.add_argument("--vae-tiling", action="store_true",
+                        help="required for video pipelines, whose "
+                             "decode does not fit on a 32 GB card")
     args = parser.parse_args()
 
     import torch
@@ -47,6 +50,10 @@ def main() -> int:
         kwargs["variant"] = MODEL_VARIANT[args.model]
     pipeline = DiffusionPipeline.from_pretrained(repo, **kwargs).to("cuda")
     pipeline.set_progress_bar_config(disable=True)
+    if args.vae_tiling and hasattr(pipeline, "vae") and hasattr(
+        pipeline.vae, "enable_tiling"
+    ):
+        pipeline.vae.enable_tiling()
 
     weight_bytes = 0
     for component in vars(pipeline).values():
