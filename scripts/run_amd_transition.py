@@ -188,8 +188,19 @@ def main() -> int:
             result = pipeline(callback_on_step_end=on_step, **call)
         torch.cuda.synchronize()
         torch.cuda.set_stream(torch.cuda.default_stream())
-        latent = result.images
-        if not torch.is_tensor(latent):
+        # Pipelines name their output differently -- images for image
+        # pipelines, frames for video ones -- and neither is guaranteed to
+        # be a bare tensor.
+        latent = None
+        for attribute in ("images", "frames"):
+            latent = getattr(result, attribute, None)
+            if latent is not None:
+                break
+        if latent is None:
+            raise RuntimeError(
+                f"{type(result).__name__} exposes neither images nor frames"
+            )
+        while not torch.is_tensor(latent):
             latent = latent[0]
         digest = hashlib.sha256(
             latent.detach().to(torch.float32).cpu().numpy().tobytes()

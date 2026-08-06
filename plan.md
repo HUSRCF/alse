@@ -2602,3 +2602,33 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   **附带的正面结果**:CogVideoX-2b 的 resident 轮转同样零权重流量——
   1/3/5 轮转的 HtoD 拷贝次数斜率为 0,上界 10.00 MB 对容差 156.30 MB
   (权重 15.63 GB 的 1%)。**该结论在两个模型上独立成立。**
+- 2026-08-06 / gate-b-amd-final-verdict（**Gate B-AMD 最终判决**）：
+  验收范围为 **SDXL 与 CogVideoX-2b 两个模型**(依 `scope-is-the-32gb-class`),
+  逐模型判决如下:
+  | 条款 | SDXL | CogVideoX-2b |
+  |---|---|---|
+  | quota 列表与逐进程掩码 | PASS | PASS |
+  | 每 cell 记录饱和状态 | PASS | PASS |
+  | 稳态 CV ≤ 5% | PASS(≤0.18%) | PASS(≤0.19%) |
+  | held-out solo p50 MAPE ≤ 10% | PASS(1.5–2.6%) | PASS(1.7–3.2%) |
+  | transition prediction MAPE ≤ 10% | PASS(**7.75%**) | PASS(**0.23%**) |
+  | resident 轮转零权重流量 | PASS | PASS |
+  | **cold-model 分项达标** | **FAIL** | **FAIL** |
+  | profile 元数据与掩码读回 | PASS | PASS |
+  | co-run 双进程不相交掩码 | PASS | **NOT_MEASURED(物理不可能)** |
+  | source tree 未在扫描期间移动 | PASS | PASS |
+  **合计:SDXL 9 PASS / 1 FAIL;CogVideoX-2b 8 PASS / 1 FAIL / 1 不可测。**
+  **两处需明确说明,不得含糊记为「通过」**:
+  (a) **cold-model 两模型均判负**,根因已由三条独立证据锁定
+  (同步路径下无干净边界、五种标定跨 16 倍、真值跨模型差 10 倍),
+  **须待 runtime 阶段改造加载路径后再验收**;
+  (b) **CogVideoX-2b 的 co-run 不是「未做」而是「做不了」**——
+  单进程峰值 28.54 GB,两份需 57 GB 而卡仅 34.2 GB。该条款对该模型不适用,
+  **但仍记为 NOT_MEASURED 而非 PASS**:验收不因物理不可能而自动满足。
+  **一个跨模型的正面对照**:transition 预测在 CogVideoX-2b 上
+  **MAPE 仅 0.23%**,远优于 SDXL 的 7.75%。成因清晰——CogVideoX 的
+  per-step 为 **514.9 ms**,是 SDXL(112.4 ms)的 **4.6 倍**,而切换开销近似
+  固定,故其相对占比小得多。**推论:transition 预测的精度取决于
+  step 时长与切换开销之比,长 step 的负载更容易被准确调度。**
+  两模型的 latent 校验和均满足 `switching_matches_steady`,
+  即跨流搬运工作不改变计算结果——**该性质在两个模型上独立成立**。
