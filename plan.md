@@ -45,7 +45,14 @@
      要求。** AMD 线是 NVIDIA 线的补充而非替代，因此 NVIDIA 侧的第二 SKU
      （H100 优先，A100/A800 备选）仍须独立覆盖，该硬门不因 AMD 线的进展
      而关闭
-  4. offline wheelhouse 从零重建仍未完成（Phase 0 硬门）
+  4. ~~offline wheelhouse 从零重建仍未完成（Phase 0 硬门）~~ **已关闭
+     2026-08-06**：全程离线重建 `burstserve-phase0-offline` 并通过
+     `runtime_lock verify`（`matches=true`、`mismatches=[]`）。conda 25/25
+     走本地缓存（`--offline`），pip 52 个 requirement 由 63 个 wheel
+     （2.77 GB）以 `--no-index` 安装。wheelhouse 由 hpc2 下载后 rsync 回
+     dd——dd 直连 pypi 仅 20.9 KB/s、hpc2 为 6.58 MB/s，此前中止是链路问题
+     而非方法问题。证据
+     `experiments/aggregates/phase0_offline_rebuild_20260806.json`
   5. **已决定：AMD 线补充而非替代 NVIDIA 线。** 原 Gate A 条文（编队 5 张
      4090、TPC、native 更新）继续对 NVIDIA 侧完整有效且仍欠五条；AMD 侧
      另立平行的 Gate A-AMD 条文，两条线各自独立通过，互不顶替
@@ -65,7 +72,7 @@
 | 固定并不可变导入 ASLE | `vendor_import.py`、`vendor/ASLE_SOURCE.json` | archive `5c6cba9d…f97d`；347-file tree `380cbf15…2afb` | exact | 持续禁止直接修改 `vendor/asle` |
 | 4090 默认 49-frame、30/8-step、seed 0/1/2 | Phase-0 ASLE runner | `phase0_runs_20260730.json`；三次分别为 18/2、22/2、16/2 urgent/video | exact | 无 |
 | 同 seed deterministic correctness | correctness runner | stock/offload same-mode tensor SHA 成对完全一致；专用环境复跑一致 | exact | cross-mode 数值差异继续仅 `report_only` |
-| 隔离环境及 exact lock | `runtime_lock.py`、25 conda + 52 pip lock | 当前专用环境 verification `matches=true` | exact（现有环境） | 离线 wheelhouse 从零重建仍 missing，Phase 0 不关闭 |
+| 隔离环境及 exact lock | `runtime_lock.py`、25 conda + 52 pip lock | 当前专用环境 verification `matches=true`；**2026-08-06 从零离线重建 `burstserve-phase0-offline` 亦 `matches=true`、`mismatches=[]`**（conda `--offline` 25/25 缓存命中，pip `--no-index` 63 wheel / 2.77 GB），证据 `phase0_offline_rebuild_20260806.json` | **exact** | 离线重建硬门已关闭；wheelhouse 存于 `/data/zhuoxu/bs-wheelhouse/wheels`（不入 git），可由 hpc2 按 `pip-requirements.txt` 重新生成 |
 | 第二 GPU SKU 预约 | 无 | 无 SKU、时间窗或预约证明 | missing | Phase 0 硬门；H100 优先，A100/A800 备选 |
 | 编队 5 张 4090 的 A0 unmasked ×3 | native probe、Gate-A runner、独立聚合器 | `gate_a0_4090_v2_seed1_fleet5_20260731.json`：15/15 accepted、2 个 sealed rejection 有效、`gate_a0.complete=true`，report `683c0ca1…8f0e`，每格绑定 VBIOS/板厂/NUMA/功耗上限 | **exact** | 编队 2026-07-31 由 8 张缩为 5 张（见 Decision Log）；GPU 0/5/6 若释放可作编队外补充证据，但届时须整批重跑 |
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
