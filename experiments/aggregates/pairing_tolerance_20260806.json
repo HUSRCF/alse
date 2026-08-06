@@ -32,6 +32,58 @@
       "status": "ok",
       "sides": {
         "a": {
+          "workpoint": "832x832",
+          "solo_16": 0.1917055140904018,
+          "solo_32": 0.1369135219029018,
+          "corun_16": 0.3398989650181362,
+          "externality": 1.7660724239138406
+        },
+        "b": {
+          "workpoint": "832x832",
+          "solo_16": 0.1917055140904018,
+          "solo_32": 0.1369135219029018,
+          "corun_16": 0.3443741019112723,
+          "externality": 1.7891018967657082
+        }
+      },
+      "step_time_ratio": 1.0,
+      "paired_makespan_per_step_s": 0.3443741019112723,
+      "rotating_makespan_per_step_s": 0.2738270438058036,
+      "pairing_gain": -0.20485587538067862,
+      "pairing_wins": false,
+      "rule_would_pair": true,
+      "report": "sdxl_832_vs_832_16_16_20260806.json"
+    },
+    {
+      "status": "ok",
+      "sides": {
+        "a": {
+          "workpoint": "896x896",
+          "solo_16": 0.22138453674316408,
+          "solo_32": 0.1555153547014509,
+          "corun_16": 0.39143035452706476,
+          "externality": 1.7762000737109926
+        },
+        "b": {
+          "workpoint": "896x896",
+          "solo_16": 0.22138453674316408,
+          "solo_32": 0.1555153547014509,
+          "corun_16": 0.40239134434291296,
+          "externality": 1.8123216956665593
+        }
+      },
+      "step_time_ratio": 1.0,
+      "paired_makespan_per_step_s": 0.40239134434291296,
+      "rotating_makespan_per_step_s": 0.3110307094029018,
+      "pairing_gain": -0.22704423498273552,
+      "pairing_wins": false,
+      "rule_would_pair": true,
+      "report": "sdxl_896_vs_896_16_16_20260806.json"
+    },
+    {
+      "status": "ok",
+      "sides": {
+        "a": {
           "workpoint": "1024x1024",
           "solo_16": 0.29019181169782365,
           "solo_32": 0.20048633466448101,
@@ -109,6 +161,18 @@
   ],
   "rule_agrees_with_measurement": false,
   "disagreements": [
+    {
+      "ratio": 1.0,
+      "rule_pairs": true,
+      "pairing_wins": false,
+      "report": "sdxl_832_vs_832_16_16_20260806.json"
+    },
+    {
+      "ratio": 1.0,
+      "rule_pairs": true,
+      "pairing_wins": false,
+      "report": "sdxl_896_vs_896_16_16_20260806.json"
+    },
     {
       "ratio": 1.0,
       "rule_pairs": true,

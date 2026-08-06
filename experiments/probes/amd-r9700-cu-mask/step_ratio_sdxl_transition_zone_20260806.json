@@ -1,0 +1,658 @@
+{
+  "schema_version": "burstserve.amd-step-ratio/v2",
+  "per_step_quota_curve": {
+    "832x832": {
+      "16": 0.1917055140904018,
+      "32": 0.1369135219029018
+    },
+    "896x896": {
+      "16": 0.22138453674316408,
+      "32": 0.1555153547014509
+    },
+    "960x960": {
+      "16": 0.2596938302176339,
+      "32": 0.18117959812709264
+    }
+  },
+  "purpose": "supply measured step-time ratios between 1.0 and 3.4 so the frozen 1.6 pairing tolerance can be tested rather than assumed",
+  "model": "sdxl",
+  "units": [
+    16,
+    32
+  ],
+  "note": "measured at the half-die quota the pairing rule reads; ratios are not quota-invariant under Amdahl's form, so a full-die measurement would not substitute",
+  "cells": [
+    {
+      "schema_version": "burstserve.amd-profile-cell/v1",
+      "status": "ok",
+      "model": "sdxl",
+      "batch": 1,
+      "cu_mask": "0xffff",
+      "units": 16,
+      "cu_mask_attestation": {
+        "requested_cu_mask": "0xffff",
+        "requested_units": 16,
+        "readback": {
+          "available": true,
+          "rc": 0,
+          "mask": "0xffff",
+          "popcount": 16
+        },
+        "stream_ptr": 0,
+        "multi_processor_count": 8,
+        "readback_matches_request": true,
+        "units": 16
+      },
+      "cu_mask_stable": true,
+      "samples": 8,
+      "escalations": 0,
+      "p50_s": 2.4285285000223666,
+      "p95_s": 2.4326101399492472,
+      "p99_s": 2.4326101399492472,
+      "mean_s": 2.4267568253417267,
+      "cv": 0.0024577268135225227,
+      "meets_cv_threshold": true,
+      "peak_memory_bytes": 15633435136,
+      "peak_memory_reserved_bytes": 16682844160,
+      "total_memory_bytes": 34208743424,
+      "per_step_count": 7,
+      "per_step_mean_s": 0.1917055140904018,
+      "per_step_total_s": 1.3419385986328125,
+      "early_step_mean_s": 0.1911352310180664,
+      "middle_step_mean_s": 0.192113899230957,
+      "late_step_mean_s": 0.19181344604492187,
+      "torch": "2.9.1+rocm7.2.0.git7e1940d4",
+      "torch_hip": "7.2.26015-fc0010cf6a",
+      "rocm": "7.14.60850-0000000",
+      "amdgpu_driver": "6.19.14.31400000",
+      "firmware": {
+        "1": {
+          "gfx_target_version": "120001",
+          "fw_version": "3390",
+          "sdma_fw_version": "36502"
+        }
+      },
+      "device_name": "AMD Radeon AI PRO R9700",
+      "gcn_arch": "gfx1201",
+      "repo": "stabilityai/stable-diffusion-xl-base-1.0",
+      "model_revision": "462165984030d82259a11f4367a4eed129e94a7b",
+      "load_seconds": 4.277280243928544,
+      "steps": 8,
+      "height": 832,
+      "width": 832,
+      "frames": null,
+      "per_step_timing": "cuda_events",
+      "vae_tiling": false,
+      "per_sample_step_totals": [
+        1.3326097869873048,
+        1.3365783996582032,
+        1.3369697875976563,
+        1.3396499786376954,
+        1.342259475708008,
+        1.3421544036865234,
+        1.3423918914794921,
+        1.3419385986328125
+      ],
+      "per_sample_step_counts": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "per_step_fraction_of_p50": 0.5525727199085592,
+      "per_step_timing_consistent": true,
+      "items_per_s": 0.41177198455393466,
+      "requested_units": 16,
+      "workpoint": "sdxl@832x832/16u",
+      "shape": "832x832",
+      "wall_s": 50.95833134651184,
+      "size": 832
+    },
+    {
+      "schema_version": "burstserve.amd-profile-cell/v1",
+      "status": "ok",
+      "model": "sdxl",
+      "batch": 1,
+      "cu_mask": "0xffffffff",
+      "units": 32,
+      "cu_mask_attestation": {
+        "requested_cu_mask": "0xffffffff",
+        "requested_units": 32,
+        "readback": {
+          "available": true,
+          "rc": 0,
+          "mask": "0xffffffff",
+          "popcount": 32
+        },
+        "stream_ptr": 0,
+        "multi_processor_count": 16,
+        "readback_matches_request": true,
+        "units": 32
+      },
+      "cu_mask_stable": true,
+      "samples": 8,
+      "escalations": 0,
+      "p50_s": 1.613927047001198,
+      "p95_s": 1.6170184429502115,
+      "p99_s": 1.6170184429502115,
+      "mean_s": 1.6122331106162164,
+      "cv": 0.0023550129452183945,
+      "meets_cv_threshold": true,
+      "peak_memory_bytes": 15633435136,
+      "peak_memory_reserved_bytes": 16682844160,
+      "total_memory_bytes": 34208743424,
+      "per_step_count": 7,
+      "per_step_mean_s": 0.1369135219029018,
+      "per_step_total_s": 0.9583946533203125,
+      "early_step_mean_s": 0.1369184036254883,
+      "middle_step_mean_s": 0.1368857650756836,
+      "late_step_mean_s": 0.13692877197265624,
+      "torch": "2.9.1+rocm7.2.0.git7e1940d4",
+      "torch_hip": "7.2.26015-fc0010cf6a",
+      "rocm": "7.14.60850-0000000",
+      "amdgpu_driver": "6.19.14.31400000",
+      "firmware": {
+        "1": {
+          "gfx_target_version": "120001",
+          "fw_version": "3390",
+          "sdma_fw_version": "36502"
+        }
+      },
+      "device_name": "AMD Radeon AI PRO R9700",
+      "gcn_arch": "gfx1201",
+      "repo": "stabilityai/stable-diffusion-xl-base-1.0",
+      "model_revision": "462165984030d82259a11f4367a4eed129e94a7b",
+      "load_seconds": 4.29600092896726,
+      "steps": 8,
+      "height": 832,
+      "width": 832,
+      "frames": null,
+      "per_step_timing": "cuda_events",
+      "vae_tiling": false,
+      "per_sample_step_totals": [
+        0.9502139892578125,
+        0.9518552551269531,
+        0.9527890319824219,
+        0.9531257934570313,
+        0.9559389343261718,
+        0.9556813507080077,
+        0.9569688873291016,
+        0.9583946533203125
+      ],
+      "per_sample_step_counts": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "per_step_fraction_of_p50": 0.5938277415333514,
+      "per_step_timing_consistent": true,
+      "items_per_s": 0.619606692792018,
+      "requested_units": 32,
+      "workpoint": "sdxl@832x832/32u",
+      "shape": "832x832",
+      "wall_s": 38.97697329521179,
+      "size": 832
+    },
+    {
+      "schema_version": "burstserve.amd-profile-cell/v1",
+      "status": "ok",
+      "model": "sdxl",
+      "batch": 1,
+      "cu_mask": "0xffff",
+      "units": 16,
+      "cu_mask_attestation": {
+        "requested_cu_mask": "0xffff",
+        "requested_units": 16,
+        "readback": {
+          "available": true,
+          "rc": 0,
+          "mask": "0xffff",
+          "popcount": 16
+        },
+        "stream_ptr": 0,
+        "multi_processor_count": 8,
+        "readback_matches_request": true,
+        "units": 16
+      },
+      "cu_mask_stable": true,
+      "samples": 8,
+      "escalations": 0,
+      "p50_s": 2.86239992803894,
+      "p95_s": 2.8673313460312784,
+      "p99_s": 2.8673313460312784,
+      "mean_s": 2.86168203514535,
+      "cv": 0.0016723535706315196,
+      "meets_cv_threshold": true,
+      "peak_memory_bytes": 9767052800,
+      "peak_memory_reserved_bytes": 11563696128,
+      "total_memory_bytes": 34208743424,
+      "per_step_count": 7,
+      "per_step_mean_s": 0.22138453674316408,
+      "per_step_total_s": 1.5496917572021485,
+      "early_step_mean_s": 0.22082746887207033,
+      "middle_step_mean_s": 0.22148013305664063,
+      "late_step_mean_s": 0.22169218444824218,
+      "torch": "2.9.1+rocm7.2.0.git7e1940d4",
+      "torch_hip": "7.2.26015-fc0010cf6a",
+      "rocm": "7.14.60850-0000000",
+      "amdgpu_driver": "6.19.14.31400000",
+      "firmware": {
+        "1": {
+          "gfx_target_version": "120001",
+          "fw_version": "3390",
+          "sdma_fw_version": "36502"
+        }
+      },
+      "device_name": "AMD Radeon AI PRO R9700",
+      "gcn_arch": "gfx1201",
+      "repo": "stabilityai/stable-diffusion-xl-base-1.0",
+      "model_revision": "462165984030d82259a11f4367a4eed129e94a7b",
+      "load_seconds": 4.262906071031466,
+      "steps": 8,
+      "height": 896,
+      "width": 896,
+      "frames": null,
+      "per_step_timing": "cuda_events",
+      "vae_tiling": false,
+      "per_sample_step_totals": [
+        1.5411588134765626,
+        1.5451886291503907,
+        1.5477056732177734,
+        1.548680648803711,
+        1.5505306701660158,
+        1.5516862182617188,
+        1.5515566406249999,
+        1.5496917572021485
+      ],
+      "per_sample_step_counts": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "per_step_fraction_of_p50": 0.5413959600899859,
+      "per_step_timing_consistent": true,
+      "items_per_s": 0.34935719156655737,
+      "requested_units": 16,
+      "workpoint": "sdxl@896x896/16u",
+      "shape": "896x896",
+      "wall_s": 46.66031885147095,
+      "size": 896
+    },
+    {
+      "schema_version": "burstserve.amd-profile-cell/v1",
+      "status": "ok",
+      "model": "sdxl",
+      "batch": 1,
+      "cu_mask": "0xffffffff",
+      "units": 32,
+      "cu_mask_attestation": {
+        "requested_cu_mask": "0xffffffff",
+        "requested_units": 32,
+        "readback": {
+          "available": true,
+          "rc": 0,
+          "mask": "0xffffffff",
+          "popcount": 32
+        },
+        "stream_ptr": 0,
+        "multi_processor_count": 16,
+        "readback_matches_request": true,
+        "units": 32
+      },
+      "cu_mask_stable": true,
+      "samples": 8,
+      "escalations": 0,
+      "p50_s": 1.8660420789383352,
+      "p95_s": 1.8723403469193727,
+      "p99_s": 1.8723403469193727,
+      "mean_s": 1.8646168656123336,
+      "cv": 0.0028562575309059404,
+      "meets_cv_threshold": true,
+      "peak_memory_bytes": 16960546304,
+      "peak_memory_reserved_bytes": 18106810368,
+      "total_memory_bytes": 34208743424,
+      "per_step_count": 7,
+      "per_step_mean_s": 0.1555153547014509,
+      "per_step_total_s": 1.0886074829101562,
+      "early_step_mean_s": 0.15545378875732424,
+      "middle_step_mean_s": 0.15539109039306642,
+      "late_step_mean_s": 0.15563924153645833,
+      "torch": "2.9.1+rocm7.2.0.git7e1940d4",
+      "torch_hip": "7.2.26015-fc0010cf6a",
+      "rocm": "7.14.60850-0000000",
+      "amdgpu_driver": "6.19.14.31400000",
+      "firmware": {
+        "1": {
+          "gfx_target_version": "120001",
+          "fw_version": "3390",
+          "sdma_fw_version": "36502"
+        }
+      },
+      "device_name": "AMD Radeon AI PRO R9700",
+      "gcn_arch": "gfx1201",
+      "repo": "stabilityai/stable-diffusion-xl-base-1.0",
+      "model_revision": "462165984030d82259a11f4367a4eed129e94a7b",
+      "load_seconds": 4.278693168074824,
+      "steps": 8,
+      "height": 896,
+      "width": 896,
+      "frames": null,
+      "per_step_timing": "cuda_events",
+      "vae_tiling": false,
+      "per_sample_step_totals": [
+        1.0770514221191405,
+        1.077981674194336,
+        1.0784126892089843,
+        1.0791864624023437,
+        1.0822480926513671,
+        1.083232223510742,
+        1.0871827239990235,
+        1.0886074829101562
+      ],
+      "per_sample_step_counts": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "per_step_fraction_of_p50": 0.5833777786669784,
+      "per_step_timing_consistent": true,
+      "items_per_s": 0.5358935960163017,
+      "requested_units": 32,
+      "workpoint": "sdxl@896x896/32u",
+      "shape": "896x896",
+      "wall_s": 42.232388734817505,
+      "size": 896
+    },
+    {
+      "schema_version": "burstserve.amd-profile-cell/v1",
+      "status": "ok",
+      "model": "sdxl",
+      "batch": 1,
+      "cu_mask": "0xffff",
+      "units": 16,
+      "cu_mask_attestation": {
+        "requested_cu_mask": "0xffff",
+        "requested_units": 16,
+        "readback": {
+          "available": true,
+          "rc": 0,
+          "mask": "0xffff",
+          "popcount": 16
+        },
+        "stream_ptr": 0,
+        "multi_processor_count": 8,
+        "readback_matches_request": true,
+        "units": 16
+      },
+      "cu_mask_stable": true,
+      "samples": 8,
+      "escalations": 0,
+      "p50_s": 3.4083076789975166,
+      "p95_s": 3.4130241620587185,
+      "p99_s": 3.4130241620587185,
+      "mean_s": 3.408227404637728,
+      "cv": 0.0009747907326986771,
+      "meets_cv_threshold": true,
+      "peak_memory_bytes": 18389117440,
+      "peak_memory_reserved_bytes": 19675480064,
+      "total_memory_bytes": 34208743424,
+      "per_step_count": 7,
+      "per_step_mean_s": 0.2596938302176339,
+      "per_step_total_s": 1.8178568115234375,
+      "early_step_mean_s": 0.25859931945800785,
+      "middle_step_mean_s": 0.2598873138427734,
+      "late_step_mean_s": 0.26029451497395834,
+      "torch": "2.9.1+rocm7.2.0.git7e1940d4",
+      "torch_hip": "7.2.26015-fc0010cf6a",
+      "rocm": "7.14.60850-0000000",
+      "amdgpu_driver": "6.19.14.31400000",
+      "firmware": {
+        "1": {
+          "gfx_target_version": "120001",
+          "fw_version": "3390",
+          "sdma_fw_version": "36502"
+        }
+      },
+      "device_name": "AMD Radeon AI PRO R9700",
+      "gcn_arch": "gfx1201",
+      "repo": "stabilityai/stable-diffusion-xl-base-1.0",
+      "model_revision": "462165984030d82259a11f4367a4eed129e94a7b",
+      "load_seconds": 4.241609130054712,
+      "steps": 8,
+      "height": 960,
+      "width": 960,
+      "frames": null,
+      "per_step_timing": "cuda_events",
+      "vae_tiling": false,
+      "per_sample_step_totals": [
+        1.821673126220703,
+        1.8225669860839844,
+        1.8212737426757812,
+        1.821991668701172,
+        1.8184797058105469,
+        1.819302276611328,
+        1.8183876342773437,
+        1.8178568115234375
+      ],
+      "per_sample_step_counts": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "per_step_fraction_of_p50": 0.5333605362935199,
+      "per_step_timing_consistent": true,
+      "items_per_s": 0.2934007414184301,
+      "requested_units": 16,
+      "workpoint": "sdxl@960x960/16u",
+      "shape": "960x960",
+      "wall_s": 65.33056330680847,
+      "size": 960
+    },
+    {
+      "schema_version": "burstserve.amd-profile-cell/v1",
+      "status": "ok",
+      "model": "sdxl",
+      "batch": 1,
+      "cu_mask": "0xffffffff",
+      "units": 32,
+      "cu_mask_attestation": {
+        "requested_cu_mask": "0xffffffff",
+        "requested_units": 32,
+        "readback": {
+          "available": true,
+          "rc": 0,
+          "mask": "0xffffffff",
+          "popcount": 32
+        },
+        "stream_ptr": 0,
+        "multi_processor_count": 16,
+        "readback_matches_request": true,
+        "units": 32
+      },
+      "cu_mask_stable": true,
+      "samples": 8,
+      "escalations": 0,
+      "p50_s": 2.198142944020219,
+      "p95_s": 2.2146279299631715,
+      "p99_s": 2.2146279299631715,
+      "mean_s": 2.1994610077381367,
+      "cv": 0.004499958728917129,
+      "meets_cv_threshold": true,
+      "peak_memory_bytes": 18389117440,
+      "peak_memory_reserved_bytes": 19675480064,
+      "total_memory_bytes": 34208743424,
+      "per_step_count": 7,
+      "per_step_mean_s": 0.18117959812709264,
+      "per_step_total_s": 1.2682571868896484,
+      "early_step_mean_s": 0.1812365264892578,
+      "middle_step_mean_s": 0.1811374206542969,
+      "late_step_mean_s": 0.18116976420084635,
+      "torch": "2.9.1+rocm7.2.0.git7e1940d4",
+      "torch_hip": "7.2.26015-fc0010cf6a",
+      "rocm": "7.14.60850-0000000",
+      "amdgpu_driver": "6.19.14.31400000",
+      "firmware": {
+        "1": {
+          "gfx_target_version": "120001",
+          "fw_version": "3390",
+          "sdma_fw_version": "36502"
+        }
+      },
+      "device_name": "AMD Radeon AI PRO R9700",
+      "gcn_arch": "gfx1201",
+      "repo": "stabilityai/stable-diffusion-xl-base-1.0",
+      "model_revision": "462165984030d82259a11f4367a4eed129e94a7b",
+      "load_seconds": 4.337595212040469,
+      "steps": 8,
+      "height": 960,
+      "width": 960,
+      "frames": null,
+      "per_step_timing": "cuda_events",
+      "vae_tiling": false,
+      "per_sample_step_totals": [
+        1.250477783203125,
+        1.2512023620605468,
+        1.2536063690185546,
+        1.2580879974365233,
+        1.2589086456298828,
+        1.2640113830566406,
+        1.2667833404541016,
+        1.2682571868896484
+      ],
+      "per_sample_step_counts": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "per_step_fraction_of_p50": 0.5769675672547994,
+      "per_step_timing_consistent": true,
+      "items_per_s": 0.45492946794947003,
+      "requested_units": 32,
+      "workpoint": "sdxl@960x960/32u",
+      "shape": "960x960",
+      "wall_s": 46.733891248703,
+      "size": 960
+    }
+  ],
+  "ratios": [
+    {
+      "pair": [
+        "sdxl@832x832/32u",
+        "sdxl@896x896/32u"
+      ],
+      "sizes": [
+        832,
+        896
+      ],
+      "step_seconds": [
+        0.1369135219029018,
+        0.1555153547014509
+      ],
+      "ratio": 1.1358655634594033
+    },
+    {
+      "pair": [
+        "sdxl@832x832/16u",
+        "sdxl@896x896/16u"
+      ],
+      "sizes": [
+        832,
+        896
+      ],
+      "step_seconds": [
+        0.1917055140904018,
+        0.22138453674316408
+      ],
+      "ratio": 1.1548156963224683
+    },
+    {
+      "pair": [
+        "sdxl@896x896/32u",
+        "sdxl@960x960/32u"
+      ],
+      "sizes": [
+        896,
+        960
+      ],
+      "step_seconds": [
+        0.1555153547014509,
+        0.18117959812709264
+      ],
+      "ratio": 1.1650270706382044
+    },
+    {
+      "pair": [
+        "sdxl@896x896/16u",
+        "sdxl@960x960/16u"
+      ],
+      "sizes": [
+        896,
+        960
+      ],
+      "step_seconds": [
+        0.22138453674316408,
+        0.2596938302176339
+      ],
+      "ratio": 1.1730441251139134
+    },
+    {
+      "pair": [
+        "sdxl@832x832/32u",
+        "sdxl@960x960/32u"
+      ],
+      "sizes": [
+        832,
+        960
+      ],
+      "step_seconds": [
+        0.1369135219029018,
+        0.18117959812709264
+      ],
+      "ratio": 1.3233141300359221
+    },
+    {
+      "pair": [
+        "sdxl@832x832/16u",
+        "sdxl@960x960/16u"
+      ],
+      "sizes": [
+        832,
+        960
+      ],
+      "step_seconds": [
+        0.1917055140904018,
+        0.2596938302176339
+      ],
+      "ratio": 1.3546497681604044
+    }
+  ]
+}

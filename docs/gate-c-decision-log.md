@@ -353,3 +353,27 @@ Recorded now so the limit travels with the claim:
 - The 1.6 tolerance has no measurement supporting it as a threshold. It
   happens to give the right answer on the 1.693 pair and the wrong one
   on the other three.
+
+**Follow-up: the transition is a step, not a slope.** Three more co-runs
+at identical resolutions bracket it:
+
+| workpoint | per-step externality | pairing gain |
+| --- | --- | --- |
+| 768 | +22.4% / +24.5% | **+16.6%** |
+| 832 | +76.6% / +78.9% | −21.9% |
+| 896 | +77.6% / +81.2% | −22.7% |
+| 1024 | +71.2% / +81.1% | −24.5% |
+
+Externality roughly triples between 768 and 832 and is then flat to
+1024. Whatever changes, it changes over a 64-pixel step and not
+gradually, which is the shape of a capacity threshold rather than of
+growing contention.
+
+The obvious candidate does not survive arithmetic. The card's L2 is
+8192 KB, and SDXL's first UNet block at 320 channels in fp16 holds about
+5.9 MB at 768, 6.9 MB at 832 and 10.5 MB at 1024 — so the jump happens
+while a single tenant's first-block activation still fits, and the
+two-tenant total already exceeded L2 at 768 where sharing was
+profitable. Recorded as an unexplained step with the cache size noted,
+not as a cache explanation: the numbers rule out the simple version of
+that story, and no measurement here distinguishes the alternatives.
