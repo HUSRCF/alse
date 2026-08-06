@@ -537,3 +537,38 @@ The search has narrowed to what differs between two processes' launches
 -- queue assignment, allocation placement, or launch timing -- and away
 from thermal state, power, clocks and the CU mask, all of which are now
 measured and none of which separate the states.
+
+### 2026-08-06 — the state is selected at launch, and one stagger reaches it reliably
+
+The bistability responds to when the second process is launched.
+
+| launch stagger | runs | state | per-step externality |
+| --- | --- | --- | --- |
+| 0 s | 3 | high, 3/3 | +77.8% / +75.3% / +73.7% |
+| **5 s** | **3** | **low, 3/3** | **+22.8% / +23.5% / +23.6%** |
+| 15 s | 3 | high, 3/3 | +83.4% / +72.9% / +75.9% |
+
+The low-state runs are also the most internally stable measurements
+taken so far: per-sample cv of 0.19%, 0.24% and 0.20%.
+
+Against a base rate of 2 low in 11 unstaggered runs, three consecutive
+low results at one stagger is not chance -- roughly 0.6% if the state
+were being drawn independently. The stagger selects it.
+
+**It is not monotone.** 15 s behaves like 0 s. So this is not "avoid the
+startup race by separating the launches"; something about the 5 s offset
+specifically lands the second process where it does not degrade
+concurrency. What that is remains unknown, and a finer scan (2, 3, 5, 8,
+10 s) is running to find the interval rather than the point.
+
+**What it changes.** The low state is now reproducible on demand, which
+moves the utilisation claim from open to conditional: partitioning
+delivers its gain when the tenants' launches are separated correctly,
+and loses when they are not. That is a scheduling condition the runtime
+can enforce, not a property of the hardware to be accepted -- which is a
+far better position than the previous entry left it in.
+
+It also means every co-run measurement taken before this one was
+measuring launch alignment as much as pairing, and the 9-high/2-low
+distribution reflects how the harness happened to launch, not how the
+die happens to behave.
