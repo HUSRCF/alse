@@ -427,18 +427,41 @@ $$
 | 算法冻结 + decision log | `gate_c_algorithm_freeze.json`（14 函数 AST + 3 测量表 + 4 行为 digest）与 `docs/gate-c-decision-log.md` |
 
 调度器 `slo_aware_partitioning` 的 action 顺序已冻结：deadline override →
-步长匹配配对（1.6×）→ 亏欠轮转。匹配租户利用率 1.0881（较全 die 独占
-+8.8%），失配租户 1.0000（不劣于独占）。
+步长匹配配对（1.6×）→ 亏欠轮转。匹配租户利用率 **1.1888**（较全 die 独占
+**+18.9%**），失配租户 1.0000（不劣于独占）。
+
+> 2026-08-06 更正：上述 +18.9% 此前记为 +8.8%。simulator 的 SDXL 成本表
+> `step_seconds_at_full` 原为 0.1521 s、注释写 "1024x1024"，但 Gate B 对
+> SDXL **只在 768×768 测过**，且 0.1521 是 768 在 **16 units**（半 die）
+> 的值被当成了全 die 值；其余配额再由 **call** p50 比值缩放得出，而 call
+> 含不随配额同比缩放的 VAE decode，比值被稀释（16/32 处 call 1.503 vs
+> per-step 实测 1.363）。合并后该表在每个配额高估 32–50%。已按 768 实测
+> per-step 曲线（8 个配额、cv < 0.3%）重建，并有三重交叉验证：三天前独立
+> 的 transition 探针在 8/16/32 units 分别相差 2.1% / 1.5% / 2.8%，co-run
+> 驱动测得的 solo per-step 与曲线相差 0.01%。两处误差方向一致且**不利于
+> 自身结论**——半 die 步长比模型认为的更便宜，即原表在低估分区收益。
+> 详见 `docs/gate-c-decision-log.md`（冻结后第 2 次修改）。
 
 **限定条件（不得省略）**：本门是仿真验收。成本表为 Gate B-AMD 在
 AMD R9700 (gfx1201) 上的实测值，但验证器本身不跑 GPU，结论不构成硬件
 claim。仅覆盖 2 个模型（SDXL、CogVideoX-2b）与 2 租户并发（externality
 表的实测范围）；cold-model 项推迟至 runtime 阶段。
 
-冻结后已发生 1 次修改（见 decision log）：`step_matched_pairing` 原按预测
-步长排序取最便宜的两个请求，在 predictor error 下会把同一租户的两个请求
-配对而饿死另一租户（lag 22.37 quanta，而吞吐与记账均无异常）。已改为跨
-租户配对并补充第四条行为 digest——前三条在该缺陷上完全不敏感。
+冻结后已发生 2 次修改（见 decision log）：
+
+1. `step_matched_pairing` 原按预测步长排序取最便宜的两个请求，在
+   predictor error 下会把同一租户的两个请求配对而饿死另一租户（lag
+   22.37 quanta，而吞吐与记账均无异常）。已改为跨租户配对并补充第四条
+   行为 digest——前三条在该缺陷上完全不敏感。
+2. SDXL 成本表按实测 per-step 曲线重建（见上方更正框），同时
+   `serial_fraction` 0.391 → 0.4419（原值拟合自 call 时延，套到 per-step
+   曲线上会让 15 units 的外推**慢于**实测的 12 units，曲线非单调）。
+
+**同时暴露一个已记录但未修复的策略缺陷**：约 0.60 req/s 时
+`deadline_aware` 的 miss 数（35）**多于**完全不干预的策略（26），且发生在
+预测完全准确的条件下——为救一个请求独占全 die 会拖累其后所有排队请求，而
+策略逐个请求做该权衡时没有计入这个代价。已固定为测试
+`test_a_load_band_exists_where_intervening_is_worse`，修复时该测试必须失败。
 
 ### 第 7–8 周：2026-09-10 至 09-23——ASLE Temporal Runtime
 
