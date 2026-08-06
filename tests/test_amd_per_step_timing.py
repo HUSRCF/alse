@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -152,6 +153,68 @@ class TelemetryMustNotShareTheTimedProcessTest(unittest.TestCase):
                 return
         self.fail("no timing loop found")
 
+
+
+class PowerSamplerRunsTest(unittest.TestCase):
+    """Reading the source is not running it.
+
+    The sampler named its stop flag _stop, which shadows the _stop() method
+    threading.Thread calls during join(), so every sweep died at teardown
+    with "'Event' object is not callable". The source-level tests passed
+    throughout -- they check that a sampler exists, not that it works.
+    """
+
+    def _sampler_class(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_pwsweep", SCRIPTS / "run_amd_power_sweep.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_sampler_starts_and_halts_without_error(self):
+        module = self._sampler_class()
+        module.read_power = lambda: 123.0
+        sampler = module.PowerSampler(0.01)
+        sampler.start()
+        time.sleep(0.1)
+        sampler.halt()          # this is what raised TypeError
+        self.assertFalse(sampler.is_alive())
+        self.assertGreater(len(sampler.samples), 0)
+        self.assertEqual(set(sampler.samples), {123.0})
+
+    def test_no_instance_attribute_shadows_a_thread_method(self):
+        """Named generically, because the collision is version-specific.
+
+        The failure was on Python 3.12, whose Thread has a _stop() method
+        that join() calls during teardown. The dev host runs 3.14, where
+        that name is gone, so a test naming _stop would pass here while the
+        sweep died there. Any instance attribute covering any Thread
+        callable is the bug, whatever it is called.
+        """
+        import threading
+
+        module = self._sampler_class()
+        sampler = module.PowerSampler(0.01)
+        clashes = [
+            name for name in vars(sampler)
+            if callable(getattr(threading.Thread, name, None))
+        ]
+        self.assertEqual(
+            clashes, [],
+            f"instance attributes shadow Thread methods: {clashes}",
+        )
+
+    def test_a_failing_power_read_is_skipped_not_recorded(self):
+        module = self._sampler_class()
+        module.read_power = lambda: None
+        sampler = module.PowerSampler(0.01)
+        sampler.start()
+        time.sleep(0.05)
+        sampler.halt()
+        self.assertEqual(sampler.samples, [])
 
 if __name__ == "__main__":
     unittest.main()

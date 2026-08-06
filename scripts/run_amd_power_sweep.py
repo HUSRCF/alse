@@ -62,17 +62,17 @@ class PowerSampler(threading.Thread):
         super().__init__(daemon=True)
         self.interval = interval
         self.samples: list[float] = []
-        self._stop = threading.Event()
+        self._halt = threading.Event()
 
     def run(self) -> None:
-        while not self._stop.is_set():
+        while not self._halt.is_set():
             value = read_power()
             if value is not None:
                 self.samples.append(value)
-            self._stop.wait(self.interval)
+            self._halt.wait(self.interval)
 
     def halt(self) -> None:
-        self._stop.set()
+        self._halt.set()
         self.join(timeout=5)
 
 
