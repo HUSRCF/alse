@@ -223,9 +223,13 @@ class StepMatchedPairingTest(unittest.TestCase):
         ])
         excl_util = simulate(mismatched, exclusive_fcfs,
                              horizon_s=1200.0).utilisation()
-        for name, policy in BASELINES.items():
-            if name == "step_matched_pairing":
-                continue
+        # Only the policies that predate this one. slo_aware_partitioning
+        # is built on top of it and holds both conditions by inheriting
+        # them, which is the intended outcome rather than a counterexample.
+        prior = ("exclusive_fcfs", "oracle_shortest_remaining",
+                 "static_even", "measured_pairs_only", "deadline_aware")
+        for name in prior:
+            policy = BASELINES[name]
             with self.subTest(policy=name):
                 a = simulate(matched, policy, horizon_s=600.0)
                 b = simulate(mismatched, policy, horizon_s=1200.0)

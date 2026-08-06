@@ -25,6 +25,7 @@ can be compared on identical traces.
 from __future__ import annotations
 
 import heapq
+import hashlib
 import random
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Sequence
@@ -309,6 +310,77 @@ class SimulationResult:
     granted_unit_seconds: float = 0.0
     quantum_s: float = 0.25
     peak_lag_unit_seconds: float = 0.0
+    deadline_override_rounds: int = 0
+    exclusive_rounds: int = 0
+
+    def canonical_bytes(self) -> bytes:
+        """Byte-exact serialisation of everything the gate is judged on.
+
+        Gate C asks for identical results from an identical seed, and
+        "identical" has to mean bytes rather than a rounded summary --
+        a scheduler whose decisions drift in the last place would pass a
+        comparison at four decimals and be non-deterministic anyway.
+
+        Floats go out as ``float.hex()``, which is exact and round-trips;
+        ``repr`` round-trips too but its shortest-representation rules are
+        a promise about Python's formatter, not about the value. Dicts are
+        emitted in sorted key order because insertion order here follows
+        arrival order, which is a property of the trace and not of the
+        result.
+        """
+        def num(value: float) -> str:
+            return float(value).hex()
+
+        lines = [
+            b"burstserve.trace_sim.SimulationResult\x00v1",
+            f"horizon_s={num(self.horizon_s)}".encode(),
+            f"quantum_s={num(self.quantum_s)}".encode(),
+            f"steps_executed={self.steps_executed}".encode(),
+            f"predictor_relative_error={num(self.predictor_relative_error)}"
+            .encode(),
+            f"granted_unit_seconds={num(self.granted_unit_seconds)}".encode(),
+            f"peak_lag_unit_seconds={num(self.peak_lag_unit_seconds)}"
+            .encode(),
+            f"deadline_override_rounds={self.deadline_override_rounds}"
+            .encode(),
+            f"exclusive_rounds={self.exclusive_rounds}".encode(),
+        ]
+        for tenant in sorted(self.quota_seconds_by_tenant):
+            lines.append(
+                f"quota:{tenant}="
+                f"{num(self.quota_seconds_by_tenant[tenant])}".encode()
+            )
+        for tenant in sorted(self.service_seconds_by_tenant):
+            lines.append(
+                f"service:{tenant}="
+                f"{num(self.service_seconds_by_tenant[tenant])}".encode()
+            )
+        for label, states in (("done", self.completed),
+                              ("open", self.unfinished)):
+            for state in sorted(states, key=lambda s: s.request.request_id):
+                finished = (
+                    num(state.finished_s)
+                    if state.finished_s is not None else "-"
+                )
+                started = (
+                    num(state.started_s)
+                    if state.started_s is not None else "-"
+                )
+                lines.append(
+                    f"{label}:{state.request.request_id}"
+                    f":{state.request.tenant}"
+                    f":{state.request.model}"
+                    f":steps={state.steps_done}/{state.request.steps}"
+                    f":start={started}:end={finished}"
+                    f":quota={num(state.quota_seconds)}"
+                    f":service={num(state.service_seconds)}".encode()
+                )
+        for left, right in sorted(self.unmeasured_pairings):
+            lines.append(f"unmeasured:{left}+{right}".encode())
+        return b"\n".join(lines)
+
+    def digest(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
     def jain_index(self) -> float:
         """Fairness over the accounting currency, not over wall time.
@@ -473,6 +545,8 @@ def simulate(
     # policy that serves one tenant to completion and then the other ends
     # perfectly even while having been maximally unfair throughout.
     peak_lag_unit_seconds = 0.0
+    deadline_override_rounds = 0
+    exclusive_rounds = 0
 
     now = 0.0
     while now < horizon_s:
@@ -578,6 +652,29 @@ def simulate(
         # a tenant whose own step finished early. Charging only the time a
         # tenant was computing would let a fast tenant occupy the die for
         # free while a slower peer sets the round length.
+        # Classify the round independently of what the policy says it did.
+        # Gate C exempts deadline overrides from the lag bound, so a policy
+        # that self-reported its overrides could exempt itself from the
+        # bound by relabelling. The conditions are recomputed here from the
+        # same predictions the policy saw.
+        if len(runnable) > 1 and len(granted) == 1:
+            exclusive_rounds += 1
+            (chosen_id,) = granted
+            chosen = next(
+                s for s in runnable if s.request.request_id == chosen_id
+            )
+            half = units // 2
+            deadline = chosen.request.deadline_s
+            if deadline is not None:
+                left = deadline - now
+                shared_cost = chosen.predicted_step_seconds.get(half)
+                whole_cost = chosen.predicted_step_seconds.get(units)
+                todo = chosen.request.steps - chosen.steps_done
+                if (shared_cost is not None and whole_cost is not None
+                        and todo * shared_cost > left
+                        and todo * whole_cost <= left):
+                    deadline_override_rounds += 1
+
         granted_unit_seconds += sum(granted.values()) * advance
         for rid, units in granted.items():
             tenant = states[rid].request.tenant
@@ -611,4 +708,6 @@ def simulate(
         granted_unit_seconds=granted_unit_seconds,
         quantum_s=quantum_s,
         peak_lag_unit_seconds=peak_lag_unit_seconds,
+        deadline_override_rounds=deadline_override_rounds,
+        exclusive_rounds=exclusive_rounds,
     )

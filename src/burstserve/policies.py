@@ -200,5 +200,39 @@ def step_matched_pairing(states: Sequence[RequestState], units: int,
     return {behind.request.request_id: units}
 
 
+def slo_aware_partitioning(states: Sequence[RequestState], units: int,
+                           now: float, tolerance: float = 1.6) -> dict[int, int]:
+    """The scheduler Gate C is about, composed from what each half proves.
+
+    The two preceding policies each hold part of the gate and break the
+    other. ``deadline_aware`` meets every avoidable deadline and pairs
+    tenants whose steps do not match, losing 30% of the die when they
+    differ by 3.4x. ``step_matched_pairing`` bounds service lag and keeps
+    throughput on both matched and mismatched traffic, and misses
+    deadlines it could have met. Neither ordering of the two is arbitrary:
+
+    1. A deadline that exclusivity would save and sharing would lose takes
+       the die. This is the only decision that overrides the others, and
+       Gate C exempts it from the lag bound for exactly that reason.
+    2. Otherwise pair, but only within ``tolerance`` on predicted step
+       time, because pairing mismatched tenants costs more than it earns.
+    3. Otherwise the whole die to the tenant furthest behind on charge --
+       never to whoever arrived first, which is what turns a 12.17-quantum
+       lag into a bounded one.
+
+    Every branch reads ``predicted_step_seconds``, so predictor error
+    degrades the choice rather than being hidden by ground truth.
+    """
+    if not states:
+        return {}
+    rescued = deadline_aware(states, units, now)
+    if len(rescued) == 1 and next(iter(rescued.values())) == units:
+        # deadline_aware went exclusive, which it does only to save a
+        # deadline that is otherwise lost. Honour it.
+        return rescued
+    return step_matched_pairing(states, units, now, tolerance=tolerance)
+
+
 BASELINES["deadline_aware"] = deadline_aware
 BASELINES["step_matched_pairing"] = step_matched_pairing
+BASELINES["slo_aware_partitioning"] = slo_aware_partitioning
