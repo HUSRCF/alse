@@ -1,0 +1,38 @@
+{
+  "schema_version": "burstserve.gate-c-algorithm-freeze/v1",
+  "manifest_id": "gate-c-algorithm-freeze-20260806",
+  "frozen_at_stage": "plan.md week 5-6, Gate C",
+  "decision_log": "docs/gate-c-decision-log.md",
+  "policy_under_freeze": "policies.slo_aware_partitioning",
+  "action_order": [
+    "deadline override: exclusive to a request that misses shared and makes it whole-die",
+    "matched pairing: even split when predicted step times are within 1.6x",
+    "deficit rotation: whole die to the tenant furthest behind on quota-seconds"
+  ],
+  "structural": {
+    "policies.slo_aware_partitioning": "e055490000ceab3ca07e383a223172eccc37658dc639ea11286893ee0a741738",
+    "policies.deadline_aware": "2cffe6bf348e621e1ce26d9280c0197ef3dc17073bc56e87d7fcf1dbfe462264",
+    "policies.step_matched_pairing": "2a59a87c77f6a5a2638a30fa50cef42a7e91787ecde092cd8cf707d7d75563d5",
+    "policies.static_even": "e1a9edb51e1e09321e56c4e05cc693be968a715ad001b4accf76bea5c5177763",
+    "policies.exclusive_fcfs": "f974a8bd9cfca2e28420fdcec37c3f38804c029794858e2b20fd9b65b65766a7",
+    "policies.measured_pairs_only": "c61bc10efe678db25728fb26221b568dba31b037adb7b4127732908684bd0f8e",
+    "policies.oracle_shortest_remaining": "947f6eabbd166115de889f158e3ee5ee67934dc10c59e5f1fb377d88f4009538",
+    "trace_sim.simulate": "499e1ffea0fec643827941e9177d8e643705b96b241d620c097424b81fea555b",
+    "trace_sim.QuotaCostModel.step_seconds": "62cb00d43eb5eeb82de743bc5c1352e6e6602862f7ae552d6e28639bdd3bc04b",
+    "trace_sim.SimulationResult.jain_index": "9eeded80d25573734de4f565386a5655b1de44b9c90625f15ef99ce663241a07",
+    "trace_sim.SimulationResult.accounting_error": "f91b73b09e77c716ab0d6ef94e8d9bd276fd500dc7fdc9ba700b42d714285a31",
+    "trace_sim.SimulationResult.peak_service_lag_quanta": "2c9ff49b9624d61f3d1a1382de64f968ee0706e688c2bcef942b50f29aca0839",
+    "trace_sim.SimulationResult.canonical_bytes": "3839ef23dbc77a0c0f62dc2c0aad2d8a40ef2a8de1bb75aa39f846f4ae340409",
+    "deadline_feasibility.edf_whole_die": "0e5f15040b101ade345f7f01d5e69fc6939776638ec5d6c013fb3b0cc7ab966c"
+  },
+  "tables": {
+    "MEASURED_MODELS": "0033261a567e06e8fed2e14c670913e9af98712aed80eb5c7bdbae8c54db0577",
+    "MEASURED_QUOTA_SECONDS": "4827f41fe35d22bf3b92a3b7562b1b574d836ee374d7c6eeb7c4255c60012828",
+    "MEASURED_EXTERNALITY": "9fa4ada629e3d8cbbb6ac66eecb28d985fbf6624292b8bc2236e0868b389373e"
+  },
+  "behavioural": {
+    "matched_tenants": "0a672c0a05984508b323ccb373a159476d24aedae7b6000beba113d32f0cda06",
+    "mismatched_tenants": "4fcfdb7bec97857a02a27e2be7173767f989f0e21b8cb49e26320eb5c67393f8",
+    "feasible_deadline": "c7ad717b6e9ab00feeb1f704b20960df4f8e28e0828bc2a0a5cce6d16a3d233b"
+  }
+}

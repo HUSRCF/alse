@@ -1,0 +1,90 @@
+# Gate C decision log
+
+plan.md freezes the algorithm, formulas and action order at the end of
+the Gate C stage: "算法、公式和 action 顺序在本阶段结束后冻结；之后修改
+必须写 decision log."
+
+The freeze is machine-checked by `scripts/freeze_gate_c_algorithm.py`
+against `experiments/manifests/gate_c_algorithm_freeze.json`. Any change
+to a frozen function, table or action order fails that check until an
+entry is added below and the manifest is regenerated with `--write`.
+
+## What is frozen
+
+**Action order** — the three branches of `slo_aware_partitioning`, in
+this order and no other:
+
+1. Deadline override: the whole die to a request that misses if it
+   shares and makes it if it does not.
+2. Matched pairing: an even split when the two cheapest predicted step
+   times are within 1.6x.
+3. Deficit rotation: the whole die to the tenant furthest behind on
+   quota-seconds.
+
+**Functions** — the policy and every function its decisions and its
+accounting are computed from: the seven policies, `simulate`,
+`QuotaCostModel.step_seconds`, `jain_index`, `accounting_error`,
+`peak_service_lag_quanta`, `canonical_bytes`, and `edf_whole_die`.
+
+**Tables** — `MEASURED_MODELS`, `MEASURED_QUOTA_SECONDS` and
+`MEASURED_EXTERNALITY`. These are measurements, not algorithm, but the
+decisions read them, so a silent edit changes the scheduler as surely as
+a changed branch.
+
+## How it is checked, and why it takes two locks
+
+The **structural** lock hashes each function's AST with docstrings
+stripped. Hashing source text would fire on a reflowed comment, and a
+check that cries wolf on prose trains people to re-freeze without
+reading. Hashing the AST fires on a changed constant, branch order or
+comparison — which is what "algorithm, formula and action order" names.
+
+The **behavioural** lock is the canonical digest of three fixed traces,
+one per branch of the action order. It catches what the structural lock
+cannot: a change in a function the freeze does not list, in a default
+resolved elsewhere, or in the measured tables.
+
+Neither is sufficient. Changing the pairing tolerance from 1.6 to 1.7
+breaks the structural lock and leaves all three behavioural digests
+identical, because the only two models measured so far have step-time
+ratios of 1.0 and 3.4 and both thresholds fall between them. A third
+model with a ratio near 1.6 would make the behavioural lock sensitive to
+it; until one exists, the structural lock is the only thing standing
+between that constant and a silent edit.
+
+## Entries
+
+### 2026-08-06 — initial freeze
+
+Frozen at commit `ac75629`, after Gate C criteria C1–C6 pass:
+
+| Criterion | Evidence |
+| --- | --- |
+| Byte-identical replay under one seed | `canonical_bytes`, verified across three `PYTHONHASHSEED` values in separate processes |
+| Canonical service accounting < 1% | 0.0000% on matched, mismatched and deadline traces |
+| Backlogged Jain ≥ 0.98 | 1.000 on the matched backlogged trace |
+| Service lag ≤ 2 quanta absent overrides | 0.00 matched, 1.03 mismatched, with `deadline_override_rounds == 0` confirmed by the simulator rather than self-reported |
+| No avoidable miss on a feasible trace | 0, feasibility witnessed by preemptive EDF at full width |
+| Safe degradation at ±5/10/20% predictor error | accounting < 1% and lag ≤ 2 at every error level; utilisation within 5% of exact |
+
+Criterion 7 is this document.
+
+The composition was not the first design. Two earlier policies each held
+half the gate: `deadline_aware` met every avoidable deadline and lost
+30% of the die on tenants whose step times differ by 3.4x, and
+`step_matched_pairing` kept throughput on both matched and mismatched
+traffic and missed a deadline it could have met. The frozen order
+composes them; reversing it — pairing before checking deadlines — loses
+the rescue, because a rescued request needs the whole die and pairing
+has already given half of it away.
+
+Known limits recorded at freeze time, not defects:
+
+- Two models measured (SDXL, CogVideoX-2b). The 1.6 tolerance sits
+  between their ratio of 3.4 and self-pairing at 1.0; it is not fitted
+  to anything in between, because nothing in between has been measured.
+- Concurrency is capped at two tenants, which is what the externality
+  table covers. Measured penalties span 1.22x to 1.93x, so a third
+  tenant's cost would be invented rather than read.
+- The cold-model term is deferred to the runtime stage; these results
+  assume a resident model.

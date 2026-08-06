@@ -1,0 +1,114 @@
+"""Gate C criterion 7: the algorithm freeze holds.
+
+A freeze is a claim about the repository, so this runs the real verifier
+against the real manifest rather than reimplementing the comparison. It
+also checks the verifier can fail, because a freeze that passes on a
+changed algorithm is worse than none -- it certifies the change.
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import subprocess
+import sys
+import unittest
+
+sys.dont_write_bytecode = True
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+SCRIPT = REPO / "scripts" / "freeze_gate_c_algorithm.py"
+MANIFEST = REPO / "experiments" / "manifests" / "gate_c_algorithm_freeze.json"
+LOG = REPO / "docs" / "gate-c-decision-log.md"
+
+
+def run_verifier():
+    return subprocess.run(
+        [sys.executable, str(SCRIPT)],
+        capture_output=True, text=True, cwd=REPO,
+    )
+
+
+class FreezeHoldsTest(unittest.TestCase):
+    def test_the_freeze_verifies(self):
+        proc = run_verifier()
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+    def test_the_manifest_records_the_action_order(self):
+        manifest = json.loads(MANIFEST.read_text())
+        order = manifest["action_order"]
+        self.assertEqual(len(order), 3)
+        self.assertIn("deadline override", order[0])
+        self.assertIn("matched pairing", order[1])
+        self.assertIn("deficit rotation", order[2])
+
+    def test_the_decision_log_exists_and_is_referenced(self):
+        self.assertTrue(LOG.exists())
+        manifest = json.loads(MANIFEST.read_text())
+        self.assertEqual(manifest["decision_log"],
+                         "docs/gate-c-decision-log.md")
+        self.assertIn("2026-08-06", LOG.read_text())
+
+    def test_every_frozen_function_has_all_three_lock_sections(self):
+        manifest = json.loads(MANIFEST.read_text())
+        self.assertGreaterEqual(len(manifest["structural"]), 14)
+        self.assertEqual(set(manifest["tables"]),
+                         {"MEASURED_MODELS", "MEASURED_QUOTA_SECONDS",
+                          "MEASURED_EXTERNALITY"})
+        self.assertEqual(set(manifest["behavioural"]),
+                         {"matched_tenants", "mismatched_tenants",
+                          "feasible_deadline"})
+
+
+class FreezeCanFailTest(unittest.TestCase):
+    """The lock has to bite, and only on what it claims to lock."""
+
+    def _with_source(self, path: pathlib.Path, replacement):
+        original = path.read_text()
+        try:
+            path.write_text(replacement(original))
+            return run_verifier()
+        finally:
+            path.write_text(original)
+
+    def test_a_changed_constant_breaks_it(self):
+        proc = self._with_source(
+            REPO / "src" / "burstserve" / "policies.py",
+            lambda s: s.replace("now: float, tolerance: float = 1.6)",
+                                "now: float, tolerance: float = 1.7)", 1),
+        )
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("step_matched_pairing", proc.stdout)
+
+    def test_a_changed_action_order_breaks_it(self):
+        """Swapping the branches is the change the gate names outright."""
+        proc = self._with_source(
+            REPO / "src" / "burstserve" / "policies.py",
+            lambda s: s.replace(
+                "    rescued = deadline_aware(states, units, now)",
+                "    rescued = {}  # order swapped", 1),
+        )
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("slo_aware_partitioning", proc.stdout)
+
+    def test_a_changed_measured_table_breaks_it(self):
+        proc = self._with_source(
+            REPO / "src" / "burstserve" / "trace_sim.py",
+            lambda s: s.replace('"serial_fraction": 0.391',
+                                '"serial_fraction": 0.392', 1),
+        )
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+
+    def test_reworded_prose_does_not_break_it(self):
+        """A freeze that fires on comments gets re-run without reading."""
+        proc = self._with_source(
+            REPO / "src" / "burstserve" / "policies.py",
+            lambda s: s.replace(
+                "    ``static_even`` wins 8.8% on matched tenants",
+                "    Even splitting wins 8.8% on matched tenants", 1),
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()
