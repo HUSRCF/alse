@@ -174,8 +174,31 @@ class QuotaCostModel:
                    measured_curve=tuple(sorted(curve.items())))
 
 
+# Every cost in this module -- step times and co-run penalties alike --
+# was measured at one workpoint per model: SDXL at 768x768, CogVideoX-2b
+# at 9 frames. That is not a formality. Co-runs at identical step-time
+# ratios measured 2026-08-06 put the per-step penalty at +22.4%/+24.5%
+# for SDXL at 768 and +76.6%/+78.9% at 832, and the sign of the
+# partitioning result flips with it: +16.6% at 768, -21.9% at 832.
+#
+# The simulator has no workpoint dimension, so it cannot represent that.
+# Results computed here are statements about these workpoints, and a
+# reader who carries them to another resolution is carrying a number the
+# measurements contradict.
+MEASURED_WORKPOINT: dict[str, str] = {
+    "sdxl": "768x768",
+    "cogvideox-2b": "9 frames",
+}
+
+
 def externality(own_units: int, peer_units: int | None) -> float:
-    """Slowdown factor for a tenant sharing the die with one peer."""
+    """Slowdown factor for a tenant sharing the die with one peer.
+
+    Keyed by quota alone. The measured penalty also depends strongly on
+    the workpoint -- see MEASURED_WORKPOINT -- and this function silently
+    assumes the one the table was built at, because a trace does not
+    carry a resolution to key on.
+    """
     if peer_units is None:
         return 1.0
     key = (own_units, peer_units)

@@ -24,6 +24,7 @@ from burstserve.trace_sim import (
     MEASURED_EXTERNALITY,
     MEASURED_MODELS,
     MEASURED_QUOTA_SECONDS,
+    MEASURED_WORKPOINT,
 )
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -180,6 +181,49 @@ class TablesDeclareWhatTheyAre(unittest.TestCase):
         cogvideox = MEASURED_QUOTA_SECONDS["cogvideox-2b"][32]
         self.assertGreater(cogvideox / sdxl, 3.0)
         self.assertLess(cogvideox / sdxl, 8.0)
+
+
+class WorkpointIsDeclared(unittest.TestCase):
+    """The tables hold one workpoint per model, and must say which.
+
+    Co-runs on 2026-08-06 measured the per-step penalty at +22.4%/+24.5%
+    for SDXL at 768 and +76.6%/+78.9% at 832, with the step-time ratio
+    held at 1.000 -- and the partitioning result flips sign across that
+    step, from +16.6% to -21.9%. The simulator has no workpoint
+    dimension, so the only defence against a result being carried
+    somewhere it does not hold is saying plainly where it was measured.
+    """
+
+    def test_every_model_declares_its_workpoint(self):
+        self.assertEqual(sorted(MEASURED_WORKPOINT),
+                         sorted(MEASURED_QUOTA_SECONDS))
+        for model, workpoint in MEASURED_WORKPOINT.items():
+            with self.subTest(model=model):
+                self.assertTrue(workpoint.strip())
+
+    def test_the_declared_workpoint_matches_the_probe(self):
+        """SDXL's curve came from a 768 run; the declaration has to agree."""
+        if not SDXL_CURVE.exists():
+            self.skipTest(f"probe not present: {SDXL_CURVE.name}")
+        payload = json.loads(SDXL_CURVE.read_text())
+        cells = [c for c in payload["cells"] if c.get("status") == "ok"]
+        self.assertTrue(cells)
+        for cell in cells:
+            with self.subTest(units=cell.get("requested_units")):
+                self.assertEqual(cell["height"], 768)
+                self.assertEqual(cell["width"], 768)
+        self.assertEqual(MEASURED_WORKPOINT["sdxl"], "768x768")
+
+    def test_the_externality_probe_is_at_the_same_workpoint(self):
+        """A penalty from one resolution applied to costs from another is
+        the defect this whole section exists to prevent."""
+        if not SDXL_CORUN.exists():
+            self.skipTest(f"probe not present: {SDXL_CORUN.name}")
+        payload = json.loads(SDXL_CORUN.read_text())
+        for key in ("a", "b"):
+            with self.subTest(side=key):
+                self.assertEqual(payload["sides"][key]["height"], 768)
+                self.assertEqual(payload["sides"][key]["width"], 768)
 
 
 if __name__ == "__main__":
