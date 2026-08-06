@@ -1,0 +1,92 @@
+{
+  "model": "sdxl",
+  "resolution": 768,
+  "believed_step_seconds_at_full": 0.1521,
+  "measured_step_seconds_at_full": 0.11551602608816965,
+  "rows": [
+    {
+      "units": 4,
+      "believed_s": 0.767704574100427,
+      "measured_s": 0.5214095023018973,
+      "relative_error": 0.4723639878276025,
+      "was_measured_quota": true
+    },
+    {
+      "units": 8,
+      "believed_s": 0.4037653588127669,
+      "measured_s": 0.2687491367885045,
+      "relative_error": 0.5023875560594455,
+      "was_measured_quota": true
+    },
+    {
+      "units": 12,
+      "believed_s": 0.28471982110185,
+      "measured_s": 0.19349550301688057,
+      "relative_error": 0.47145446102182037,
+      "was_measured_quota": true
+    },
+    {
+      "units": 16,
+      "believed_s": 0.22859835332384634,
+      "measured_s": 0.15749635096958706,
+      "relative_error": 0.4514517442247869,
+      "was_measured_quota": true
+    },
+    {
+      "units": 20,
+      "believed_s": 0.1971517788168327,
+      "measured_s": 0.1386692831856864,
+      "relative_error": 0.42174080868965624,
+      "was_measured_quota": true
+    },
+    {
+      "units": 24,
+      "believed_s": 0.17689857694653388,
+      "measured_s": 0.12493263026646206,
+      "relative_error": 0.4159517539111796,
+      "was_measured_quota": true
+    },
+    {
+      "units": 28,
+      "believed_s": 0.16174732669241718,
+      "measured_s": 0.12056302969796318,
+      "relative_error": 0.34159971840148423,
+      "was_measured_quota": true
+    },
+    {
+      "units": 32,
+      "believed_s": 0.1521,
+      "measured_s": 0.11551602608816965,
+      "relative_error": 0.3167004194197868,
+      "was_measured_quota": true
+    }
+  ],
+  "worst_relative_error": 0.5023875560594455,
+  "proposed": {
+    "MEASURED_MODELS[sdxl]": {
+      "step_seconds_at_full": 0.115516,
+      "resolution": "768x768"
+    },
+    "MEASURED_QUOTA_SECONDS[sdxl]": {
+      "4": 0.52141,
+      "8": 0.268749,
+      "12": 0.193496,
+      "16": 0.157496,
+      "20": 0.138669,
+      "24": 0.124933,
+      "28": 0.120563,
+      "32": 0.115516
+    }
+  },
+  "current_quota_table": {
+    "4": 24.828,
+    "8": 13.058,
+    "12": 9.208,
+    "16": 7.393,
+    "20": 6.376,
+    "24": 5.721,
+    "28": 5.231,
+    "32": 4.919
+  },
+  "note": "Nothing is written to the source. Changing a frozen table requires a decision-log entry and a re-freeze; a script that edited it directly would bypass the check that makes it trustworthy."
+}
