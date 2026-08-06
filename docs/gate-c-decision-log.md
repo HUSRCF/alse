@@ -496,3 +496,44 @@ comparing single runs drawn from a bimodal distribution: the 768-cold
 run happened to land low and everything it was compared against happened
 to land high. Five repeats would have shown that at any point. Single
 co-run measurements are not evidence and are not to be used as such.
+
+### 2026-08-06 — the state is fixed at launch, and the low state is the minority
+
+Six more repeats with widened telemetry, plus per-sample time series
+from the earlier five.
+
+**The state does not develop; it is there from the first sample.**
+
+| run | first samples (ms/step) | middle | last |
+| --- | --- | --- | --- |
+| rep2 (low) | 200 200 200 200 200 | 192 192 191 191 192 | 192 192 192 192 192 |
+| rep5 (high) | 312 313 313 312 313 | 272 270 268 266 265 | 284 283 282 281 225 |
+| diag6 (high) | 312 315 322 304 292 | 290 290 290 292 291 | 291 290 288 291 291 |
+
+A run is in one state or the other before its first measured step. This
+rules out the explanation that a longer co-run window catches more fast
+samples, which the window lengths had suggested (the two low runs used
+90 s and the earlier low ones 150 s, while all six 60 s runs went high).
+
+**Widened telemetry does not separate them either.** Memory clock
+(96-1258 MHz), fabric clock (219 MHz fixed), SoC clock (417-1280 MHz)
+and GPU utilisation (3-100%) are identical across all six high-state
+runs, and no low-state run has this telemetry because none has occurred
+since it was added.
+
+**The distribution so far: 9 high, 2 low, out of 11.** Both low runs
+came from the middle of one sequence. Nothing in the recorded conditions
+distinguishes them from their neighbours.
+
+**Consequence, at the current state of knowledge.** Weighting by
+observed frequency rather than picking a mode, the expected externality
+is about 1.68, and partitioning loses. The claim of a utilisation gain
+requires the low state, and the low state is neither the majority nor
+currently reproducible on demand.
+
+What remains true: the low state is real, occurred twice, and both times
+was internally stable to 0.2-0.9% cv. Something selects it at launch.
+The search has narrowed to what differs between two processes' launches
+-- queue assignment, allocation placement, or launch timing -- and away
+from thermal state, power, clocks and the CU mask, all of which are now
+measured and none of which separate the states.
