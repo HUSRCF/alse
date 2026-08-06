@@ -436,3 +436,63 @@ are the first to meet that standard.
 This is the fourth time in this project that a property of the
 measurement has been read as a property of the thing measured, and the
 first time it reversed a conclusion I had already written into plan.md.
+
+### 2026-08-06 — the co-run measurement is bistable (retraction of the thermal explanation, and a threat to the claim)
+
+The entry above blames the power cap. That is also wrong, and the
+correction matters more than either of the two it replaces.
+
+Five repeats of one configuration — SDXL 768x768, 16+16 units, each from
+a controlled thermal start at 41-47 C:
+
+| run | start | peak | peak power | co-run/step | per-step externality |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 41 C | 89 C | 320 W | 281.6 ms | **+77.6% / +80.0%** |
+| 2 | 47 C | 90 C | 312 W | 192.0 ms | **+20.6% / +21.8%** |
+| 3 | 47 C | 90 C | 309 W | 193.6 ms | **+22.2% / +21.8%** |
+| 4 | 47 C | 89 C | 351 W | 280.1 ms | **+76.4% / +82.3%** |
+| 5 | 47 C | 90 C | 318 W | 282.5 ms | **+77.5% / +80.0%** |
+
+Two states, nothing between them. Within each state the runs agree to
+about 1% and the per-sample cv is 0.2-0.9% in the low state. Thermal
+telemetry does not separate them: every run peaks at 89-90 C, draws
+309-351 W, and spans the same clock range. Nor does the CU mask —
+requested, readback, popcount and multiProcessorCount are identical in
+all five.
+
+The high state's 1.77x is close to the 2.0x that complete serialisation
+would give, which points at kernel concurrency degrading rather than at
+contention increasing. What decides it is not yet known.
+
+**Consequence for the claim, stated plainly.** Rerunning Gate C's
+matched-tenant scenario with each state's externality:
+
+- low state (2 of 5 runs): partitioning **+20.8%** over the full die
+- high state (3 of 5 runs): partitioning **−17.8%**
+
+The result the project reports depends on which state the die happens to
+be in, and the majority of observed runs are in the state where spatial
+partitioning loses. `MEASURED_EXTERNALITY[(16,16)] = 1.234` is the low
+state — it is one of two modes, not a central value, and it is the
+minority mode.
+
+**What this does not change.** The cost tables are per-tenant solo
+measurements and are unaffected: solo per-step is 1.957-1.992 s across
+all five runs. The simulator's logic, the accounting, the lag bound and
+the freeze are all untouched. Gate C's criteria are about the scheduler
+given a cost model; what is now in question is the cost model's
+externality entry and, through it, whether the utilisation claim holds
+at all.
+
+**Status of the claim: open.** Not withdrawn — the low state is real and
+reproducible, and if the state proves controllable the claim stands with
+a condition attached. Not established either. Determining what selects
+the state is now the project's blocking question, ahead of any further
+scheduler work.
+
+**Earlier retractions in this thread, for the record.** The "workpoint
+threshold" and the "power cap" explanations were both artifacts of
+comparing single runs drawn from a bimodal distribution: the 768-cold
+run happened to land low and everything it was compared against happened
+to land high. Five repeats would have shown that at any point. Single
+co-run measurements are not evidence and are not to be used as such.
