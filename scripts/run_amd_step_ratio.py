@@ -81,7 +81,7 @@ def run_cell(*, model: str, height: int, width: int, frames: int, units: int,
     record = json.loads(body[-1])
     record["status"] = "ok"
     record["requested_units"] = units
-    record["workpoint"] = f"{model}@{width}x{height}"
+    record["workpoint"] = f"{model}@{width}x{height}/{units}u"
     record["wall_s"] = time.time() - started
     return record
 
@@ -112,10 +112,12 @@ def main() -> int:
     parser.add_argument("--model", default="sdxl")
     parser.add_argument("--sizes", default="1024,1152,1280,1408,1536",
                         help="square resolutions to profile")
-    parser.add_argument("--units", type=int, default=16,
-                        help="quota to measure at; the pairing rule reads "
-                             "the half-die prediction, so 16 is the "
-                             "meaningful one")
+    parser.add_argument("--units", default="16",
+                        help="comma-separated quotas to measure at. The "
+                             "pairing rule reads the half-die prediction, "
+                             "so 16 is the meaningful one for tolerance "
+                             "work; a full list rebuilds the per-step "
+                             "quota curve without going through call times")
     parser.add_argument("--steps", type=int, default=8)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--samples", type=int, default=8)
@@ -128,13 +130,15 @@ def main() -> int:
     args = parser.parse_args()
 
     sizes = [int(s) for s in args.sizes.split(",") if s.strip()]
+    quotas = [int(u) for u in str(args.units).split(",") if u.strip()]
     rows = []
     for size in sizes:
+      for units in quotas:
         print(f"[{time.strftime('%H:%M:%S')}] {args.model} @ {size}x{size}, "
-              f"{args.units} units", flush=True)
+              f"{units} units", flush=True)
         row = run_cell(
             model=args.model, height=size, width=size, frames=args.frames,
-            units=args.units, steps=args.steps, warmup=args.warmup,
+            units=units, steps=args.steps, warmup=args.warmup,
             samples=args.samples, target_cv=args.target_cv,
             max_samples=args.max_samples, seed=args.seed,
             vae_tiling=args.vae_tiling,
@@ -151,9 +155,14 @@ def main() -> int:
 
     usable = [r for r in rows
               if r["status"] == "ok" and per_step_seconds(r) is not None]
+    # Ratios only within one quota: comparing a 16-unit cell against a
+    # 32-unit one is a quota curve, not a tenant-pairing ratio, and the
+    # pairing rule never compares across quotas.
     ratios = []
     for i, left in enumerate(usable):
         for right in usable[i + 1:]:
+            if left["requested_units"] != right["requested_units"]:
+                continue
             a, b = per_step_seconds(left), per_step_seconds(right)
             lo, hi = min(a, b), max(a, b)
             ratios.append({
@@ -164,14 +173,21 @@ def main() -> int:
             })
     ratios.sort(key=lambda r: r["ratio"] if r["ratio"] else 0.0)
 
+    curve = {}
+    for row in usable:
+        curve.setdefault(row["size"], {})[row["requested_units"]] = (
+            per_step_seconds(row)
+        )
+
     payload = {
-        "schema_version": "burstserve.amd-step-ratio/v1",
+        "schema_version": "burstserve.amd-step-ratio/v2",
+        "per_step_quota_curve": curve,
         "purpose": (
             "supply measured step-time ratios between 1.0 and 3.4 so the "
             "frozen 1.6 pairing tolerance can be tested rather than assumed"
         ),
         "model": args.model,
-        "units": args.units,
+        "units": quotas,
         "note": (
             "measured at the half-die quota the pairing rule reads; ratios "
             "are not quota-invariant under Amdahl's form, so a full-die "
