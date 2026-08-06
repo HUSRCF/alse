@@ -2580,3 +2580,25 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
   **单一系数不可用**——这正是 plan 要求「pairwise externality table」
   而非一个标量的原因,现已由数据证实。
   原始记录 `experiments/probes/amd-r9700-cu-mask/externality_table_20260806.json`。
+- 2026-08-06 / framework-cost-is-strongly-model-dependent：CogVideoX-2b 的
+  load 分解与 SDXL 对比,显示 **framework 开销是强烈模型相关的量,跨模型相差
+  一个数量级**,这为 cold-model 条款的困难提供了第三条独立证据。
+  | | SDXL | CogVideoX-2b |
+  |---|---|---|
+  | 张量数 / 权重 | 2643 / 6.94 GB | 1392 / 15.63 GB |
+  | 平均张量 | 2.6 MB | 11.2 MB |
+  | `.to()` warm 中位 | 0.437 s | 1.585 s |
+  | profiler 直测 transfer | 0.251 s(**57.3%**) | 0.555 s(**35.0%**) |
+  | framework | 0.187 s(**70.6 μs/张量**) | 1.030 s(**739.8 μs/张量**) |
+  **framework 每张量相差 10.5 倍**,且方向与张量尺寸相反——CogVideoX 的张量
+  平均大 4.3 倍、数量少一半,per-tensor 开销却高一个数量级。故
+  **framework 不是「每张量一个常数」,也不由张量尺寸决定**;它取决于模型的
+  模块结构与 pipeline 的组件组织,而那不是 profiling 能廉价外推的量。
+  **对 cold-model 条款的意义**:此前已确认 (a) 同步路径下 transfer 与
+  framework 无干净边界、(b) 五种标定方式给出 2–32 μs/张量而真值 18.7,
+  现再加 (c) **真值本身跨模型相差 10 倍**。三者合起来说明:
+  **在改造加载路径(pinned + 异步 + 预分配池)之前,该条款不具备可达性**,
+  而不是标定方法还没找对。此结论已足以支撑把该条款移交 runtime 阶段。
+  **附带的正面结果**:CogVideoX-2b 的 resident 轮转同样零权重流量——
+  1/3/5 轮转的 HtoD 拷贝次数斜率为 0,上界 10.00 MB 对容差 156.30 MB
+  (权重 15.63 GB 的 1%)。**该结论在两个模型上独立成立。**
