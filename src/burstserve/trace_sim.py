@@ -167,6 +167,9 @@ class RequestState:
     finished_s: float | None = None
     service_seconds: float = 0.0
     quota_seconds: float = 0.0     # units x seconds, the accounting currency
+    # What the scheduler was told, refreshed before each decision. Never
+    # used to charge or to advance time -- only to choose.
+    predicted_step_seconds: dict[int, float] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -248,6 +251,44 @@ class Trace:
 Policy = Callable[[Sequence[RequestState], int, float], dict[int, int]]
 
 
+class Predictor:
+    """What the scheduler believes a step costs, which is not what it costs.
+
+    Gate C requires safe degradation at +/-5%, 10% and 20% predictor error.
+    Modelling that needs the belief and the truth kept apart: a simulator
+    where the policy reads the true cost cannot degrade at all, and would
+    report perfect robustness for a scheduler that has none.
+
+    Error is drawn once per (request, quota) and cached, so a policy that
+    asks twice gets one answer. A predictor that returned a fresh sample
+    each call would let a policy average the noise away by asking
+    repeatedly, which no real predictor permits.
+    """
+
+    def __init__(self, *, relative_error: float = 0.0, seed: int = 0):
+        if relative_error < 0:
+            raise ValueError("relative_error is a magnitude; use >= 0")
+        self.relative_error = relative_error
+        self._rng = random.Random(seed)
+        self._cache: dict[tuple[int, int], float] = {}
+
+    def step_seconds(self, request_id: int, model: str, units: int) -> float:
+        key = (request_id, units)
+        if key not in self._cache:
+            true_cost = QuotaCostModel.for_model(model).step_seconds(units)
+            if self.relative_error:
+                factor = 1.0 + self._rng.uniform(
+                    -self.relative_error, self.relative_error
+                )
+            else:
+                factor = 1.0
+            self._cache[key] = true_cost * factor
+        return self._cache[key]
+
+    def is_exact(self) -> bool:
+        return self.relative_error == 0.0
+
+
 @dataclass
 class SimulationResult:
     """Everything a Gate C criterion is judged on, and nothing derived."""
@@ -259,6 +300,7 @@ class SimulationResult:
     service_seconds_by_tenant: dict[str, float]
     steps_executed: int
     unmeasured_pairings: list[tuple[int, int]]
+    predictor_relative_error: float = 0.0
 
     def jain_index(self) -> float:
         """Fairness over the accounting currency, not over wall time.
@@ -325,6 +367,7 @@ def simulate(
     maskable_units: int = 32,
     quantum_s: float = 0.25,
     seed: int = 0,
+    predictor: "Predictor | None" = None,
 ) -> SimulationResult:
     """Run a trace under a policy.
 
@@ -339,8 +382,11 @@ def simulate(
     if quantum_s <= 0:
         raise ValueError("quantum must be positive")
 
-    rng = random.Random(seed)          # owned, never the global module
-    del rng                            # reserved for predictor error later
+    # The scheduler's beliefs. Execution always uses the true cost below,
+    # so an inaccurate predictor degrades the decisions without corrupting
+    # the measurement of what those decisions cost.
+    if predictor is None:
+        predictor = Predictor(relative_error=0.0, seed=seed)
 
     costs = {name: QuotaCostModel.for_model(name) for name in MEASURED_MODELS}
     pending = list(trace.requests)
@@ -377,6 +423,13 @@ def simulate(
         ordered = sorted(
             runnable, key=lambda s: (s.request.arrival_s, s.request.request_id)
         )
+        for state in ordered:
+            state.predicted_step_seconds = {
+                units: predictor.step_seconds(
+                    state.request.request_id, state.request.model, units
+                )
+                for units in (4, 8, 12, 16, 20, 24, 28, 32)
+            }
         assignment = policy(ordered, maskable_units, now)
         granted = {
             rid: units for rid, units in sorted(assignment.items())
@@ -457,4 +510,5 @@ def simulate(
         service_seconds_by_tenant=dict(sorted(service_seconds.items())),
         steps_executed=steps_executed,
         unmeasured_pairings=sorted(unmeasured),
+        predictor_relative_error=predictor.relative_error,
     )

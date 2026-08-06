@@ -99,3 +99,54 @@ BASELINES = {
     "static_even": static_even,
     "measured_pairs_only": measured_pairs_only,
 }
+
+
+def deadline_aware(states: Sequence[RequestState], units: int,
+                   now: float) -> dict[int, int]:
+    """Split by default; go exclusive only when it changes an outcome.
+
+    Splitting is worth 8.8% throughput, so giving the whole die to one
+    request has to buy something. It buys nothing for a request that will
+    miss either way, and nothing for one that will make it either way. It
+    is worth doing only in the band between: the request misses if it
+    shares and makes it if it does not.
+
+    Every comparison uses ``predicted_step_seconds``, never the true cost,
+    so an inaccurate predictor mislabels which band a request is in --
+    which is what "safe degradation" has to be measured against. A policy
+    that peeked at the truth would look perfectly robust while being
+    nothing of the kind.
+    """
+    if not states:
+        return {}
+    half = units // 2
+
+    def believed(state: RequestState, quota: int) -> float:
+        per_step = state.predicted_step_seconds.get(quota)
+        if per_step is None:
+            return float("inf")
+        return (state.request.steps - state.steps_done) * per_step
+
+    rescuable = []
+    for state in states:
+        deadline = state.request.deadline_s
+        if deadline is None:
+            continue
+        left = deadline - now
+        if believed(state, half) <= left:
+            continue                      # makes it while sharing
+        if believed(state, units) > left:
+            continue                      # misses even with the whole die
+        rescuable.append(state)
+
+    if rescuable:
+        # Tightest first, and only one -- the die cannot be given twice.
+        target = min(
+            rescuable,
+            key=lambda s: (s.request.deadline_s - now, s.request.request_id),
+        )
+        return {target.request.request_id: units}
+    return static_even(states, units, now)
+
+
+BASELINES["deadline_aware"] = deadline_aware

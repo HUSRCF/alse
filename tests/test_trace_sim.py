@@ -335,5 +335,154 @@ class MeasuredCurvePreferredTest(unittest.TestCase):
         self.assertLess(model.step_seconds(16), between)
         self.assertLess(between, model.step_seconds(12))
 
+
+class PredictorDegradationTest(unittest.TestCase):
+    """Gate C: safe degradation at +/-5%, 10% and 20% predictor error.
+
+    "Safe" is given a testable meaning: a policy that consults a predictor
+    must never, at any error level, do worse than the same scheduler with
+    no predictor at all. Wrong beliefs may cost the benefit; they must not
+    cost more than the benefit.
+    """
+
+    RATE, SLACK, HORIZON = 0.30, 4.0, 120.0
+
+    def _trace(self):
+        return Trace.poisson(
+            seed=11, tenants=(("a", "sdxl"), ("b", "sdxl")),
+            rate_per_s=self.RATE, horizon_s=self.HORIZON, steps=20,
+            deadline_slack=self.SLACK,
+        )
+
+    def _misses(self, policy, error, seeds=range(5)):
+        from burstserve.trace_sim import Predictor
+
+        trace = self._trace()
+        return [
+            len(simulate(trace, policy, horizon_s=self.HORIZON,
+                         predictor=Predictor(relative_error=error, seed=s))
+                .deadline_misses())
+            for s in seeds
+        ]
+
+    def test_the_scenario_is_sensitive_enough_to_tell_policies_apart(self):
+        """Otherwise the robustness result would be about nothing.
+
+        An overloaded trace misses everything regardless of policy, and an
+        underloaded one misses nothing; either would report perfect
+        robustness for a scheduler that ignores its predictor.
+        """
+        from burstserve.policies import deadline_aware, static_even
+
+        informed = self._misses(deadline_aware, 0.0)[0]
+        blind = self._misses(static_even, 0.0)[0]
+        self.assertLess(informed, blind)
+        self.assertGreater(blind, 0)
+
+    def test_no_error_level_is_worse_than_ignoring_the_predictor(self):
+        from burstserve.policies import deadline_aware, static_even
+
+        blind = self._misses(static_even, 0.0)[0]
+        for error in (0.05, 0.10, 0.20):
+            with self.subTest(error=error):
+                worst = max(self._misses(deadline_aware, error))
+                self.assertLessEqual(
+                    worst, blind,
+                    f"at {error:.0%} error the worst case ({worst}) is worse "
+                    f"than not predicting at all ({blind})",
+                )
+
+    def test_degradation_is_gradual_rather_than_a_cliff(self):
+        from burstserve.policies import deadline_aware
+
+        exact = sum(self._misses(deadline_aware, 0.0)) / 5
+        worst = sum(self._misses(deadline_aware, 0.20)) / 5
+        self.assertLess(abs(worst - exact) / max(exact, 1.0), 0.5)
+
+    def test_a_policy_ignoring_the_predictor_is_unaffected_by_its_error(self):
+        """The control: error must reach the result only through decisions."""
+        from burstserve.policies import static_even
+
+        self.assertEqual(
+            set(self._misses(static_even, 0.0)),
+            set(self._misses(static_even, 0.20)),
+        )
+
+
+class PredictorMechanicsTest(unittest.TestCase):
+    def test_an_exact_predictor_returns_the_true_cost(self):
+        from burstserve.trace_sim import Predictor
+
+        predictor = Predictor(relative_error=0.0, seed=1)
+        self.assertTrue(predictor.is_exact())
+        self.assertAlmostEqual(
+            predictor.step_seconds(0, "sdxl", 16),
+            QuotaCostModel.for_model("sdxl").step_seconds(16),
+            places=12,
+        )
+
+    def test_the_same_question_gets_the_same_answer(self):
+        """A predictor that resampled would let a policy average away its
+        own error by asking repeatedly, which no real predictor allows."""
+        from burstserve.trace_sim import Predictor
+
+        predictor = Predictor(relative_error=0.2, seed=1)
+        first = predictor.step_seconds(3, "sdxl", 16)
+        for _ in range(5):
+            self.assertEqual(predictor.step_seconds(3, "sdxl", 16), first)
+
+    def test_error_stays_within_the_declared_magnitude(self):
+        from burstserve.trace_sim import Predictor
+
+        truth = QuotaCostModel.for_model("sdxl").step_seconds(16)
+        predictor = Predictor(relative_error=0.1, seed=4)
+        for request_id in range(200):
+            value = predictor.step_seconds(request_id, "sdxl", 16)
+            self.assertLessEqual(abs(value - truth) / truth, 0.1 + 1e-12)
+
+    def test_a_negative_error_magnitude_is_refused(self):
+        from burstserve.trace_sim import Predictor
+
+        with self.assertRaises(ValueError):
+            Predictor(relative_error=-0.1)
+
+
+class FeasibleTraceTest(unittest.TestCase):
+    """Gate C: a feasible deadline trace has no avoidable miss."""
+
+    def test_a_feasible_trace_is_served_without_misses(self):
+        from burstserve.policies import deadline_aware, static_even
+
+        trace = Trace.poisson(
+            seed=11, tenants=(("a", "sdxl"), ("b", "sdxl")),
+            rate_per_s=0.30, horizon_s=120.0, steps=20, deadline_slack=8.0,
+        )
+        for policy in (static_even, deadline_aware):
+            with self.subTest(policy.__name__):
+                result = simulate(trace, policy, horizon_s=120.0)
+                self.assertEqual(result.deadline_misses(), [])
+                # Requests still running at the horizon are not misses --
+                # their deadlines have not arrived. Asserted explicitly so
+                # that "no misses" cannot be satisfied by a horizon that
+                # simply ended before anything was due.
+                for state in result.unfinished:
+                    self.assertIsNotNone(state.request.deadline_s)
+                    self.assertGreater(
+                        state.request.deadline_s, result.horizon_s
+                    )
+                self.assertGreater(len(result.completed), 0.9 * len(trace))
+
+    def test_the_feasibility_margin_is_not_trivially_wide(self):
+        """Halving the slack must produce misses, or the test above passes
+        on a trace no scheduler could fail."""
+        from burstserve.policies import static_even
+
+        tight = Trace.poisson(
+            seed=11, tenants=(("a", "sdxl"), ("b", "sdxl")),
+            rate_per_s=0.30, horizon_s=120.0, steps=20, deadline_slack=4.0,
+        )
+        result = simulate(tight, static_even, horizon_s=120.0)
+        self.assertGreater(len(result.deadline_misses()), 0)
+
 if __name__ == "__main__":
     unittest.main()
