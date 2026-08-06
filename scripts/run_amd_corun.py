@@ -189,11 +189,23 @@ def restrict_to_overlap(record_a: dict, record_b: dict, minimum: float) -> dict:
         "minimum_overlap_fraction": minimum,
     }
     for key, record in (("a", record_a), ("b", record_b)):
-        inside = [
-            w["s"] for w in record["sample_windows"]
-            if w["start_wall"] >= start and w["end_wall"] <= end
-        ]
-        side = {"samples_total": len(record["sample_windows"]),
+        windows = record["sample_windows"]
+        totals = record.get("per_sample_step_totals") or []
+        counts = record.get("per_sample_step_counts") or []
+        inside: list[float] = []
+        inside_steps: list[float] = []
+        for index, window in enumerate(windows):
+            if not (window["start_wall"] >= start
+                    and window["end_wall"] <= end):
+                continue
+            inside.append(window["s"])
+            # Per-step means for the same samples, by index. A call's
+            # duration and its step times have to come from one sample:
+            # pairing one sample's duration with another's steps would
+            # read as noise rather than as the mistake it is.
+            if index < len(totals) and index < len(counts) and counts[index]:
+                inside_steps.append(totals[index] / counts[index])
+        side = {"samples_total": len(windows),
                 "samples_in_overlap": len(inside)}
         if len(inside) >= 2:
             ordered = sorted(inside)
@@ -203,6 +215,10 @@ def restrict_to_overlap(record_a: dict, record_b: dict, minimum: float) -> dict:
                 "mean_s": statistics.mean(inside),
                 "cv": statistics.stdev(inside) / statistics.mean(inside),
             })
+        if len(inside_steps) >= 2:
+            ordered_steps = sorted(inside_steps)
+            side["per_step_p50_s"] = ordered_steps[len(ordered_steps) // 2]
+            side["per_step_samples"] = len(inside_steps)
         result[key] = side
     return result
 
@@ -356,15 +372,35 @@ def main() -> int:
             if "p50_s" in side:
                 side["solo_p50_s"] = solo_rec["p50_s"]
                 side["externality"] = side["p50_s"] / solo_rec["p50_s"] - 1.0
+            # Both penalties are reported because they are different
+            # quantities and the scheduler needs the second one. A call is
+            # denoising steps plus a VAE decode; if two tenants do not
+            # overlap during each other's decode, the call-level penalty is
+            # diluted by a term the per-step penalty does not contain, and
+            # using it understates what sharing costs per decision.
+            solo_steps = None
+            if solo_rec.get("per_step_count"):
+                solo_steps = (solo_rec["per_step_total_s"]
+                              / solo_rec["per_step_count"])
+            if solo_steps and "per_step_p50_s" in side:
+                side["solo_per_step_s"] = solo_steps
+                side["per_step_externality"] = (
+                    side["per_step_p50_s"] / solo_steps - 1.0
+                )
         print(f"\noverlap {overlap['overlap_seconds']:.1f}s "
               f"({overlap['overlap_fraction_of_longer_window']*100:.1f}% of the "
               f"longer window)  sufficient={overlap['sufficient_overlap']}")
         for key in ("a", "b"):
             side = overlap[key]
             if "externality" in side:
+                per_step_note = (
+                    f"  per-step {side['per_step_externality']*100:+.1f}%"
+                    if "per_step_externality" in side else ""
+                )
                 print(f"  {key}: solo p50 {side['solo_p50_s']:.3f}s -> "
                       f"co-run p50 {side['p50_s']:.3f}s  "
-                      f"externality {side['externality']*100:+.1f}%  "
+                      f"externality {side['externality']*100:+.1f}%"
+                      f"{per_step_note}  "
                       f"n={side['samples_in_overlap']}/{side['samples_total']} "
                       f"cv={side['cv']*100:.2f}%")
             else:

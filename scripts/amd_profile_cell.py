@@ -426,12 +426,20 @@ def main() -> int:
         return 2
 
     last_steps: list[float] = []
+    # Per-sample step times, not just the last call's. Externality measured
+    # on call durations is diluted by the VAE decode, which two tenants do
+    # not necessarily overlap in; the scheduler decides per step, so the
+    # penalty it needs is the per-step one. Keeping every sample's steps is
+    # what lets a co-run compute it.
+    per_sample_steps: list[list[float]] = []
     if collect_steps:
         inner = step
 
         def step():  # noqa: F811 - deliberate wrapper to capture step times
             last_steps.clear()
-            last_steps.extend(inner())
+            values = inner()
+            last_steps.extend(values)
+            per_sample_steps.append(list(values))
 
     sync = torch.cuda.synchronize
 
@@ -529,6 +537,14 @@ def main() -> int:
         "gcn_arch": torch.cuda.get_device_properties(0).gcnArchName,
         **extra,
     }
+    if per_sample_steps:
+        # The first `warmup` entries are warmup calls, which measure() runs
+        # before it starts recording. Dropping exactly that many keeps the
+        # step times aligned with the sample windows; a mismatch would pair
+        # one sample's duration with another's steps and read as noise.
+        measured_steps = per_sample_steps[args.warmup:]
+        record["per_sample_step_totals"] = [sum(v) for v in measured_steps]
+        record["per_sample_step_counts"] = [len(v) for v in measured_steps]
     if barrier is not None:
         record["barrier"] = barrier
         # Every sample's window, so the driver can keep only the ones that
