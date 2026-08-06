@@ -309,3 +309,47 @@ that was shipped, not merely the value it produced. None of today's
 corrections would have survived a day with that test in place.
 
 **Freeze re-issued.**
+
+### 2026-08-06 — the pairing rule tests the wrong quantity (finding, not yet a change)
+
+The frozen rule shares the die when two tenants' step times are within
+1.6x. Four measured co-runs say that ratio does not decide the question.
+
+| workpoint pair | step ratio | paired | rotating | pairing gain | rule pairs? |
+| --- | --- | --- | --- | --- | --- |
+| 768 vs 768 | 1.000 | 198.1 ms | 231.0 ms | **+16.6%** | yes ✓ |
+| 1024 vs 1024 | 1.000 | 531.1 ms | 401.0 ms | **−24.5%** | yes ✗ |
+| 1024 vs 1152 | 1.333 | 665.5 ms | 460.5 ms | −30.8% | yes ✗ |
+| 1024 vs 1280 | 1.693 | 796.1 ms | 533.3 ms | −33.0% | no ✓ |
+
+The first two rows are the control. Identical step times, identical
+ratio of 1.000, opposite verdicts. Whatever decides this, it is not the
+ratio the rule reads.
+
+What moves instead is the externality: +22.4%/+24.5% per step at 768
+against +71.2%/+81.1% at 1024. Both tenants hold the same 16 units in
+both cases; the larger working set is what turns sharing from a 16.6%
+win into a 24.5% loss. The rule's ratio test is a proxy for a quantity
+that behaves differently from it.
+
+**Where this leaves Gate C.** The simulation is internally consistent —
+its cost table and its externality entry were both measured at 768, and
+the +16.6% measured there is close to the +18.9% it computes. What
+cannot be claimed is that the result carries to other workpoints. It
+does not, and this is the measurement that shows it.
+
+**Why the rule is not changed in this entry.** The correct test compares
+makespans, `max(t_a(16)·e_a, t_b(16)·e_b)` against `t_a(32) + t_b(32)`,
+which needs a predicted externality per workpoint. The table has exactly
+one entry, at 768. Replacing a wrong proxy with a rule that requires
+data the project does not have would trade a visible error for a hidden
+one. The measurements come first.
+
+Recorded now so the limit travels with the claim:
+
+- Gate C's partitioning result holds at the workpoint it was measured
+  at. It is not a statement about SDXL, and not about spatial
+  partitioning in general.
+- The 1.6 tolerance has no measurement supporting it as a threshold. It
+  happens to give the right answer on the 1.693 pair and the wrong one
+  on the other three.

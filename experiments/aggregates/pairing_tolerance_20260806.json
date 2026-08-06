@@ -1,0 +1,127 @@
+{
+  "schema_version": "burstserve.pairing-tolerance/v1",
+  "frozen_tolerance": 1.6,
+  "results": [
+    {
+      "status": "ok",
+      "sides": {
+        "a": {
+          "workpoint": "768x768",
+          "solo_16": 0.15749635096958706,
+          "solo_32": 0.11551602608816965,
+          "corun_16": 0.19271697126116072,
+          "externality": 1.2237506407924141
+        },
+        "b": {
+          "workpoint": "768x768",
+          "solo_16": 0.15749635096958706,
+          "solo_32": 0.11551602608816965,
+          "corun_16": 0.19809704371861048,
+          "externality": 1.2447495564700233
+        }
+      },
+      "step_time_ratio": 1.0,
+      "paired_makespan_per_step_s": 0.19809704371861048,
+      "rotating_makespan_per_step_s": 0.2310320521763393,
+      "pairing_gain": 0.16625694073714592,
+      "pairing_wins": true,
+      "rule_would_pair": true,
+      "report": "corun_sdxl_768_perstep_16_16_20260806.json"
+    },
+    {
+      "status": "ok",
+      "sides": {
+        "a": {
+          "workpoint": "1024x1024",
+          "solo_16": 0.29019181169782365,
+          "solo_32": 0.20048633466448101,
+          "corun_16": 0.4990268162318639,
+          "externality": 1.7115573870552332
+        },
+        "b": {
+          "workpoint": "1024x1024",
+          "solo_16": 0.29019181169782365,
+          "solo_32": 0.20048633466448101,
+          "corun_16": 0.531118416922433,
+          "externality": 1.8108459438044133
+        }
+      },
+      "step_time_ratio": 1.0,
+      "paired_makespan_per_step_s": 0.531118416922433,
+      "rotating_makespan_per_step_s": 0.40097266932896203,
+      "pairing_gain": -0.24504092391975563,
+      "pairing_wins": false,
+      "rule_would_pair": true,
+      "report": "sdxl_1024_vs_1024_16_16_20260806.json"
+    },
+    {
+      "status": "ok",
+      "sides": {
+        "a": {
+          "workpoint": "1024x1024",
+          "solo_16": 0.29019181169782365,
+          "solo_32": 0.20048633466448101,
+          "corun_16": 0.5835877336774553,
+          "externality": 2.0041787392212767
+        },
+        "b": {
+          "workpoint": "1152x1152",
+          "solo_16": 0.38691709245954237,
+          "solo_32": 0.2600141296386719,
+          "corun_16": 0.6655150451660157,
+          "externality": 1.7107601840194973
+        }
+      },
+      "step_time_ratio": 1.3333149898193497,
+      "paired_makespan_per_step_s": 0.6655150451660157,
+      "rotating_makespan_per_step_s": 0.4605004643031529,
+      "pairing_gain": -0.3080540137326587,
+      "pairing_wins": false,
+      "rule_would_pair": true,
+      "report": "sdxl_1024_vs_1152_16_16_20260806.json"
+    },
+    {
+      "status": "ok",
+      "sides": {
+        "a": {
+          "workpoint": "1024x1024",
+          "solo_16": 0.29019181169782365,
+          "solo_32": 0.20048633466448101,
+          "corun_16": 0.6217702854701451,
+          "externality": 2.13679208074118
+        },
+        "b": {
+          "workpoint": "1280x1280",
+          "solo_16": 0.4913157958984375,
+          "solo_32": 0.3328626926967076,
+          "corun_16": 0.7960945608956473,
+          "externality": 1.6100813984139737
+        }
+      },
+      "step_time_ratio": 1.6930725681882575,
+      "paired_makespan_per_step_s": 0.7960945608956473,
+      "rotating_makespan_per_step_s": 0.5333490273611886,
+      "pairing_gain": -0.33004312105694644,
+      "pairing_wins": false,
+      "rule_would_pair": false,
+      "report": "sdxl_1024_vs_1280_16_16_20260806.json"
+    }
+  ],
+  "rule_agrees_with_measurement": false,
+  "disagreements": [
+    {
+      "ratio": 1.0,
+      "rule_pairs": true,
+      "pairing_wins": false,
+      "report": "sdxl_1024_vs_1024_16_16_20260806.json"
+    },
+    {
+      "ratio": 1.3333149898193497,
+      "rule_pairs": true,
+      "pairing_wins": false,
+      "report": "sdxl_1024_vs_1152_16_16_20260806.json"
+    }
+  ],
+  "highest_ratio_where_pairing_wins": 1.0,
+  "lowest_ratio_where_pairing_loses": 1.0
+}

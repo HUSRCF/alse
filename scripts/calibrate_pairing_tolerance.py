@@ -48,8 +48,18 @@ def per_step_solo(curve_payload: dict, units: int) -> dict[str, float]:
         count = cell.get("per_step_count")
         if not total or not count:
             continue
-        label = cell.get("shape") or str(cell.get("size"))
-        out[label] = total / count
+        # Normalise to the co-run's label form. The step-ratio runs
+        # predate the shape field and record a bare size; the co-run
+        # reports width x height. Matching them by string is what lets a
+        # solo curve and a co-run describe the same workpoint.
+        shape = cell.get("shape")
+        if shape and "x" not in shape:
+            shape = None
+        if not shape:
+            size = cell.get("size")
+            shape = f"{size}x{size}" if size else None
+        if shape:
+            out[shape] = total / count
     return out
 
 
@@ -99,17 +109,22 @@ def analyse(corun: dict, solo16: dict[str, float],
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--curve-16", type=pathlib.Path, required=True,
-                        help="step-ratio run at 16 units")
-    parser.add_argument("--curve-32", type=pathlib.Path, required=True,
-                        help="step-ratio run at 32 units")
+    parser.add_argument("--curve", type=pathlib.Path, nargs="+",
+                        required=True,
+                        help="step-ratio runs supplying solo per-step "
+                             "times; pass as many as needed to cover every "
+                             "workpoint the co-runs use")
     parser.add_argument("--corun", type=pathlib.Path, nargs="+",
                         required=True)
     parser.add_argument("--out", type=pathlib.Path)
     args = parser.parse_args()
 
-    solo16 = per_step_solo(json.loads(args.curve_16.read_text()), 16)
-    solo32 = per_step_solo(json.loads(args.curve_32.read_text()), 32)
+    solo16: dict[str, float] = {}
+    solo32: dict[str, float] = {}
+    for path in args.curve:
+        payload = json.loads(path.read_text())
+        solo16.update(per_step_solo(payload, 16))
+        solo32.update(per_step_solo(payload, 32))
 
     results = []
     for path in args.corun:
