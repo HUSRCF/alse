@@ -377,3 +377,62 @@ two-tenant total already exceeded L2 at 768 where sharing was
 profitable. Recorded as an unexplained step with the cache size noted,
 not as a cache explanation: the numbers rule out the simple version of
 that story, and no measurement here distinguishes the alternatives.
+
+### 2026-08-06 — the workpoint threshold was a thermal artifact (retraction)
+
+The two entries above report that pairing pays at 768 and loses at every
+larger workpoint, that the transition is a 16-pixel step, and that the
+frozen rule therefore tests the wrong quantity. **The first two of those
+are wrong.** The measurements were confounded by the GPU's power and
+thermal state, not by the workpoint.
+
+768x768, 16+16 units, three independent runs of the same configuration:
+
+| run | solo/step | co-run/step | externality |
+| --- | --- | --- | --- |
+| original (first co-run of the day, cold) | 157.5 ms | 192.7 ms | **+22.4%** |
+| replicate (after hours of continuous runs) | 157.1 ms | 282.8 ms | **+80.1%** |
+| replicate after cooling to 45 C | 159.0 ms | 192.7 ms | **+21.2%** |
+
+Solo cost is identical across all three to within 1%. The two cold
+co-runs agree to the millisecond. Only the hot one differs, and it
+differs by 47%.
+
+Thermal telemetry sampled during the cooled run explains it: junction
+temperature reaches 90 C and the shader clock falls from 2567 to 2350
+MHz while board power sits at 299-301 W against a 300 W cap. One tenant
+does not reach the cap; two do. The penalty attributed to a larger
+working set is the power limit throttling both tenants at once.
+
+**What this invalidates.** Every co-run measured after the first — 784,
+800, 816, 832, 896, 1024, and the two mismatched pairs — ran on a hot
+card, in sequence, with no cooling between them. Their externality
+figures are not comparable to the 768 measurement they were compared
+against, and the "16-pixel step" was the boundary between the first run
+of the day and everything after it. Those runs are kept as raw evidence
+and marked; they are not deleted, and they are not usable as workpoint
+comparisons.
+
+**What survives.** The externality entry the simulator uses, 1.234 at
+16+16 for 768, is confirmed rather than undermined: two cold runs agree
+on it. Gate C's +18.9% rests on that entry and stands. What does not
+survive is the claim that the result fails to carry to other
+workpoints — that was measured against contaminated comparisons and is
+now unknown, not false.
+
+**What it opens.** The power cap is a real constraint on spatial
+partitioning and a more interesting one than the working-set story it
+replaces. Two tenants at 16 units each reach 300 W where one at 32 does
+not, so the die's compute is available but its power budget is not. That
+is a scheduling variable the design does not currently model.
+
+**Method change, effective now.** Co-run measurements are comparable
+only at a controlled thermal starting point. Every co-run used for a
+workpoint comparison must record its starting junction temperature and
+its power/clock trace, and runs at different thermal states must not be
+compared. The 768 cooled run and its `thermal_768_cooled_20260806.log`
+are the first to meet that standard.
+
+This is the fourth time in this project that a property of the
+measurement has been read as a property of the thing measured, and the
+first time it reversed a conclusion I had already written into plan.md.
