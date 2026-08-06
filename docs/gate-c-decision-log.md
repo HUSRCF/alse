@@ -600,3 +600,30 @@ It also means every co-run measurement taken before this one was
 measuring launch alignment as much as pairing, and the 9-high/2-low
 distribution reflects how the harness happened to launch, not how the
 die happens to behave.
+
+### 2026-08-06 — externality re-based on the staggered runs (post-freeze change #4)
+
+**Changed:** `MEASURED_EXTERNALITY[(16,16)]` 1.234 → 1.2362.
+
+Numerically this is nothing — 0.18% — and that is the point worth
+recording. The entry was set from two co-runs before the bistability was
+known, and it happened to land in the low state. It is now the mean of
+**18 side measurements across nine co-runs launched 2-5 s apart**
+(+21.8% to +24.9%, mean +23.62%), and the old value survives contact
+with them.
+
+The comparison that matters is not old against new but low against high:
+20 side measurements from launches at 0, 8, 10 and 15 s give +72.9% to
++83.4%, mean +78.66%. The two sets do not overlap at all. A table entry
+drawn from one unstaggered co-run would have recorded whichever state
+that run fell into, and three quarters of unstaggered runs fall into the
+one where partitioning loses.
+
+Tests now assert the entry against the staggered set rather than a
+single report, check that the two states remain disjoint, and check that
+the entry is the low state rather than a mean over both — an average of
+the two modes would describe neither while looking like the sober
+choice.
+
+The source comment records the condition alongside the number: a runtime
+that does not control launch alignment does not get this value.

@@ -95,19 +95,30 @@ MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
 # Measured pairwise externality: (own units, peer units) -> slowdown factor
 # applied to this tenant's step time.
 #
-# (16,16) is the per-step penalty measured at 768x768 on 2026-08-06, the
-# mean of the two sides (+22.4% and +24.5%). It is the only entry the
-# scheduler reads, since the policy either splits evenly or gives the whole
-# die to one tenant. The remaining entries are call-level penalties
-# measured at 512x512 and are used only by the currency counterexample,
-# whose argument is about non-linearity rather than about absolute values.
+# (16,16) is the per-step penalty at 768x768, the mean of 18 side
+# measurements across nine co-runs launched 2-5 s apart (+21.8% to
+# +24.9%, mean +23.62%). It is the only entry the scheduler reads, since
+# the policy either splits evenly or gives the whole die to one tenant.
+#
+# The launch stagger is not a detail. Co-runs whose processes start
+# together, or more than 8 s apart, land in a different state entirely --
+# 20 side measurements, +72.9% to +83.4%, mean +78.66% -- and in that
+# state partitioning loses 17.8% instead of gaining 20.8%. The state is
+# fixed before the first step and is not distinguished by temperature,
+# power, any clock, GPU utilisation or the CU mask. See
+# docs/gate-c-decision-log.md; the value here is the staggered one, and a
+# runtime that does not control launch alignment does not get it.
+#
+# The remaining entries are call-level penalties measured at 512x512 and
+# are used only by the currency counterexample, whose argument is about
+# non-linearity rather than about absolute values.
 #
 # One entry per split, not per model: CogVideoX-2b cannot be co-run on this
 # card at all -- one process peaks at 28.54 GB and two need 57 on 34.2 GB --
 # so applying these to it is an extrapolation across models, recorded in
 # the decision log rather than hidden here.
 MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
-    (16, 16): 1.234,
+    (16, 16): 1.2362,
     (8, 24): 1.495,
     (24, 8): 1.280,
     (4, 28): 1.307,

@@ -21,11 +21,11 @@
     "c2_canonical_accounting": {
       "status": "PASS",
       "threshold": 0.01,
-      "worst_relative_error": 1.4331237106899968e-16,
+      "worst_relative_error": 0.0,
       "by_trace": {
         "matched": 0.0,
         "mismatched": 0.0,
-        "deadline": 1.4331237106899968e-16
+        "deadline": 0.0
       },
       "definition": "charged quota-seconds vs unit-seconds granted, including units held through a round no step completed in",
       "criterion": "canonical service 对 SM quota 的记账差异小于 1%"
@@ -67,24 +67,24 @@
     },
     "c6_safe_degradation": {
       "status": "PASS",
-      "exact_utilisation": 1.1887525404543207,
+      "exact_utilisation": 1.1866369801978898,
       "by_error_level": {
         "+/-5%": {
           "accounting_error": 0.0,
           "peak_lag_quanta": 0.9961800000000007,
-          "utilisation": 1.1887525404543207,
+          "utilisation": 1.1866369801978898,
           "utilisation_ratio_to_exact": 1.0
         },
         "+/-10%": {
           "accounting_error": 0.0,
           "peak_lag_quanta": 0.9961800000000007,
-          "utilisation": 1.1887525404543207,
+          "utilisation": 1.1866369801978898,
           "utilisation_ratio_to_exact": 1.0
         },
         "+/-20%": {
           "accounting_error": 0.0,
           "peak_lag_quanta": 0.9961800000000007,
-          "utilisation": 1.1887525404543207,
+          "utilisation": 1.1866369801978898,
           "utilisation_ratio_to_exact": 1.0
         }
       },

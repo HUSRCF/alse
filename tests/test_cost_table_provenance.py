@@ -86,7 +86,58 @@ class SdxlCurveMatchesItsProbe(unittest.TestCase):
             self.assertLess(slower, faster)
 
 
+STAGGERED = sorted(PROBES.glob("sdxl_768_st*_*_20260806.json"))
+
+
+def _staggered_sides(low: bool) -> list[float]:
+    """Externality sides from co-runs inside or outside the 2-5 s window."""
+    out = []
+    for path in STAGGERED:
+        payload = json.loads(path.read_text())
+        overlap = payload.get("overlap", {})
+        if "per_step_externality" not in overlap.get("a", {}):
+            continue
+        sides = [overlap["a"]["per_step_externality"],
+                 overlap["b"]["per_step_externality"]]
+        is_low = sum(sides) / len(sides) < 0.4
+        if is_low == low:
+            out.extend(sides)
+    return out
+
+
 class ExternalityMatchesItsProbe(unittest.TestCase):
+    def test_the_entry_is_the_mean_of_the_staggered_runs(self):
+        """Not a single co-run: the measurement is bimodal.
+
+        Nine co-runs launched 2-5 s apart give one state, eleven launched
+        together or 8+ s apart give another, and the two do not overlap.
+        A table entry taken from one run records which state that run
+        happened to land in.
+        """
+        sides = _staggered_sides(low=True)
+        if len(sides) < 6:
+            self.skipTest("staggered probes not present")
+        measured = 1.0 + sum(sides) / len(sides)
+        self.assertAlmostEqual(MEASURED_EXTERNALITY[(16, 16)], measured,
+                               places=3)
+
+    def test_the_two_states_do_not_overlap(self):
+        """If they ever did, the bimodal reading would be wrong."""
+        low = _staggered_sides(low=True)
+        high = _staggered_sides(low=False)
+        if not low or not high:
+            self.skipTest("staggered probes not present")
+        self.assertLess(max(low), min(high))
+
+    def test_the_entry_is_the_low_state_and_not_a_blend(self):
+        """A mean over both states would satisfy neither and look sober."""
+        low = _staggered_sides(low=True)
+        high = _staggered_sides(low=False)
+        if not low or not high:
+            self.skipTest("staggered probes not present")
+        blended = 1.0 + (sum(low) + sum(high)) / (len(low) + len(high))
+        self.assertLess(MEASURED_EXTERNALITY[(16, 16)], blended)
+
     def test_the_split_the_scheduler_reads_came_from_the_corun(self):
         if not SDXL_CORUN.exists():
             self.skipTest(f"probe not present: {SDXL_CORUN.name}")
@@ -94,9 +145,11 @@ class ExternalityMatchesItsProbe(unittest.TestCase):
         overlap = payload["overlap"]
         sides = [overlap["a"]["per_step_externality"],
                  overlap["b"]["per_step_externality"]]
-        measured = 1.0 + sum(sides) / len(sides)
-        self.assertAlmostEqual(MEASURED_EXTERNALITY[(16, 16)], measured,
-                               places=3)
+        # The original unstaggered co-run happened to land low; it agrees
+        # with the staggered mean to under 1%, which is why the entry did
+        # not move when the bistability was found.
+        self.assertAlmostEqual(1.0 + sum(sides) / len(sides),
+                               MEASURED_EXTERNALITY[(16, 16)], places=2)
 
     def test_the_corun_actually_overlapped(self):
         """A pair that never ran together shows zero externality honestly.
