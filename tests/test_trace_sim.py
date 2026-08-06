@@ -246,5 +246,94 @@ class UnmeasuredPairingsAreReportedTest(unittest.TestCase):
         self.assertEqual(result.unmeasured_pairings, [])
 
 
+
+class UtilisationClaimTest(unittest.TestCase):
+    """Spatial partitioning finishes more work per second than a full die.
+
+    Not against a strawman: the comparator gives every request all 32
+    units, which is the best a runtime without partitioning can do and the
+    best possible per-request latency. Partitioning wins because SDXL
+    spends 39.1% of its full-die step in work that does not shrink with
+    quota, and two tenants overlap that portion instead of paying it in
+    series.
+    """
+
+    def _saturated(self, steps=20, count=8):
+        return Trace([
+            Request(request_id=i, tenant=f"t{i % 2}", model="sdxl",
+                    arrival_s=0.0, steps=steps)
+            for i in range(count)
+        ])
+
+    def test_exclusive_scheduling_saturates_at_unit_utilisation(self):
+        """The baseline is not idle: it is the reference point."""
+        from burstserve.policies import exclusive_fcfs
+
+        result = simulate(self._saturated(), exclusive_fcfs, horizon_s=120.0)
+        self.assertAlmostEqual(result.utilisation(), 1.0, places=6)
+
+    def test_partitioning_exceeds_it(self):
+        from burstserve.policies import exclusive_fcfs, static_even
+
+        trace = self._saturated()
+        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0)
+        split = simulate(trace, static_even, horizon_s=120.0)
+        self.assertGreater(split.utilisation(), exclusive.utilisation())
+        self.assertGreater(split.utilisation(), 1.0)
+        # The measured margin, not an arbitrary threshold.
+        self.assertAlmostEqual(split.utilisation(), 1.088, places=2)
+
+    def test_it_also_finishes_the_backlog_sooner(self):
+        from burstserve.policies import exclusive_fcfs, static_even
+
+        trace = self._saturated()
+        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0)
+        split = simulate(trace, static_even, horizon_s=120.0)
+        self.assertLess(split.horizon_s, exclusive.horizon_s)
+
+    def test_both_policies_complete_the_same_work(self):
+        """Otherwise the utilisation comparison is between different jobs."""
+        from burstserve.policies import exclusive_fcfs, static_even
+
+        trace = self._saturated()
+        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0)
+        split = simulate(trace, static_even, horizon_s=120.0)
+        self.assertEqual(len(exclusive.completed), len(trace))
+        self.assertEqual(len(split.completed), len(trace))
+        self.assertEqual(exclusive.steps_executed, split.steps_executed)
+
+
+class MeasuredCurvePreferredTest(unittest.TestCase):
+    """Where a measurement exists, the fit must not be used instead.
+
+    The fit under-predicts speed at low quota, and that error is not
+    neutral: it under-states the partitioning gain, putting it at 1.6%
+    where the measurements put it at 8.8%. A conservative model that
+    happens to weaken the claim being made is not a safe default.
+    """
+
+    def test_measured_quotas_reproduce_the_table_exactly(self):
+        model = QuotaCostModel.for_model("sdxl")
+        full = model.step_seconds(32)
+        for units, measured in ((4, 0.198), (8, 0.377), (12, 0.534),
+                                (16, 0.665), (20, 0.771), (24, 0.860),
+                                (28, 0.940)):
+            with self.subTest(units=units):
+                self.assertAlmostEqual(
+                    full / model.step_seconds(units), measured, places=3
+                )
+
+    def test_a_measured_quota_is_flagged_as_measured(self):
+        model = QuotaCostModel.for_model("sdxl")
+        self.assertTrue(model.is_measured(16))
+        self.assertFalse(model.is_measured(15))
+
+    def test_an_unmeasured_quota_still_gets_a_value_from_the_fit(self):
+        """Extrapolation is what the fit is for -- it just is not preferred."""
+        model = QuotaCostModel.for_model("sdxl")
+        between = model.step_seconds(15)
+        self.assertLess(model.step_seconds(16), between)
+        self.assertLess(between, model.step_seconds(12))
+
 if __name__ == "__main__":
     unittest.main()

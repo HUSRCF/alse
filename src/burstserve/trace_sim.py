@@ -44,6 +44,20 @@ MEASURED_MODELS: dict[str, dict[str, float]] = {
     },
 }
 
+# The measured p50 at each quota, from the Gate B tables. Preferred over
+# the Amdahl fit wherever an entry exists: the fit exists to extrapolate to
+# quotas that were never run, and using it where a measurement is available
+# throws away accuracy for no reason. Its residual is not neutral either --
+# the fit under-predicts speed at low quota, which under-states exactly the
+# effect this work claims, putting the partitioning gain at 1.6% where the
+# measurements put it at 8.7%.
+MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
+    "sdxl": {4: 24.828, 8: 13.058, 12: 9.208, 16: 7.393,
+             20: 6.376, 24: 5.721, 28: 5.231, 32: 4.919},
+    "cogvideox-2b": {4: 41.770, 8: 21.348, 12: 14.604, 16: 11.283,
+                     20: 9.669, 24: 8.630, 28: 7.889, 32: 7.413},
+}
+
 # Measured pairwise externality: (own units, peer units) -> slowdown factor
 # applied to this tenant's step time. From the 2026-08-06 table.
 MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
@@ -72,6 +86,7 @@ class QuotaCostModel:
     serial_fraction: float
     step_seconds_at_full: float
     maskable_units: int = 32
+    measured_curve: tuple[tuple[int, float], ...] = ()
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.serial_fraction < 1.0:
@@ -80,14 +95,26 @@ class QuotaCostModel:
             raise ValueError("step_seconds_at_full must be positive")
 
     def step_seconds(self, units: int) -> float:
-        """Amdahl: serial + parallel/share, normalised to full-die time."""
+        """Measured where measured, Amdahl only where it is not."""
         if not 1 <= units <= self.maskable_units:
             raise ValueError(
                 f"quota {units} outside 1..{self.maskable_units}"
             )
+        curve = dict(self.measured_curve)
+        if units in curve:
+            # Scale the measured p50 to a per-step time using the full-die
+            # cell as the reference, so the ratios are exactly the measured
+            # ones rather than the fit's approximation of them.
+            return self.step_seconds_at_full * (
+                curve[units] / curve[self.maskable_units]
+            )
         share = units / self.maskable_units
         serial = self.serial_fraction
         return self.step_seconds_at_full * (serial + (1.0 - serial) / share)
+
+    def is_measured(self, units: int) -> bool:
+        """Whether this quota came from a measurement or from the fit."""
+        return units in dict(self.measured_curve)
 
     @classmethod
     def for_model(cls, name: str) -> "QuotaCostModel":
@@ -96,7 +123,9 @@ class QuotaCostModel:
                 f"no measured quota table for {name!r}; "
                 f"have {sorted(MEASURED_MODELS)}"
             )
-        return cls(**MEASURED_MODELS[name])
+        curve = MEASURED_QUOTA_SECONDS.get(name, {})
+        return cls(**MEASURED_MODELS[name],
+                   measured_curve=tuple(sorted(curve.items())))
 
 
 def externality(own_units: int, peer_units: int | None) -> float:
@@ -247,6 +276,32 @@ class SimulationResult:
             return 1.0
         return total ** 2 / (len(values) * sum(v ** 2 for v in values))
 
+    def full_die_equivalent_seconds(self) -> float:
+        """Work completed, expressed as time it would take on the full die.
+
+        This is the utilisation numerator. Counting wall time served, or
+        quota-seconds, would both credit a policy for holding the die
+        rather than for finishing work -- and a partitioned policy holds
+        the die exactly as much as an exclusive one does.
+        """
+        total = 0.0
+        for state in self.completed + self.unfinished:
+            model = MEASURED_MODELS[state.request.model]
+            full_step = model["step_seconds_at_full"]
+            total += state.steps_done * full_step
+        return total
+
+    def utilisation(self) -> float:
+        """Full-die-equivalent work per second of horizon.
+
+        Can exceed 1.0, and that is the finding rather than a bug: two
+        tenants overlap their serial phases, so the die completes more
+        full-die-equivalent work per second than one tenant at full width.
+        """
+        if self.horizon_s <= 0:
+            return 0.0
+        return self.full_die_equivalent_seconds() / self.horizon_s
+
     def deadline_misses(self) -> list[RequestState]:
         missed = []
         for state in self.completed:
@@ -337,6 +392,8 @@ def simulate(
             now += quantum_s
             continue
 
+        round_seconds = 0.0
+
         # Externality needs each tenant's peer. Only pairs are measured, so
         # a triple is reported rather than approximated.
         active = sorted(granted.items())
@@ -355,16 +412,14 @@ def simulate(
                 factor = 1.0
             step_cost = costs[state.request.model].step_seconds(units) * factor
             # Whole steps only: a partially executed denoising step is not
-            # a state the runtime can checkpoint.
-            affordable = int(quantum_s // step_cost)
+            # a state the runtime can checkpoint. At least one step runs
+            # even when it outlasts the quantum -- truncating instead
+            # deadlocks any configuration whose step exceeds the quantum,
+            # which a 16+16 split does at 0.299 s against 0.25.
+            affordable = max(1, int(quantum_s // step_cost))
             remaining = state.request.steps - state.steps_done
-            taken = max(0, min(affordable, remaining))
+            taken = min(affordable, remaining)
             if taken == 0:
-                # Charge the quantum anyway: the tenant held the units.
-                quota_seconds[state.request.tenant] = (
-                    quota_seconds.get(state.request.tenant, 0.0)
-                    + units * quantum_s
-                )
                 continue
             if state.started_s is None:
                 state.started_s = now
@@ -381,8 +436,14 @@ def simulate(
             )
             if state.complete:
                 state.finished_s = now + spent
+            round_seconds = max(round_seconds, spent)
 
-        now += quantum_s
+        # Advance by the work actually done, not by a fixed quantum. A
+        # fixed advance charges the horizon for time nobody used: at 0.152 s
+        # per step against a 0.25 s quantum the die would idle 39% of every
+        # round, and utilisation would read 0.61 for a policy that never
+        # left it idle.
+        now += round_seconds if round_seconds > 0 else quantum_s
         newly_done = [s for s in runnable if s.complete]
         for state in newly_done:
             runnable.remove(state)
