@@ -80,6 +80,14 @@ def _replace_loose_object_with_valid_payload(
 class GitProvenanceTest(unittest.TestCase):
     def setUp(self) -> None:
         require_supported_git(self)
+        # capture_repository() falls back to DEFAULT_GIT when no binary is
+        # passed, and most calls here do not pass one. Without this the
+        # tests build fixtures with the selected git and then capture them
+        # with /usr/bin/git, which is how they still failed on the AMD host
+        # after BURSTSERVE_GIT was set.
+        patch = mock.patch.object(provenance, "DEFAULT_GIT", GIT)
+        patch.start()
+        self.addCleanup(patch.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
 

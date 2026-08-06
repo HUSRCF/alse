@@ -49,6 +49,11 @@ class ModelInventoryTest(unittest.TestCase):
 class CaptureEnvironmentTest(unittest.TestCase):
     def setUp(self) -> None:
         require_supported_git(self)
+        import burstserve.git_provenance as _prov
+        from unittest import mock as _mock
+        _p = _mock.patch.object(_prov, 'DEFAULT_GIT', _GIT)
+        _p.start()
+        self.addCleanup(_p.stop)
 
     @mock.patch(
         "burstserve.environment._framework_runtime",
