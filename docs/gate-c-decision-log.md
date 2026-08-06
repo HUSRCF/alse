@@ -555,11 +555,39 @@ Against a base rate of 2 low in 11 unstaggered runs, three consecutive
 low results at one stagger is not chance -- roughly 0.6% if the state
 were being drawn independently. The stagger selects it.
 
-**It is not monotone.** 15 s behaves like 0 s. So this is not "avoid the
-startup race by separating the launches"; something about the 5 s offset
-specifically lands the second process where it does not degrade
-concurrency. What that is remains unknown, and a finer scan (2, 3, 5, 8,
-10 s) is running to find the interval rather than the point.
+**It is a window, not a point, and not monotone.** The finer scan:
+
+| stagger | runs | state | externality | per-sample cv |
+| --- | --- | --- | --- | --- |
+| 0 s | 3 | high | +73.7 to +77.8% | 1.6-2.4% |
+| 2 s | 2 | **low** | +24.3, +24.8% | 0.21-0.25% |
+| 3 s | 2 | **low** | +24.8, +24.8% | 0.23-0.25% |
+| 5 s | 5 | **low** | +22.8 to +24.9% | 0.19-0.25% |
+| 8 s | 2 | high | +75.3, +79.8% | 2.2-2.7% |
+| 10 s | 2 | high | +75.1, +75.3% | 2.4-2.9% |
+| 15 s | 3 | high | +72.9 to +83.4% | 1.9-2.6% |
+
+Nine of nine runs in 2-5 s land low; eleven of eleven outside it land
+high. The low state is also an order of magnitude steadier per sample.
+
+**What this most likely is.** The stagger separates process *launches*,
+which in this harness means each co-run reloads SDXL from disk. Two to
+five seconds is far shorter than that load, so the loads still overlap
+heavily either way; what changes is which of the second process's
+initialisation steps coincides with which of the first's. That points at
+a resource claimed once during HIP context or allocator setup, not at
+anything about running the model.
+
+If so, the effect belongs to cold co-run measurement rather than to
+steady-state serving: a runtime that keeps models resident does not
+re-initialise a context per tenant switch, and would sit in the low
+state permanently. That is testable -- two streams in one process with
+disjoint masks, which is the Gate A arrangement -- and untested here, so
+it stays a hypothesis.
+
+What is not hypothetical: the measurement harness must stagger launches
+into 2-5 s, and every co-run taken before this one had its state decided
+by an unstaggered launch.
 
 **What it changes.** The low state is now reproducible on demand, which
 moves the utilisation claim from open to conditional: partitioning
