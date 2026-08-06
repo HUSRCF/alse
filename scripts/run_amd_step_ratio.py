@@ -81,7 +81,14 @@ def run_cell(*, model: str, height: int, width: int, frames: int, units: int,
     record = json.loads(body[-1])
     record["status"] = "ok"
     record["requested_units"] = units
-    record["workpoint"] = f"{model}@{width}x{height}/{units}u"
+    # Video pipelines ignore --height/--width and run at their native
+    # resolution, so labelling one with a resolution it did not use would
+    # describe the cell by a parameter that had no effect. The cell itself
+    # already records None for those fields; the label has to agree.
+    shape = (f"{record.get('frames')}f" if record.get("frames") is not None
+             else f"{width}x{height}")
+    record["workpoint"] = f"{model}@{shape}/{units}u"
+    record["shape"] = shape
     record["wall_s"] = time.time() - started
     return record
 
@@ -175,7 +182,10 @@ def main() -> int:
 
     curve = {}
     for row in usable:
-        curve.setdefault(row["size"], {})[row["requested_units"]] = (
+        # Keyed by the shape that actually varied, which for a video model
+        # is the frame count rather than the ignored --sizes value.
+        key = row.get("shape") or str(row["size"])
+        curve.setdefault(key, {})[row["requested_units"]] = (
             per_step_seconds(row)
         )
 

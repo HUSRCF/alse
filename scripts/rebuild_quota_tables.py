@@ -54,12 +54,12 @@ def load_curve(path: pathlib.Path) -> tuple[int, dict[int, float]]:
         raise SystemExit(f"{path} covers {len(curve_by_size)} resolutions; "
                          f"rebuild one at a time so the resolution the "
                          f"table claims is unambiguous")
-    size = int(next(iter(curve_by_size)))
-    curve = {int(u): float(s) for u, s in curve_by_size[str(size)].items()}
-    return size, curve
+    key = next(iter(curve_by_size))
+    curve = {int(u): float(s) for u, s in curve_by_size[key].items()}
+    return key, curve
 
 
-def compare(model: str, size: int, curve: dict[int, float]) -> dict:
+def compare(model: str, size, curve: dict[int, float]) -> dict:
     """What the simulator believes against what was measured."""
     cost = QuotaCostModel.for_model(model)
     rows = []
@@ -76,7 +76,7 @@ def compare(model: str, size: int, curve: dict[int, float]) -> dict:
     full = curve.get(max(curve))
     return {
         "model": model,
-        "resolution": size,
+        "shape": str(size),
         "believed_step_seconds_at_full": (
             MEASURED_MODELS[model]["step_seconds_at_full"]
         ),
@@ -86,7 +86,7 @@ def compare(model: str, size: int, curve: dict[int, float]) -> dict:
     }
 
 
-def proposed_tables(model: str, size: int, curve: dict[int, float]) -> dict:
+def proposed_tables(model: str, size, curve: dict[int, float]) -> dict:
     """The replacement, in the form the source file holds it.
 
     The quota table becomes the per-step curve itself rather than call
@@ -98,7 +98,7 @@ def proposed_tables(model: str, size: int, curve: dict[int, float]) -> dict:
     return {
         "MEASURED_MODELS[%s]" % model: {
             "step_seconds_at_full": round(full, 6),
-            "resolution": f"{size}x{size}",
+            "shape": str(size),
         },
         "MEASURED_QUOTA_SECONDS[%s]" % model: {
             int(u): round(s, 6) for u, s in sorted(curve.items())
@@ -125,7 +125,7 @@ def main() -> int:
         "trustworthy."
     )
 
-    print(f"{args.model} at {size}x{size}\n")
+    print(f"{args.model} at {size}\n")
     print(f"{'units':>6} {'believed':>10} {'measured':>10} {'error':>9}  src")
     for row in report["rows"]:
         print(f"{row['units']:6d} {row['believed_s'] * 1000:9.2f}ms "
