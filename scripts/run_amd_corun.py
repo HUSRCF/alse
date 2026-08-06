@@ -294,7 +294,15 @@ class ThermalTrace:
                 self.samples.append({
                     "junction_c": junction_celsius(),
                     "sclk_mhz": _rocm_scalar("--showclocks", "sclk clock"),
+                    # Memory and fabric clocks too. The co-run measurement
+                    # is bistable and neither temperature, power nor the CU
+                    # mask separates the two states, so the telemetry has
+                    # to cover more of what could.
+                    "mclk_mhz": _rocm_scalar("--showclocks", "mclk clock"),
+                    "fclk_mhz": _rocm_scalar("--showclocks", "fclk clock"),
+                    "socclk_mhz": _rocm_scalar("--showclocks", "socclk"),
                     "power_w": _rocm_scalar("--showpower", "Average"),
+                    "gpu_use_pct": _rocm_scalar("--showuse", "GPU use"),
                 })
         self._thread = threading.Thread(target=loop, daemon=True)
         self._thread.start()
@@ -309,12 +317,20 @@ class ThermalTrace:
         temps = [s["junction_c"] for s in self.samples if s["junction_c"]]
         powers = [s["power_w"] for s in self.samples if s["power_w"]]
         clocks = [s["sclk_mhz"] for s in self.samples if s["sclk_mhz"]]
+        def span(field: str) -> dict:
+            values = [s[field] for s in self.samples if s.get(field)]
+            return {"min": min(values), "max": max(values)} if values else {}
+
         return {
             "samples": self.samples,
             "peak_junction_c": max(temps) if temps else None,
             "peak_power_w": max(powers) if powers else None,
             "min_sclk_mhz": min(clocks) if clocks else None,
             "max_sclk_mhz": max(clocks) if clocks else None,
+            "mclk_mhz": span("mclk_mhz"),
+            "fclk_mhz": span("fclk_mhz"),
+            "socclk_mhz": span("socclk_mhz"),
+            "gpu_use_pct": span("gpu_use_pct"),
         }
 
 
