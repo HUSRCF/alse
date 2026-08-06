@@ -49,8 +49,13 @@ MEASURED_MODELS: dict[str, dict[str, float]] = {
         "maskable_units": 32,
     },
     "cogvideox-2b": {
-        "serial_fraction": 0.276,
-        "step_seconds_at_full": 0.5171,   # 9 frames, 32 units
+        # Refitted with the curve below, same reason as SDXL: 0.276 came
+        # from the call-level fit.
+        "serial_fraction": 0.2051,
+        # 9 frames, 32 units, measured per denoising step with CUDA events
+        # on 2026-08-06. The previous 0.5171 was right to 0.3% -- this
+        # model's constant was never the problem, only its curve.
+        "step_seconds_at_full": 0.51549,
         "maskable_units": 32,
     },
 }
@@ -69,18 +74,22 @@ MEASURED_MODELS: dict[str, dict[str, float]] = {
 # where the per-step measurement says 1.363. Combined with the wrong
 # full-die constant, the shipped table ran 32% to 50% high at every quota.
 #
-# CogVideoX-2b is still call p50s, and is left that way deliberately.
-# Its per-step curve has only three measured points (8/16/32 units, from
-# the transition probe), and against those the call ratios are accurate to
-# 2.5% -- unlike SDXL, where the same check fails at 10.2%. Recorded as a
-# known limit rather than silently mixed with a rebuilt curve.
+# CogVideoX-2b was rebuilt the same way on the same day. Its error was
+# far smaller -- the call table ran 6.5% low at 4 units falling to 0.3%
+# high at 32, against SDXL's 32% to 50% -- because its full-die constant
+# was correct and only the curve was diluted. Both models are now the
+# same quantity, which they were not before.
+#
+# Video cells are labelled by frame count: CogVideoX runs at its
+# pipeline's native resolution and ignores height/width, so calling this
+# curve "768x768" would name a parameter that had no effect on it.
 MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
     # per denoising step, seconds, 768x768
     "sdxl": {4: 0.52141, 8: 0.26875, 12: 0.19350, 16: 0.15750,
              20: 0.13867, 24: 0.12493, 28: 0.12056, 32: 0.11552},
-    # call p50, seconds, 768x768 -- see the note above
-    "cogvideox-2b": {4: 41.770, 8: 21.348, 12: 14.604, 16: 11.283,
-                     20: 9.669, 24: 8.630, 28: 7.889, 32: 7.413},
+    # per denoising step, seconds, 9 frames
+    "cogvideox-2b": {4: 3.11634, 8: 1.57411, 12: 1.05900, 16: 0.80519,
+                     20: 0.68764, 24: 0.60812, 28: 0.55175, 32: 0.51549},
 }
 
 # Measured pairwise externality: (own units, peer units) -> slowdown factor

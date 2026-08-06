@@ -265,3 +265,47 @@ discriminating load, not to avoid this band.
 digests changed, as they should for a change of this size — unlike
 post-freeze change #1, where the behavioural lock was blind and had to be
 extended.
+
+### 2026-08-06 — CogVideoX-2b rebuilt the same way (post-freeze change #3)
+
+**Changed:** `MEASURED_QUOTA_SECONDS["cogvideox-2b"]` and
+`MEASURED_MODELS["cogvideox-2b"]` (`step_seconds_at_full` 0.5171 →
+0.51549, `serial_fraction` 0.276 → 0.2051). `toy_bench` follows.
+
+The previous entry left this model on call p50s deliberately, because its
+per-step data had only three points and the call ratios were accurate to
+2.5% against them. The full curve has now been measured, so the reason to
+leave it no longer holds and the two models are the same quantity for the
+first time.
+
+**Measured** at 9 frames, all eight quotas: 3116.34 / 1574.11 / 1059.00 /
+805.19 / 687.64 / 608.12 / 551.75 / 515.49 ms, cv under 0.35%. Against
+the transition probe from three days earlier: 0.21%, 0.18% and 0.11%
+apart at 8, 16 and 32 units — closer agreement than SDXL managed, on a
+model whose steps are 4.5x longer.
+
+**The error was real but small**, unlike SDXL's: the call table ran 6.5%
+low at 4 units, tapering to 0.3% high at 32. Its full-die constant was
+right to 0.3% — this model's problem was only the dilution of the call
+ratios, not a misfiled constant. That is why the same check that failed
+at 10.2% on SDXL passed at 2.5% here, and why the correction moves
+nothing that matters: matched-tenant utilisation stays 1.1888, mismatched
+stays 1.0000, lag stays within bounds.
+
+**A labelling defect found on the way.** The step-ratio driver named
+every curve by `--sizes`, but video pipelines run at their native
+resolution and ignore height/width — the cell already recorded null for
+those fields. A CogVideoX curve would have been filed as "768x768" using
+a value that had no effect on it. Fixed for future runs; this curve's
+top-level key still reads "768" because it predates the fix, and the test
+that guards it checks the cells (which record `frames: 9`, `height:
+null`) rather than the key written over them.
+
+**Cost tables are now bound to their probes.** `test_cost_table_
+provenance.py` asserts every entry equals the run that produced it, and
+checks the full-die constant against the 32-unit row specifically while
+asserting it equals no *other* quota — which is the shape of the mistake
+that was shipped, not merely the value it produced. None of today's
+corrections would have survived a day with that test in place.
+
+**Freeze re-issued.**

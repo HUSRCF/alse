@@ -7,7 +7,7 @@
   "criteria": {
     "c1_byte_identical_replay": {
       "status": "PASS",
-      "digest": "1a5f39e0df1c351cbccf58a80cd992c6a1083b279d320bb03c78863884602324",
+      "digest": "2f9a85472d90c51ca9accd3446bc7acd35f4be75a390750338a7ccb426160f7d",
       "processes": 3,
       "hash_seeds": [
         "0",
@@ -21,10 +21,10 @@
     "c2_canonical_accounting": {
       "status": "PASS",
       "threshold": 0.01,
-      "worst_relative_error": 2.807936580253947e-16,
+      "worst_relative_error": 1.4331237106899968e-16,
       "by_trace": {
         "matched": 0.0,
-        "mismatched": 2.807936580253947e-16,
+        "mismatched": 0.0,
         "deadline": 1.4331237106899968e-16
       },
       "definition": "charged quota-seconds vs unit-seconds granted, including units held through a round no step completed in",
@@ -48,7 +48,7 @@
           "exclusive_rounds": 0
         },
         "mismatched": {
-          "peak_lag_quanta": 1.0122800000000005,
+          "peak_lag_quanta": 0.9961800000000007,
           "deadline_override_rounds": 0,
           "exclusive_rounds": 29
         }
@@ -71,19 +71,19 @@
       "by_error_level": {
         "+/-5%": {
           "accounting_error": 0.0,
-          "peak_lag_quanta": 1.0122800000000005,
+          "peak_lag_quanta": 0.9961800000000007,
           "utilisation": 1.1887525404543207,
           "utilisation_ratio_to_exact": 1.0
         },
         "+/-10%": {
           "accounting_error": 0.0,
-          "peak_lag_quanta": 1.0122800000000005,
+          "peak_lag_quanta": 0.9961800000000007,
           "utilisation": 1.1887525404543207,
           "utilisation_ratio_to_exact": 1.0
         },
         "+/-20%": {
           "accounting_error": 0.0,
-          "peak_lag_quanta": 1.0122800000000005,
+          "peak_lag_quanta": 0.9961800000000007,
           "utilisation": 1.1887525404543207,
           "utilisation_ratio_to_exact": 1.0
         }

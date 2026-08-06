@@ -136,10 +136,10 @@ MEASURED_SDXL = Workload(
 MEASURED_COGVIDEOX_2B = Workload(
     name="cogvideox2b_measured",
     curve="compute",
-    solo_step_ms=517.1,          # per denoising step at 32 units, 9 frames
+    solo_step_ms=515.49,         # per denoising step at 32 units, 9 frames
     bw_pressure=0.60,
     contention_sensitivity=0.70,
-    serial_fraction=0.276,
+    serial_fraction=0.2051,      # refit against the per-step curve
 )
 
 
