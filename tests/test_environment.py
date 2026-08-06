@@ -8,6 +8,9 @@ import subprocess
 import tempfile
 import time
 import unittest
+
+from git_support import GIT as _GIT
+from git_support import require_supported_git
 from unittest import mock
 
 from burstserve.environment import (
@@ -44,6 +47,9 @@ class ModelInventoryTest(unittest.TestCase):
 
 
 class CaptureEnvironmentTest(unittest.TestCase):
+    def setUp(self) -> None:
+        require_supported_git(self)
+
     @mock.patch(
         "burstserve.environment._framework_runtime",
         return_value={"ok": True},
@@ -60,7 +66,7 @@ class CaptureEnvironmentTest(unittest.TestCase):
             temporary_root = Path(temporary)
             root = temporary_root / "repo"
             subprocess.run(
-                ["/usr/bin/git", "init", "-q", str(root)],
+                [str(_GIT), "init", "-q", str(root)],
                 check=True,
             )
             (root / ".gitattributes").write_text(
@@ -73,7 +79,7 @@ class CaptureEnvironmentTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "add",
@@ -84,7 +90,7 @@ class CaptureEnvironmentTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "-c",
@@ -109,7 +115,7 @@ class CaptureEnvironmentTest(unittest.TestCase):
             filter_script.chmod(0o700)
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "config",
@@ -120,7 +126,7 @@ class CaptureEnvironmentTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "config",
@@ -188,12 +194,12 @@ class CaptureEnvironmentTest(unittest.TestCase):
                     encoding="utf-8",
                 )
                 subprocess.run(
-                    ["/usr/bin/git", "init", "-q", str(root)],
+                    [str(_GIT), "init", "-q", str(root)],
                     check=True,
                 )
                 subprocess.run(
                     [
-                        "/usr/bin/git",
+                        str(_GIT),
                         "-C",
                         str(root),
                         "add",
@@ -203,7 +209,7 @@ class CaptureEnvironmentTest(unittest.TestCase):
                 )
                 subprocess.run(
                     [
-                        "/usr/bin/git",
+                        str(_GIT),
                         "-C",
                         str(root),
                         "-c",
@@ -333,12 +339,12 @@ class CaptureEnvironmentTest(unittest.TestCase):
             }
             source_path.write_text(json.dumps(source), encoding="utf-8")
             subprocess.run(
-                ["/usr/bin/git", "init", "-q", str(root)],
+                [str(_GIT), "init", "-q", str(root)],
                 check=True,
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "add",
@@ -348,7 +354,7 @@ class CaptureEnvironmentTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "-c",

@@ -13,7 +13,7 @@ import burstserve.git_provenance as provenance
 from burstserve.git_provenance import SnapshotLimits, capture_repository
 
 
-GIT = Path("/usr/bin/git")
+from git_support import GIT, require_supported_git
 
 
 def _run_git(
@@ -79,6 +79,7 @@ def _replace_loose_object_with_valid_payload(
 
 class GitProvenanceTest(unittest.TestCase):
     def setUp(self) -> None:
+        require_supported_git(self)
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
 

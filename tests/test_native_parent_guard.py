@@ -18,6 +18,44 @@ import sys
 import tempfile
 import time
 import unittest
+
+# Inlined rather than imported from tests/git_support.py: this file is
+# executed standalone by
+# test_absolute_test_entrypoint_cannot_be_package_shadowed, with tests/
+# absent from sys.path, so any sibling import breaks the very property
+# that test exists to check.
+_GIT = Path(os.environ.get("BURSTSERVE_GIT", "/usr/bin/git"))
+_MINIMUM_GIT = (2, 45)
+
+
+def require_supported_git(case) -> None:
+    """Skip with the reason when git is too old to exercise the capture.
+
+    The capture uses --no-lazy-fetch, added in git 2.45. On an older git
+    every one of these tests fails on "unknown option", which reads as a
+    defect rather than as an unmet precondition.
+    """
+    try:
+        completed = subprocess.run([str(_GIT), "--version"],
+                                   capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        case.skipTest(f"cannot run {_GIT}")
+        return
+    parts = completed.stdout.strip().split()
+    numbers = []
+    if len(parts) >= 3:
+        for piece in parts[2].split("."):
+            if piece.isdigit():
+                numbers.append(int(piece))
+            else:
+                break
+    if not numbers:
+        case.skipTest(f"cannot determine the version of {_GIT}")
+    elif tuple(numbers) < _MINIMUM_GIT:
+        case.skipTest(
+            f"{_GIT} is {'.'.join(map(str, numbers))}; these tests need "
+            f"{'.'.join(map(str, _MINIMUM_GIT))} or newer. Set BURSTSERVE_GIT."
+        )
 from unittest import mock
 
 
@@ -287,6 +325,9 @@ def _load_attestation_module():
 
 
 class NativeParentGuardSourceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        require_supported_git(self)
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.source = SOURCE.read_text(encoding="utf-8")
@@ -1221,7 +1262,7 @@ class NativeParentGuardSourceTest(unittest.TestCase):
                 temporary_root = Path(temporary)
                 repository = temporary_root / "libsmctrl"
                 subprocess.run(
-                    ["/usr/bin/git", "init", "-q", str(repository)],
+                    [str(_GIT), "init", "-q", str(repository)],
                     check=True,
                 )
                 (repository / ".gitattributes").write_text(
@@ -1234,7 +1275,7 @@ class NativeParentGuardSourceTest(unittest.TestCase):
                 )
                 subprocess.run(
                     [
-                        "/usr/bin/git",
+                        str(_GIT),
                         "-C",
                         str(repository),
                         "add",
@@ -1245,7 +1286,7 @@ class NativeParentGuardSourceTest(unittest.TestCase):
                 )
                 subprocess.run(
                     [
-                        "/usr/bin/git",
+                        str(_GIT),
                         "-C",
                         str(repository),
                         "-c",
@@ -1270,7 +1311,7 @@ class NativeParentGuardSourceTest(unittest.TestCase):
                 filter_script.chmod(0o700)
                 subprocess.run(
                     [
-                        "/usr/bin/git",
+                        str(_GIT),
                         "-C",
                         str(repository),
                         "config",
@@ -1281,7 +1322,7 @@ class NativeParentGuardSourceTest(unittest.TestCase):
                 )
                 subprocess.run(
                     [
-                        "/usr/bin/git",
+                        str(_GIT),
                         "-C",
                         str(repository),
                         "config",
@@ -2424,7 +2465,7 @@ class NativeParentGuardArtifactTest(unittest.TestCase):
             clone = temporary_root / "libsmctrl"
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "clone",
                     "--quiet",
                     "--no-hardlinks",

@@ -14,6 +14,9 @@ import sys
 import tempfile
 import time
 import unittest
+
+from git_support import GIT as _GIT
+from git_support import require_supported_git
 from unittest import mock
 
 import contextlib
@@ -5716,6 +5719,9 @@ class FormalBuildInventoryPolicyTest(unittest.TestCase):
 
 
 class SourceRevisionTest(unittest.TestCase):
+    def setUp(self) -> None:
+        require_supported_git(self)
+
     def test_source_revision_uses_safe_registered_gitlink_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             temporary_root = Path(temporary)
@@ -5729,7 +5735,7 @@ class SourceRevisionTest(unittest.TestCase):
                 "GIT_COMMITTER_EMAIL": "test@example.invalid",
             }
             subprocess.run(
-                ["/usr/bin/git", "init", "-q", str(child)],
+                [str(_GIT), "init", "-q", str(child)],
                 check=True,
             )
             (child / "libsmctrl.c").write_text(
@@ -5738,7 +5744,7 @@ class SourceRevisionTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(child),
                     "add",
@@ -5748,7 +5754,7 @@ class SourceRevisionTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(child),
                     "commit",
@@ -5760,17 +5766,17 @@ class SourceRevisionTest(unittest.TestCase):
                 env=commit_environment,
             )
             child_head = subprocess.check_output(
-                ["/usr/bin/git", "-C", str(child), "rev-parse", "HEAD"],
+                [str(_GIT), "-C", str(child), "rev-parse", "HEAD"],
                 text=True,
             ).strip()
             subprocess.run(
-                ["/usr/bin/git", "init", "-q", str(root)],
+                [str(_GIT), "init", "-q", str(root)],
                 check=True,
             )
             (root / "payload.txt").write_text("payload\n", encoding="utf-8")
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "-c",
@@ -5785,7 +5791,7 @@ class SourceRevisionTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "add",
@@ -5795,7 +5801,7 @@ class SourceRevisionTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "commit",
@@ -5807,7 +5813,7 @@ class SourceRevisionTest(unittest.TestCase):
                 env=commit_environment,
             )
             main_head = subprocess.check_output(
-                ["/usr/bin/git", "-C", str(root), "rev-parse", "HEAD"],
+                [str(_GIT), "-C", str(root), "rev-parse", "HEAD"],
                 text=True,
             ).strip()
 
@@ -6043,6 +6049,9 @@ class LibsmctrlSourceMetadataContractTest(unittest.TestCase):
 
 
 class GateManifestRecordTest(unittest.TestCase):
+    def setUp(self) -> None:
+        require_supported_git(self)
+
     def test_exact_default_manifest_bytes_load_from_clean_repository(self):
         repository_manifest = (
             Path(__file__).resolve().parents[1]
@@ -6054,12 +6063,12 @@ class GateManifestRecordTest(unittest.TestCase):
             path.parent.mkdir(parents=True)
             path.write_bytes(repository_manifest.read_bytes())
             subprocess.run(
-                ["/usr/bin/git", "init", "-q", str(root)],
+                [str(_GIT), "init", "-q", str(root)],
                 check=True,
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "add",
@@ -6069,7 +6078,7 @@ class GateManifestRecordTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "-c",
@@ -6234,7 +6243,7 @@ class GateManifestRecordTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             subprocess.run(
-                ["/usr/bin/git", "init", "-q", str(root)],
+                [str(_GIT), "init", "-q", str(root)],
                 check=True,
             )
             path = root / "experiments" / "manifests" / "gate.json"
@@ -6244,7 +6253,7 @@ class GateManifestRecordTest(unittest.TestCase):
                 encoding="utf-8",
             )
             subprocess.run(
-                ["/usr/bin/git", "-C", str(root), "add", "."],
+                [str(_GIT), "-C", str(root), "add", "."],
                 check=True,
             )
             commit_environment = {
@@ -6256,7 +6265,7 @@ class GateManifestRecordTest(unittest.TestCase):
             }
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "commit",
@@ -6274,7 +6283,7 @@ class GateManifestRecordTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "add",
@@ -6284,7 +6293,7 @@ class GateManifestRecordTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "commit",
@@ -6306,7 +6315,7 @@ class GateManifestRecordTest(unittest.TestCase):
             filter_script.chmod(0o700)
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "config",
@@ -6317,7 +6326,7 @@ class GateManifestRecordTest(unittest.TestCase):
             )
             subprocess.run(
                 [
-                    "/usr/bin/git",
+                    str(_GIT),
                     "-C",
                     str(root),
                     "config",
