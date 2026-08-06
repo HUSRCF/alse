@@ -7,7 +7,7 @@
   "criteria": {
     "c1_byte_identical_replay": {
       "status": "PASS",
-      "digest": "6ad6169517ed67fe343e4207ea143a4ce22b3b33682df36af0279072b9d88cbe",
+      "digest": "1a5f39e0df1c351cbccf58a80cd992c6a1083b279d320bb03c78863884602324",
       "processes": 3,
       "hash_seeds": [
         "0",
@@ -21,11 +21,11 @@
     "c2_canonical_accounting": {
       "status": "PASS",
       "threshold": 0.01,
-      "worst_relative_error": 2.6544483553500467e-16,
+      "worst_relative_error": 2.807936580253947e-16,
       "by_trace": {
         "matched": 0.0,
-        "mismatched": 2.6544483553500467e-16,
-        "deadline": 2.081257074097432e-16
+        "mismatched": 2.807936580253947e-16,
+        "deadline": 1.4331237106899968e-16
       },
       "definition": "charged quota-seconds vs unit-seconds granted, including units held through a round no step completed in",
       "criterion": "canonical service 对 SM quota 的记账差异小于 1%"
@@ -48,9 +48,9 @@
           "exclusive_rounds": 0
         },
         "mismatched": {
-          "peak_lag_quanta": 1.033800000000003,
+          "peak_lag_quanta": 1.0122800000000005,
           "deadline_override_rounds": 0,
-          "exclusive_rounds": 52
+          "exclusive_rounds": 29
         }
       },
       "definition": "peak over rounds of the worst deviation from an equal share among backlogged tenants, in full-die quanta; sampled per round because the end-of-run gap is zero for a policy that was never fair",
@@ -67,24 +67,24 @@
     },
     "c6_safe_degradation": {
       "status": "PASS",
-      "exact_utilisation": 1.0880770621344198,
+      "exact_utilisation": 1.1887525404543207,
       "by_error_level": {
         "+/-5%": {
           "accounting_error": 0.0,
-          "peak_lag_quanta": 1.033800000000003,
-          "utilisation": 1.0880770621344198,
+          "peak_lag_quanta": 1.0122800000000005,
+          "utilisation": 1.1887525404543207,
           "utilisation_ratio_to_exact": 1.0
         },
         "+/-10%": {
           "accounting_error": 0.0,
-          "peak_lag_quanta": 1.033800000000003,
-          "utilisation": 1.0880770621344198,
+          "peak_lag_quanta": 1.0122800000000005,
+          "utilisation": 1.1887525404543207,
           "utilisation_ratio_to_exact": 1.0
         },
         "+/-20%": {
           "accounting_error": 0.0,
-          "peak_lag_quanta": 1.033800000000003,
-          "utilisation": 1.0880770621344198,
+          "peak_lag_quanta": 1.0122800000000005,
+          "utilisation": 1.1887525404543207,
           "utilisation_ratio_to_exact": 1.0
         }
       },

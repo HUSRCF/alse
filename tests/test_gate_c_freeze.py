@@ -77,9 +77,22 @@ class FreezeCanFailTest(unittest.TestCase):
     """The lock has to bite, and only on what it claims to lock."""
 
     def _with_source(self, path: pathlib.Path, replacement):
+        """Apply an edit, run the verifier, always restore.
+
+        Asserts the edit actually changed the file. A replacement whose
+        target string has drifted silently becomes a no-op, and a no-op
+        edit makes "the freeze detects this" untestable while still
+        producing a verdict -- which is how a broken lock passes.
+        """
         original = path.read_text()
+        edited = replacement(original)
+        self.assertNotEqual(
+            edited, original,
+            f"the edit did not match anything in {path.name}; its target "
+            f"has drifted and this test is no longer exercising the lock",
+        )
         try:
-            path.write_text(replacement(original))
+            path.write_text(edited)
             return run_verifier()
         finally:
             path.write_text(original)
@@ -107,8 +120,8 @@ class FreezeCanFailTest(unittest.TestCase):
     def test_a_changed_measured_table_breaks_it(self):
         proc = self._with_source(
             REPO / "src" / "burstserve" / "trace_sim.py",
-            lambda s: s.replace('"serial_fraction": 0.391',
-                                '"serial_fraction": 0.392', 1),
+            lambda s: s.replace('"serial_fraction": 0.4419',
+                                '"serial_fraction": 0.4420', 1),
         )
         self.assertEqual(proc.returncode, 1, proc.stdout)
 

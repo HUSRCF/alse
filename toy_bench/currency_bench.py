@@ -127,10 +127,10 @@ BANDWIDTH_JOB = Workload(
 MEASURED_SDXL = Workload(
     name="sdxl_measured",
     curve="compute",
-    solo_step_ms=152.1,          # per denoising step at 32 units, 1024x1024
+    solo_step_ms=115.52,         # per denoising step at 32 units, 768x768
     bw_pressure=0.45,
     contention_sensitivity=0.68,
-    serial_fraction=0.391,
+    serial_fraction=0.4419,      # refit against the per-step curve
 )
 
 MEASURED_COGVIDEOX_2B = Workload(

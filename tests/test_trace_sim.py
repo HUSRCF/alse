@@ -32,16 +32,30 @@ def one_at_a_time(states, units, now):
 class QuotaCostTest(unittest.TestCase):
     """Step cost comes from the measured tables, not from a shape."""
 
-    def test_it_reproduces_the_measured_speed_curve(self):
+    def test_it_agrees_with_an_independent_measurement(self):
+        """Cross-check against a probe that shares no code with the table.
+
+        The transition probe measured SDXL at 768x768 on 2026-08-03 with
+        its own harness: 263.3 / 155.1 / 112.4 ms at 8 / 16 / 32 units.
+        The table was built from a different script three days later.
+        Checking the table against a restatement of its own inputs would
+        prove only that the numbers were copied correctly.
+
+        Tolerance is 5%, tightened from the 13% the previous version
+        needed -- that version compared this per-step table against
+        *call*-level speeds, which are a different quantity and could
+        never have agreed closely.
+        """
         model = QuotaCostModel.for_model("sdxl")
         full = model.step_seconds(32)
-        # Measured normalised speeds, 2026-08-03.
-        for units, measured in ((4, 0.198), (8, 0.377), (16, 0.665),
-                                (24, 0.860), (32, 1.000)):
+        probe = {8: 0.2633, 16: 0.1551, 32: 0.1124}
+        probe_full = probe[32]
+        for units in sorted(probe):
             with self.subTest(units=units):
                 predicted = full / model.step_seconds(units)
+                measured = probe_full / probe[units]
                 self.assertLess(
-                    abs(predicted - measured) / measured, 0.13,
+                    abs(predicted - measured) / measured, 0.05,
                     f"{units} units: {predicted:.3f} against {measured:.3f}",
                 )
 
@@ -281,7 +295,10 @@ class UtilisationClaimTest(unittest.TestCase):
         self.assertGreater(split.utilisation(), exclusive.utilisation())
         self.assertGreater(split.utilisation(), 1.0)
         # The measured margin, not an arbitrary threshold.
-        self.assertAlmostEqual(split.utilisation(), 1.088, places=2)
+        # 1.189 with the per-step cost table measured 2026-08-06; it read
+        # 1.088 while the table was built from call p50s and a full-die
+        # constant that was actually a half-die one.
+        self.assertAlmostEqual(split.utilisation(), 1.189, places=2)
 
     def test_it_also_finishes_the_backlog_sooner(self):
         from burstserve.policies import exclusive_fcfs, static_even
@@ -307,17 +324,19 @@ class MeasuredCurvePreferredTest(unittest.TestCase):
     """Where a measurement exists, the fit must not be used instead.
 
     The fit under-predicts speed at low quota, and that error is not
-    neutral: it under-states the partitioning gain, putting it at 1.6%
-    where the measurements put it at 8.8%. A conservative model that
-    happens to weaken the claim being made is not a safe default.
+    neutral: it under-states the partitioning gain. A conservative model
+    that happens to weaken the claim being made is not a safe default.
+
+    Ratios below are full-die speed divided by the speed at each quota,
+    from the per-step curve measured at 768x768 on 2026-08-06.
     """
 
     def test_measured_quotas_reproduce_the_table_exactly(self):
         model = QuotaCostModel.for_model("sdxl")
         full = model.step_seconds(32)
-        for units, measured in ((4, 0.198), (8, 0.377), (12, 0.534),
-                                (16, 0.665), (20, 0.771), (24, 0.860),
-                                (28, 0.940)):
+        for units, measured in ((4, 0.222), (8, 0.430), (12, 0.597),
+                                (16, 0.733), (20, 0.833), (24, 0.925),
+                                (28, 0.958)):
             with self.subTest(units=units):
                 self.assertAlmostEqual(
                     full / model.step_seconds(units), measured, places=3
@@ -345,7 +364,15 @@ class PredictorDegradationTest(unittest.TestCase):
     cost more than the benefit.
     """
 
-    RATE, SLACK, HORIZON = 0.30, 4.0, 120.0
+    # Retuned 2026-08-06 when the cost table was rebuilt on per-step
+    # measurements. Steps got 32-50% cheaper, so the old rate no longer
+    # congests the die and every policy met every deadline -- which would
+    # have reported perfect robustness for a scheduler that has none. The
+    # rate is the *smallest* that restores a measurable difference between
+    # informed and blind scheduling, i.e. the tightest scenario available
+    # rather than the most forgiving one; test_the_scenario_is_sensitive_
+    # enough_to_tell_policies_apart is what holds it to that.
+    RATE, SLACK, HORIZON = 0.45, 4.0, 120.0
 
     def _trace(self):
         return Trace.poisson(
@@ -391,6 +418,39 @@ class PredictorDegradationTest(unittest.TestCase):
                     f"at {error:.0%} error the worst case ({worst}) is worse "
                     f"than not predicting at all ({blind})",
                 )
+
+    def test_a_load_band_exists_where_intervening_is_worse(self):
+        """A known defect, pinned rather than avoided.
+
+        Around rate 0.60 the deadline-aware policy misses *more* than the
+        one that never intervenes -- 35 against 26 -- and it does so with
+        an exact predictor, so this is not a degradation problem. Giving
+        one request the whole die to save it delays every other request
+        behind it, and the policy decides that trade one request at a time
+        without pricing the delay it imposes on the rest.
+
+        The scenario above sits at 0.45 because that is the smallest load
+        that tells the policies apart at all, not because it avoids this
+        band. Recording the band as a test means a fix has to make this
+        fail, rather than the defect quietly persisting because no test
+        looked there.
+        """
+        from burstserve.policies import deadline_aware, static_even
+
+        trace = Trace.poisson(
+            seed=11, tenants=(("a", "sdxl"), ("b", "sdxl")),
+            rate_per_s=0.60, horizon_s=self.HORIZON, steps=20,
+            deadline_slack=self.SLACK,
+        )
+        informed = len(simulate(trace, deadline_aware,
+                                horizon_s=self.HORIZON).deadline_misses())
+        blind = len(simulate(trace, static_even,
+                             horizon_s=self.HORIZON).deadline_misses())
+        self.assertGreater(
+            informed, blind,
+            "the intervening policy no longer loses in this band -- if that "
+            "is a deliberate fix, update this test and the decision log",
+        )
 
     def test_degradation_is_gradual_rather_than_a_cliff(self):
         from burstserve.policies import deadline_aware

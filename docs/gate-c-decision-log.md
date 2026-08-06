@@ -155,3 +155,113 @@ The lesson generalises past this entry: a behavioural lock is a claim
 about the traces it runs, and traces chosen to demonstrate the intended
 behaviour will systematically miss defects that only appear off the
 intended path.
+
+### 2026-08-06 — the SDXL cost table was wrong at every quota (post-freeze change #2)
+
+**Changed:** `MEASURED_QUOTA_SECONDS["sdxl"]`, `MEASURED_MODELS["sdxl"]`
+(both `step_seconds_at_full` and `serial_fraction`),
+`MEASURED_EXTERNALITY[(16,16)]`, the default slack in
+`feasible_deadline_trace`, and the load parameters of the predictor-
+degradation scenario. `toy_bench` carried the same constant and is
+updated with it.
+
+**What was wrong.** `step_seconds_at_full` was 0.1521 s, commented
+"1024x1024, 32 units". Gate B never measured SDXL at 1024 — every SDXL
+figure in it is 768x768 — and 0.1521 is not the full-die per-step cost at
+either resolution. It is closest to 768 at **16** units (0.1551), a
+half-die number recorded as the full-die one. Everything else in the
+curve was derived from it by scaling with *call* p50 ratios, and a call
+is denoising steps plus a VAE decode whose cost does not scale with quota
+the way the steps do, so those ratios are diluted: 1.503 at 16/32 where
+the per-step measurement says 1.363.
+
+Against a directly measured per-step curve the shipped table was high at
+every quota: +47.2 / +50.2 / +47.2 / +45.2 / +42.2 / +41.6 / +34.2 /
++31.7 percent at 4 through 32 units. Not a constant offset, so not merely
+the wrong scale — the shape was wrong too, and in the direction that
+overstates how much a tenant loses by taking half the die.
+
+**Evidence.** `step_ratio_sdxl_768_perstep_curve_20260806.json`, all
+eight quotas, cv under 0.3%. Two independent cross-checks, because a
+correction this large has to be the measurement's own claim:
+
+| workpoint | transition probe (08-03) | this run (08-06) | apart |
+| --- | --- | --- | --- |
+| 768, 8 units | 263.3 ms | 268.75 ms | 2.1% |
+| 768, 16 units | 155.1 ms | 157.50 ms | 1.5% |
+| 768, 32 units | 112.4 ms | 115.52 ms | 2.8% |
+
+And a third, from a different script again: the co-run driver measured
+solo per-step at 16 units as 0.15748 s against the curve's 0.15750 s.
+
+Gate B's own commit message states SDXL's step as "112.4 ms". The
+measurements were right the whole time; the error was introduced when the
+simulator's table was assembled from them.
+
+**`serial_fraction` 0.391 → 0.4419.** The old value was fitted to call
+latencies, where the decode contributes a serial term the steps do not
+have. Carried onto the per-step curve it put the 15-unit extrapolation
+*below* the measured 12-unit cost — a curve that is not monotone in
+quota. Refitted with `fit_quota_latency` against the per-step points.
+
+**`(16,16)` externality 1.223 → 1.234.** The old entry was a call-level
+penalty measured at 512x512. The new one is per-step at 768x768, the mean
+of the two sides (+22.4% and +24.5%). The dilution turned out to be small
+— 1 to 3 percentage points — so this is the least consequential of the
+corrections, but it was measured rather than assumed.
+
+**Effect: the claim gets stronger, not weaker.** Partitioning's
+utilisation on matched tenants goes from 1.0881 to 1.1888, a gain of
+18.9% over the full die where the table said 8.8%. Both errors ran in the
+same direction and neither was self-serving: a half-die step that is
+cheaper than believed makes partitioning look better. The simulator had
+been understating its own result. Lag stays 0.00 and Jain stays 1.000.
+
+**Scenario retuning, and why it is not threshold-lowering.** Cheaper
+steps de-congested two scenarios that were calibrated against the old
+table:
+
+- `feasible_deadline_trace` slack 1.35 → 1.10. At 1.35 the scheduler met
+  every deadline *without ever invoking its override*, so the trace no
+  longer exercised the behaviour Gate C's C4 tests. 1.10 is tighter, not
+  looser: the override fires, the scheduler still misses nothing, and the
+  non-intervening policy misses two.
+- Predictor-degradation load 0.30 → 0.45 req/s. At 0.30 every policy met
+  every deadline, which would have reported perfect robustness for a
+  scheduler that has none. 0.45 is the *smallest* rate that tells
+  informed from blind scheduling apart, i.e. the tightest available
+  scenario; `test_the_scenario_is_sensitive_enough_to_tell_policies_apart`
+  is what holds it to that.
+
+**A defect this uncovered, recorded rather than fixed.** Around 0.60
+req/s the deadline-aware policy misses *more* than the policy that never
+intervenes — 35 against 26 — and it does so with an exact predictor, so
+it is not a degradation problem. Giving one request the whole die delays
+everything queued behind it, and the policy decides that trade one
+request at a time without pricing the delay it imposes on the rest.
+Pinned as `test_a_load_band_exists_where_intervening_is_worse`, so a fix
+has to make that test fail rather than the defect persisting unexamined.
+The retuned scenario sits at 0.45 because that is the smallest
+discriminating load, not to avoid this band.
+
+**Limits still standing:**
+
+- CogVideoX-2b's curve is still call p50s. Its per-step data has only
+  three points (8/16/32, from the transition probe) and against those the
+  call ratios are accurate to 2.5%, unlike SDXL where the same check
+  fails at 10.2%. Left as call-level deliberately, and marked as such in
+  the source, rather than half-rebuilt.
+- Externality entries other than (16,16) are still call-level at 512x512.
+  The scheduler reads only (16,16) — it either splits evenly or gives the
+  whole die to one tenant — so the others are used solely by the currency
+  counterexample, whose argument is about non-linearity rather than
+  absolute values.
+- One externality table serves both models because CogVideoX-2b cannot
+  be co-run on this card at all: one process peaks at 28.54 GB and two
+  need 57 on 34.2 GB. Applying SDXL's penalties to it is an
+  extrapolation across models.
+
+**Freeze re-issued.** All three table hashes and all four behavioural
+digests changed, as they should for a change of this size — unlike
+post-freeze change #1, where the behavioural lock was blind and had to be
+extended.

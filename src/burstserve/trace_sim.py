@@ -34,8 +34,18 @@ from typing import Callable, Iterable, Sequence
 # that does not shrink with quota, taken from the fitted Amdahl parameters.
 MEASURED_MODELS: dict[str, dict[str, float]] = {
     "sdxl": {
-        "serial_fraction": 0.391,
-        "step_seconds_at_full": 0.1521,   # 1024x1024, 32 units
+        # Refitted 2026-08-06 against the per-step curve. 0.391 came from
+        # the call-level fit, where the VAE decode contributes a serial
+        # term the denoising steps do not have; carried onto the per-step
+        # curve it put the 15-unit extrapolation *below* the measured
+        # 12-unit cost.
+        "serial_fraction": 0.4419,
+        # 768x768, 32 units, measured per denoising step with CUDA events
+        # on 2026-08-06. The previous value, 0.1521, was 768 at *16* units
+        # -- a half-die figure recorded as the full-die one, with a comment
+        # claiming a resolution Gate B never used for this model. See
+        # docs/gate-c-decision-log.md.
+        "step_seconds_at_full": 0.11552,
         "maskable_units": 32,
     },
     "cogvideox-2b": {
@@ -45,24 +55,50 @@ MEASURED_MODELS: dict[str, dict[str, float]] = {
     },
 }
 
-# The measured p50 at each quota, from the Gate B tables. Preferred over
-# the Amdahl fit wherever an entry exists: the fit exists to extrapolate to
-# quotas that were never run, and using it where a measurement is available
-# throws away accuracy for no reason. Its residual is not neutral either --
-# the fit under-predicts speed at low quota, which under-states exactly the
-# effect this work claims, putting the partitioning gain at 1.6% where the
-# measurements put it at 8.7%.
+# The measured cost at each quota. Preferred over the Amdahl fit wherever
+# an entry exists: the fit exists to extrapolate to quotas that were never
+# run, and using it where a measurement is available throws away accuracy
+# for no reason. Its residual is not neutral either -- the fit
+# under-predicts speed at low quota, which under-states exactly the effect
+# this work claims.
+#
+# SDXL is per denoising step, measured directly at 768x768 on 2026-08-06.
+# It was previously the Gate B *call* p50s, which include a VAE decode that
+# does not scale with quota the way the steps do, so their ratios are
+# diluted by a term the per-step ratios do not contain: 1.503 at 16/32
+# where the per-step measurement says 1.363. Combined with the wrong
+# full-die constant, the shipped table ran 32% to 50% high at every quota.
+#
+# CogVideoX-2b is still call p50s, and is left that way deliberately.
+# Its per-step curve has only three measured points (8/16/32 units, from
+# the transition probe), and against those the call ratios are accurate to
+# 2.5% -- unlike SDXL, where the same check fails at 10.2%. Recorded as a
+# known limit rather than silently mixed with a rebuilt curve.
 MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
-    "sdxl": {4: 24.828, 8: 13.058, 12: 9.208, 16: 7.393,
-             20: 6.376, 24: 5.721, 28: 5.231, 32: 4.919},
+    # per denoising step, seconds, 768x768
+    "sdxl": {4: 0.52141, 8: 0.26875, 12: 0.19350, 16: 0.15750,
+             20: 0.13867, 24: 0.12493, 28: 0.12056, 32: 0.11552},
+    # call p50, seconds, 768x768 -- see the note above
     "cogvideox-2b": {4: 41.770, 8: 21.348, 12: 14.604, 16: 11.283,
                      20: 9.669, 24: 8.630, 28: 7.889, 32: 7.413},
 }
 
 # Measured pairwise externality: (own units, peer units) -> slowdown factor
-# applied to this tenant's step time. From the 2026-08-06 table.
+# applied to this tenant's step time.
+#
+# (16,16) is the per-step penalty measured at 768x768 on 2026-08-06, the
+# mean of the two sides (+22.4% and +24.5%). It is the only entry the
+# scheduler reads, since the policy either splits evenly or gives the whole
+# die to one tenant. The remaining entries are call-level penalties
+# measured at 512x512 and are used only by the currency counterexample,
+# whose argument is about non-linearity rather than about absolute values.
+#
+# One entry per split, not per model: CogVideoX-2b cannot be co-run on this
+# card at all -- one process peaks at 28.54 GB and two need 57 on 34.2 GB --
+# so applying these to it is an extrapolation across models, recorded in
+# the decision log rather than hidden here.
 MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
-    (16, 16): 1.223,
+    (16, 16): 1.234,
     (8, 24): 1.495,
     (24, 8): 1.280,
     (4, 28): 1.307,

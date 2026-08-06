@@ -109,7 +109,7 @@ def edf_whole_die(trace: Trace, quantum_s: float = 0.25) -> FeasibilityReport:
 
 def feasible_deadline_trace(
     *,
-    slack: float = 1.35,
+    slack: float = 1.10,
     per_tenant: int = 3,
     steps: int = 20,
     models: tuple[str, str] = ("sdxl", "sdxl"),
@@ -122,6 +122,14 @@ def feasible_deadline_trace(
     trace feasible by construction: a deadline computed from one
     request's own cost ignores the queueing behind it and produces traces
     that are quietly impossible.
+
+    Slack was tightened from 1.35 to 1.10 on 2026-08-06, when the cost
+    table was rebuilt on per-step measurements and steps got 32-50%
+    cheaper. At 1.35 the scheduler met every deadline without ever
+    invoking its deadline override, so the trace no longer exercised the
+    behaviour it exists to test. At 1.10 the override fires, the
+    scheduler still misses nothing, and the policy that does not
+    intervene misses two -- so the scenario discriminates again.
     """
     plain = Trace([
         Request(request_id=i, tenant=f"t{i % 2}", model=models[i % 2],
