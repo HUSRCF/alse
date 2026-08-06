@@ -22,6 +22,7 @@ import os
 import shutil
 import statistics
 import subprocess
+import threading
 import sys
 import tempfile
 import time
@@ -223,6 +224,100 @@ def restrict_to_overlap(record_a: dict, record_b: dict, minimum: float) -> dict:
     return result
 
 
+def _rocm_scalar(flag: str, needle: str) -> float | None:
+    """One number out of rocm-smi, or None if it is unavailable."""
+    try:
+        proc = subprocess.run(["rocm-smi", flag], capture_output=True,
+                              text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in proc.stdout.splitlines():
+        if needle.lower() not in line.lower():
+            continue
+        for token in line.replace("(", " ").replace(")", " ").split():
+            try:
+                return float(token.rstrip("CW%Mhz"))
+            except ValueError:
+                continue
+    return None
+
+
+def junction_celsius() -> float | None:
+    return _rocm_scalar("--showtemp", "junction")
+
+
+def cool_to(target_c: float, timeout_s: float) -> dict:
+    """Idle until the die reaches ``target_c``, and say what happened.
+
+    Co-run numbers are only comparable from a controlled thermal start.
+    On 2026-08-06 the same 768 configuration measured +22.4% externality
+    on a cold card and +80.1% after hours of continuous runs -- the
+    difference being that two tenants reach the 300 W cap and one does
+    not, so the hot run was measuring the power limit. Runs compared
+    across thermal states measure the schedule of the experiments.
+    """
+    started = time.time()
+    readings = []
+    while True:
+        temperature = junction_celsius()
+        readings.append({"t": time.time() - started, "junction_c": temperature})
+        if temperature is None:
+            return {"status": "unavailable", "readings": readings,
+                    "target_c": target_c}
+        if temperature <= target_c:
+            return {"status": "reached", "junction_c": temperature,
+                    "seconds": time.time() - started, "target_c": target_c,
+                    "readings": readings}
+        if time.time() - started > timeout_s:
+            return {"status": "timeout", "junction_c": temperature,
+                    "seconds": time.time() - started, "target_c": target_c,
+                    "readings": readings}
+        time.sleep(10.0)
+
+
+class ThermalTrace:
+    """Samples temperature, clock and power for the length of a run.
+
+    Recorded with every co-run because the penalty being measured is not
+    separable from the power state it was measured in.
+    """
+
+    def __init__(self, interval_s: float = 10.0):
+        self.interval_s = interval_s
+        self.samples: list[dict] = []
+        self._halt = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def __enter__(self) -> "ThermalTrace":
+        def loop() -> None:
+            while not self._halt.wait(self.interval_s):
+                self.samples.append({
+                    "junction_c": junction_celsius(),
+                    "sclk_mhz": _rocm_scalar("--showclocks", "sclk clock"),
+                    "power_w": _rocm_scalar("--showpower", "Average"),
+                })
+        self._thread = threading.Thread(target=loop, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._halt.set()
+        if self._thread is not None:
+            self._thread.join(timeout=30.0)
+
+    def summary(self) -> dict:
+        temps = [s["junction_c"] for s in self.samples if s["junction_c"]]
+        powers = [s["power_w"] for s in self.samples if s["power_w"]]
+        clocks = [s["sclk_mhz"] for s in self.samples if s["sclk_mhz"]]
+        return {
+            "samples": self.samples,
+            "peak_junction_c": max(temps) if temps else None,
+            "peak_power_w": max(powers) if powers else None,
+            "min_sclk_mhz": min(clocks) if clocks else None,
+            "max_sclk_mhz": max(clocks) if clocks else None,
+        }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-a", required=True)
@@ -253,6 +348,14 @@ def main() -> int:
     parser.add_argument("--minimum-overlap-fraction", type=float, default=0.80)
     parser.add_argument("--memory-safety", type=float, default=0.90,
                         help="fraction of card memory the pair may use")
+    parser.add_argument("--cool-to", type=float, default=None,
+                        help="idle until junction temperature reaches this "
+                             "many degrees C before measuring. Required for "
+                             "any run compared against another: two tenants "
+                             "reach the 300 W cap where one does not, so a "
+                             "hot run measures the power limit rather than "
+                             "the pairing")
+    parser.add_argument("--cool-timeout", type=float, default=600.0)
     parser.add_argument("--force", action="store_true",
                         help="run the pair even when it does not fit")
     parser.add_argument("--out", required=True)
@@ -289,6 +392,16 @@ def main() -> int:
 
     started = time.time()
     print("solo a ...", flush=True)
+    cooling = None
+    if args.cool_to is not None:
+        print(f"cooling to {args.cool_to:.0f} C ...", flush=True)
+        cooling = cool_to(args.cool_to, args.cool_timeout)
+        print(f"  {cooling['status']} at "
+              f"{cooling.get('junction_c')} C after "
+              f"{cooling.get('seconds', 0):.0f}s", flush=True)
+
+    thermal = ThermalTrace()
+    thermal.__enter__()
     solo_a = solo(args, side_a, mask_a, "a")
     print("solo b ...", flush=True)
     solo_b = solo(args, side_b, mask_b, "b")
@@ -324,6 +437,7 @@ def main() -> int:
 
     print("co-run ...", flush=True)
     co_a, co_b = corun(args, side_a, side_b, mask_a, mask_b)
+    thermal.__exit__(None, None, None)
 
     # Bind the tree again: the four cells are fresh subprocesses that re-read
     # the profile script from disk, so a tree edited mid-run would have been
@@ -350,6 +464,11 @@ def main() -> int:
         "solo": {"a": solo_a, "b": solo_b},
         "corun": {"a": co_a, "b": co_b},
         "memory_headroom": headroom,
+        # The power state the penalty was measured in. Not metadata: the
+        # same configuration measured +22.4% cold and +80.1% hot on
+        # 2026-08-06, because two tenants reach the 300 W cap and one does
+        # not. A co-run report without this cannot be compared to another.
+        "thermal": {"cooling": cooling, **thermal.summary()},
         "wall_seconds": time.time() - started,
         "reduced_contract": "docs/amd-reduced-contract.md",
     }
