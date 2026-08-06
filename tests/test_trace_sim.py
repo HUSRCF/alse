@@ -365,14 +365,16 @@ class PredictorDegradationTest(unittest.TestCase):
     """
 
     # Retuned 2026-08-06 when the cost table was rebuilt on per-step
-    # measurements. Steps got 32-50% cheaper, so the old rate no longer
-    # congests the die and every policy met every deadline -- which would
-    # have reported perfect robustness for a scheduler that has none. The
-    # rate is the *smallest* that restores a measurable difference between
-    # informed and blind scheduling, i.e. the tightest scenario available
-    # rather than the most forgiving one; test_the_scenario_is_sensitive_
-    # enough_to_tell_policies_apart is what holds it to that.
-    RATE, SLACK, HORIZON = 0.45, 4.0, 120.0
+    # measurements: steps got 32-50% cheaper, so the old rate of 0.30 no
+    # longer congested the die and every policy met every deadline, which
+    # would report perfect robustness for a scheduler that has none.
+    #
+    # 0.80 rather than the smallest rate that separates the policies on
+    # one trace. Checked across ten arrival seeds, informed scheduling
+    # beats blind on 3/10 at 0.45, 9/10 at 0.60 and 10/10 at 0.80 and
+    # above -- so the low rates separate them only by luck of the draw,
+    # and a scenario picked on a single seed there measures the seed.
+    RATE, SLACK, HORIZON = 0.80, 4.0, 120.0
 
     def _trace(self):
         return Trace.poisson(
@@ -419,38 +421,34 @@ class PredictorDegradationTest(unittest.TestCase):
                     f"than not predicting at all ({blind})",
                 )
 
-    def test_a_load_band_exists_where_intervening_is_worse(self):
-        """A known defect, pinned rather than avoided.
+    def test_the_advantage_holds_across_arrival_seeds(self):
+        """One trace is not a result, in either direction.
 
-        Around rate 0.60 the deadline-aware policy misses *more* than the
-        one that never intervenes -- 35 against 26 -- and it does so with
-        an exact predictor, so this is not a degradation problem. Giving
-        one request the whole die to save it delays every other request
-        behind it, and the policy decides that trade one request at a time
-        without pricing the delay it imposes on the rest.
+        An earlier version of this file pinned a "defect" from a single
+        seed at rate 0.60, where the intervening policy missed 35 against
+        the non-intervening policy's 26. Across ten seeds at that rate the
+        intervening policy wins on nine, so that reading measured the
+        arrival sequence rather than the scheduler. Two attempted fixes
+        for the non-defect made every higher rate worse, which is the cost
+        of chasing a single sample.
 
-        The scenario above sits at 0.45 because that is the smallest load
-        that tells the policies apart at all, not because it avoids this
-        band. Recording the band as a test means a fix has to make this
-        fail, rather than the defect quietly persisting because no test
-        looked there.
+        The claim that survives is statistical, so the test is too.
         """
         from burstserve.policies import deadline_aware, static_even
 
-        trace = Trace.poisson(
-            seed=11, tenants=(("a", "sdxl"), ("b", "sdxl")),
-            rate_per_s=0.60, horizon_s=self.HORIZON, steps=20,
-            deadline_slack=self.SLACK,
-        )
-        informed = len(simulate(trace, deadline_aware,
-                                horizon_s=self.HORIZON).deadline_misses())
-        blind = len(simulate(trace, static_even,
-                             horizon_s=self.HORIZON).deadline_misses())
-        self.assertGreater(
-            informed, blind,
-            "the intervening policy no longer loses in this band -- if that "
-            "is a deliberate fix, update this test and the decision log",
-        )
+        wins = 0
+        for seed in range(1, 11):
+            trace = Trace.poisson(
+                seed=seed, tenants=(("a", "sdxl"), ("b", "sdxl")),
+                rate_per_s=self.RATE, horizon_s=self.HORIZON, steps=20,
+                deadline_slack=self.SLACK,
+            )
+            informed = len(simulate(trace, deadline_aware,
+                                    horizon_s=self.HORIZON).deadline_misses())
+            blind = len(simulate(trace, static_even,
+                                 horizon_s=self.HORIZON).deadline_misses())
+            wins += informed < blind
+        self.assertGreaterEqual(wins, 9, f"only {wins}/10 seeds")
 
     def test_degradation_is_gradual_rather_than_a_cliff(self):
         from burstserve.policies import deadline_aware
