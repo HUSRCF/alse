@@ -10,10 +10,24 @@ import zlib
 from unittest import mock
 
 import burstserve.git_provenance as provenance
-from burstserve.git_provenance import SnapshotLimits, capture_repository
+from burstserve.git_provenance import SnapshotLimits
+from burstserve.git_provenance import capture_repository as _capture_repository
 
 
 from git_support import GIT, require_supported_git
+
+
+def capture_repository(*args, **kwargs):
+    """Capture with the selected git.
+
+    capture_repository binds DEFAULT_GIT as a default argument value, which
+    is evaluated when the function is defined, so patching the module
+    attribute does not reach it. Every call here would otherwise run under
+    /usr/bin/git regardless of BURSTSERVE_GIT -- which is exactly how these
+    tests kept failing on a host with git 2.43 after the variable was set.
+    """
+    kwargs.setdefault("git", GIT)
+    return _capture_repository(*args, **kwargs)
 
 
 def _run_git(
@@ -80,14 +94,6 @@ def _replace_loose_object_with_valid_payload(
 class GitProvenanceTest(unittest.TestCase):
     def setUp(self) -> None:
         require_supported_git(self)
-        # capture_repository() falls back to DEFAULT_GIT when no binary is
-        # passed, and most calls here do not pass one. Without this the
-        # tests build fixtures with the selected git and then capture them
-        # with /usr/bin/git, which is how they still failed on the AMD host
-        # after BURSTSERVE_GIT was set.
-        patch = mock.patch.object(provenance, "DEFAULT_GIT", GIT)
-        patch.start()
-        self.addCleanup(patch.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
 

@@ -1272,8 +1272,27 @@ class GateAResultsTest(unittest.TestCase):
             "gate_a0_4090_dd8c927_seed1.json"
         )
         run_root = repo_root / "experiments/runs"
+        published = (
+            repo_root
+            / "experiments/aggregates/"
+            "gate_a0_4090_dd8c927_seed1_partial_20260730.json"
+        )
         if not spec_path.is_file() or not run_root.is_dir():
             self.skipTest("historical Gate-A0 evidence is unavailable")
+        # As in the byte-preservation test: experiments/runs is untracked, so
+        # its presence says nothing about which runs are in it.
+        if published.is_file():
+            covered = {
+                entry["run_id"]
+                for entry in json.loads(published.read_text())
+                ["aggregate_inputs"]["runs"]
+            }
+            absent = [r for r in covered if not (run_root / r).is_dir()]
+            if absent:  # pragma: no cover - depends on retained raw evidence
+                self.skipTest(
+                    f"{len(absent)} of {len(covered)} historical runs are not "
+                    f"in {run_root}"
+                )
         report = aggregate_from_spec(run_root, spec_path)
         self.assertTrue(report["selected_subset"]["accepted"])
         self.assertEqual(
@@ -4175,6 +4194,22 @@ class GateAResultsTest(unittest.TestCase):
             self.skipTest("historical Gate-A0 raw evidence is unavailable")
 
         published_bytes = published.read_bytes()
+        # The directory existing is not the precondition; the runs this
+        # aggregate covers being in it is. experiments/runs is untracked, so
+        # a checkout on another host has a populated directory holding
+        # entirely different runs -- and the test then rebuilt a different
+        # aggregate and reported a digest mismatch, which reads as
+        # reproducibility having broken rather than as evidence being absent.
+        covered = {
+            entry["run_id"]
+            for entry in json.loads(published_bytes)["aggregate_inputs"]["runs"]
+        }
+        absent = sorted(r for r in covered if not (run_root / r).is_dir())
+        if absent:  # pragma: no cover - depends on retained raw evidence
+            self.skipTest(
+                f"{len(absent)} of {len(covered)} runs this aggregate covers "
+                f"are not in {run_root}"
+            )
         # The published artifact itself is immutable evidence.
         self.assertEqual(
             hashlib.sha256(published_bytes).hexdigest(),

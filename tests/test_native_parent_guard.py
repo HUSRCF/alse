@@ -24,7 +24,11 @@ import unittest
 # test_absolute_test_entrypoint_cannot_be_package_shadowed, with tests/
 # absent from sys.path, so any sibling import breaks the very property
 # that test exists to check.
-_GIT = Path(os.environ.get("BURSTSERVE_GIT", "/usr/bin/git"))
+# The system git, deliberately: every capture path this file exercises
+# runs build_attestation, which invokes /usr/bin/git directly. Honouring
+# BURSTSERVE_GIT here would let the precondition pass while the code under
+# test still used a git too old for --no-lazy-fetch.
+_GIT = Path("/usr/bin/git")
 _MINIMUM_GIT = (2, 45)
 
 
@@ -53,8 +57,8 @@ def require_supported_git(case) -> None:
         case.skipTest(f"cannot determine the version of {_GIT}")
     elif tuple(numbers) < _MINIMUM_GIT:
         case.skipTest(
-            f"{_GIT} is {'.'.join(map(str, numbers))}; these tests need "
-            f"{'.'.join(map(str, _MINIMUM_GIT))} or newer. Set BURSTSERVE_GIT."
+            f"{_GIT} is {'.'.join(map(str, numbers))}; these tests invoke "
+            f"it directly and need {'.'.join(map(str, _MINIMUM_GIT))} or newer"
         )
 from unittest import mock
 

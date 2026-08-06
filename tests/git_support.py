@@ -55,3 +55,27 @@ def require_supported_git(case) -> None:
             f"{'.'.join(map(str, MINIMUM_GIT))} or newer. Set BURSTSERVE_GIT "
             "to a suitable binary."
         )
+
+
+SYSTEM_GIT = Path("/usr/bin/git")
+
+
+def require_supported_system_git(case) -> None:
+    """For tests that cannot be pointed at a different binary.
+
+    Some capture paths reach capture_repository several frames down and
+    bind DEFAULT_GIT as a default argument value, so neither BURSTSERVE_GIT
+    nor patching the module attribute reaches them. Those tests genuinely
+    need the system git to be new enough, and on a host where it is not,
+    skipping with the version named is the honest outcome -- failing would
+    report a defect in the capture that is not there.
+    """
+    version = git_version(SYSTEM_GIT)
+    if version is None:
+        case.skipTest(f"cannot determine the version of {SYSTEM_GIT}")
+    if version < MINIMUM_GIT:
+        case.skipTest(
+            f"{SYSTEM_GIT} is {'.'.join(map(str, version))}; this test "
+            f"reaches capture paths that use it directly and needs "
+            f"{'.'.join(map(str, MINIMUM_GIT))} or newer"
+        )

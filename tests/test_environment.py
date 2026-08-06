@@ -11,6 +11,30 @@ import unittest
 
 from git_support import GIT as _GIT
 from git_support import require_supported_git
+from git_support import require_supported_system_git
+
+import burstserve.git_provenance as _git_provenance
+
+# capture_repository binds DEFAULT_GIT as a default argument value,
+# fixed when the function is defined, so patching the module attribute
+# never reaches it. These modules each hold their own reference, and
+# patching one does not reach the other.
+_GIT_CAPTURE_TARGETS = (_git_provenance,)
+
+
+def _use_selected_git(case):
+    from unittest import mock as _mock
+
+    original = _git_provenance.capture_repository
+
+    def wrapped(*args, **kwargs):
+        kwargs.setdefault('git', _GIT)
+        return original(*args, **kwargs)
+
+    for target in _GIT_CAPTURE_TARGETS:
+        patch = _mock.patch.object(target, 'capture_repository', wrapped)
+        patch.start()
+        case.addCleanup(patch.stop)
 from unittest import mock
 
 from burstserve.environment import (
@@ -48,6 +72,9 @@ class ModelInventoryTest(unittest.TestCase):
 
 class CaptureEnvironmentTest(unittest.TestCase):
     def setUp(self) -> None:
+        require_supported_git(self)
+        require_supported_system_git(self)
+        _use_selected_git(self)
         require_supported_git(self)
         import burstserve.git_provenance as _prov
         from unittest import mock as _mock
