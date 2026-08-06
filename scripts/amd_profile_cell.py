@@ -484,6 +484,11 @@ def main() -> int:
 
     ordered = sorted(samples)
     pick = lambda q: ordered[min(len(ordered) - 1, int(q * len(ordered)))]
+    mean_value = statistics.mean(samples)
+    cv_value = (
+        statistics.stdev(samples) / mean_value
+        if len(samples) > 1 and mean_value else None
+    )
     record = {
         "schema_version": CELL_SCHEMA_VERSION,
         "status": "ok",
@@ -500,10 +505,12 @@ def main() -> int:
         "p95_s": pick(0.95),
         "p99_s": pick(0.99),
         "mean_s": statistics.mean(samples),
-        "cv": statistics.stdev(samples) / statistics.mean(samples),
-        "meets_cv_threshold": (
-            statistics.stdev(samples) / statistics.mean(samples)
-        ) <= args.target_cv,
+        # A single sample has no dispersion to report. None rather than 0.0:
+        # zero would read as perfectly stable and satisfy the CV clause,
+        # which is how an unmeasured quantity passes a gate. Single-sample
+        # runs are for sizing, not for evidence.
+        "cv": cv_value,
+        "meets_cv_threshold": cv_value is not None and cv_value <= args.target_cv,
         "peak_memory_bytes": torch.cuda.max_memory_allocated(),
         "peak_memory_reserved_bytes": torch.cuda.max_memory_reserved(),
         # Recorded so a co-run can tell in advance whether two of these fit

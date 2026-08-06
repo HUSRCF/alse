@@ -216,5 +216,35 @@ class PowerSamplerRunsTest(unittest.TestCase):
         sampler.halt()
         self.assertEqual(sampler.samples, [])
 
+class SingleSampleTest(unittest.TestCase):
+    """A one-sample cell must report no CV, not a CV of zero.
+
+    Sizing runs use --samples 1, and the cell crashed on
+    statistics.stdev. Returning 0.0 instead would be worse than crashing:
+    zero dispersion reads as perfectly stable and satisfies the CV clause,
+    so an unmeasured quantity would pass a gate.
+    """
+
+    def test_the_cell_computes_no_cv_from_one_sample(self):
+        source = (SCRIPTS / "amd_profile_cell.py").read_text("utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Assign)
+                and any(getattr(t, "id", None) == "cv_value" for t in node.targets)
+            ):
+                expression = ast.unparse(node.value)
+                self.assertIn("len(samples) > 1", expression)
+                self.assertIn("None", expression)
+                return
+        self.fail("cv_value is never computed")
+
+    def test_a_none_cv_does_not_satisfy_the_threshold(self):
+        for cv, target, expected in ((None, 0.05, False), (0.01, 0.05, True),
+                                     (0.09, 0.05, False)):
+            with self.subTest(cv=cv):
+                self.assertEqual(cv is not None and cv <= target, expected)
+
+
 if __name__ == "__main__":
     unittest.main()
