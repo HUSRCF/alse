@@ -71,6 +71,7 @@
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
 | 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 2026-08-01 起有真机覆盖：真实 `libnvidia-ml.so.610.43.02` 上 9 个必需符号全部绑定、sealed memfd 快照 sha256 与磁盘一致、supported bits `61852`、Xid bit `8` 注册成功、250 ms quiet window 实测 250.1 ms、0 事件、`safe_for_acceptance=true`；错误 hash/version 双向 fail-closed | approximate | 已修复 `nvmlDeviceGetHandleByUUID_v2` 不存在导致的必然失败；仍需真实 Xid 注入验证（无安全注入手段）与 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
+| Gate C 仿真验收（7/7） | `src/burstserve/{trace_sim,policies,deadline_feasibility}.py`；调度器 `slo_aware_partitioning`（deadline override → 步长匹配配对 → 亏欠轮转） | `experiments/aggregates/gate_c_verification.json` 全 7 条 PASS（commit `bf0cf69`）；782 tests；冻结 manifest `gate_c_algorithm_freeze.json` + `docs/gate-c-decision-log.md` | **exact（仅限仿真）** | 成本表来自 Gate B-AMD R9700 实测，但**本门无 GPU 运行，不构成硬件 claim**；只覆盖 2 模型、2 租户并发；cold-model 项推迟到 runtime 阶段 |
 | Gate A 动态 SM 功能与性能 | 尚未运行 masked kernel；masked 单 cell validator（`validate_masked_cell_contract`）与跨 trial/bit/mode 矩阵 validator（`validate_masked_tpc_matrix`）均已实现，纯函数、26 项对抗测试、端到端串联已验证 | 无 TPC map、10,000 次重配、更新 p99、overlap 或 correctness 证据；两个 validator 尚未接入 `validate_gate_a0`（无 masked 证据可消费） | missing | Gate A 硬门，不能由 A0 或 simulator 替代；仍缺 Xid 真实覆盖与 CUDA 13.3 stream offset 政策 |
 
 在上述 hard gaps 关闭前，不正式进入第 2 周。只允许并行开展可逆、纯 CPU
@@ -403,6 +404,34 @@ $$
 - 构造的可行 deadline trace 中不存在可避免 miss。
 - predictor error `{±5%,±10%,±20%}` 下能够安全降级。
 - 算法、公式和 action 顺序在本阶段结束后冻结；之后修改必须写 decision log。
+
+**状态（2026-08-06，commit `bf0cf69`）：7/7 PASS。**
+证据 `experiments/aggregates/gate_c_verification.json`，验证器
+`scripts/verify_gate_c.py`（PASS / FAIL / NOT_MEASURED 三态）。
+
+| 条款 | 结果 |
+| --- | --- |
+| 逐字节可复现 | 3 个独立进程、不同 `PYTHONHASHSEED` digest 一致；换 trace seed 后不同 |
+| 记账差异 < 1% | 三条 trace 均 0.0000%（含"持有配额但整轮未完成一步"的计费） |
+| backlogged Jain ≥ 0.98 | 1.000；未被服务的租户以 0 计入分母，饥饿不能靠缺席得满分 |
+| service lag ≤ 2 quanta | 匹配 0.00 / 失配 1.03；override 由 simulator 独立判定，非策略自报 |
+| 可行 trace 无可避免 miss | 0；可行性由全 die 抢占式 EDF 见证，deadline 由 EDF 实际完成时刻导出 |
+| predictor error ±5/10/20% 安全降级 | 记账仍 0%、lag ≤ 2、利用率在精确预测的 5% 以内 |
+| 算法冻结 + decision log | `gate_c_algorithm_freeze.json`（14 函数 AST + 3 测量表 + 4 行为 digest）与 `docs/gate-c-decision-log.md` |
+
+调度器 `slo_aware_partitioning` 的 action 顺序已冻结：deadline override →
+步长匹配配对（1.6×）→ 亏欠轮转。匹配租户利用率 1.0881（较全 die 独占
++8.8%），失配租户 1.0000（不劣于独占）。
+
+**限定条件（不得省略）**：本门是仿真验收。成本表为 Gate B-AMD 在
+AMD R9700 (gfx1201) 上的实测值，但验证器本身不跑 GPU，结论不构成硬件
+claim。仅覆盖 2 个模型（SDXL、CogVideoX-2b）与 2 租户并发（externality
+表的实测范围）；cold-model 项推迟至 runtime 阶段。
+
+冻结后已发生 1 次修改（见 decision log）：`step_matched_pairing` 原按预测
+步长排序取最便宜的两个请求，在 predictor error 下会把同一租户的两个请求
+配对而饿死另一租户（lag 22.37 quanta，而吞吐与记账均无异常）。已改为跨
+租户配对并补充第四条行为 digest——前三条在该缺陷上完全不敏感。
 
 ### 第 7–8 周：2026-09-10 至 09-23——ASLE Temporal Runtime
 
