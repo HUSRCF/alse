@@ -1,0 +1,104 @@
+{
+  "schema_version": "burstserve.gate-c-verification/v1",
+  "gate": "Gate C (plan.md week 5-6, simulator stage)",
+  "overall": "PASS",
+  "scope": "Simulation. Cost tables are measured on an AMD R9700 (gfx1201) under Gate B-AMD; no GPU runs in this verifier. Nothing here is a hardware claim.",
+  "policy_under_test": "policies.slo_aware_partitioning",
+  "criteria": {
+    "c1_byte_identical_replay": {
+      "status": "PASS",
+      "digest": "6ad6169517ed67fe343e4207ea143a4ce22b3b33682df36af0279072b9d88cbe",
+      "processes": 3,
+      "hash_seeds": [
+        "0",
+        "1",
+        "12345"
+      ],
+      "differs_under_a_different_trace_seed": true,
+      "note": "separate processes, so an unsorted set would show up",
+      "criterion": "同 seed 仿真结果逐字节可复现"
+    },
+    "c2_canonical_accounting": {
+      "status": "PASS",
+      "threshold": 0.01,
+      "worst_relative_error": 2.6544483553500467e-16,
+      "by_trace": {
+        "matched": 0.0,
+        "mismatched": 2.6544483553500467e-16,
+        "deadline": 2.081257074097432e-16
+      },
+      "definition": "charged quota-seconds vs unit-seconds granted, including units held through a round no step completed in",
+      "criterion": "canonical service 对 SM quota 的记账差异小于 1%"
+    },
+    "c3_backlogged_jain": {
+      "status": "PASS",
+      "threshold": 0.98,
+      "jain_index": 1.0,
+      "trace": "two tenants, equal demand, all queued at t=0",
+      "note": "unserved tenants are seeded at zero, so starvation cannot score 1.0 by absence",
+      "criterion": "backlogged workload 的 Jain index 不低于 0.98"
+    },
+    "c4_service_lag": {
+      "status": "PASS",
+      "threshold_quanta": 2.0,
+      "by_trace": {
+        "matched": {
+          "peak_lag_quanta": 0.0,
+          "deadline_override_rounds": 0,
+          "exclusive_rounds": 0
+        },
+        "mismatched": {
+          "peak_lag_quanta": 1.033800000000003,
+          "deadline_override_rounds": 0,
+          "exclusive_rounds": 52
+        }
+      },
+      "definition": "peak over rounds of the worst deviation from an equal share among backlogged tenants, in full-die quanta; sampled per round because the end-of-run gap is zero for a policy that was never fair",
+      "exemption": "overrides are detected by the simulator from the predictions the policy saw, not self-reported",
+      "criterion": "无 deadline override 时 service lag 不超过两个最大 quantum"
+    },
+    "c5_no_avoidable_miss": {
+      "status": "PASS",
+      "avoidable_misses": [],
+      "requests": 6,
+      "feasibility_witness": "preemptive EDF, whole die, step-granular preemption",
+      "note": "deadlines derived from what EDF achieved, not from nominal per-request cost, which ignores the queue",
+      "criterion": "构造的可行 deadline trace 中不存在可避免 miss"
+    },
+    "c6_safe_degradation": {
+      "status": "PASS",
+      "exact_utilisation": 1.0880770621344198,
+      "by_error_level": {
+        "+/-5%": {
+          "accounting_error": 0.0,
+          "peak_lag_quanta": 1.033800000000003,
+          "utilisation": 1.0880770621344198,
+          "utilisation_ratio_to_exact": 1.0
+        },
+        "+/-10%": {
+          "accounting_error": 0.0,
+          "peak_lag_quanta": 1.033800000000003,
+          "utilisation": 1.0880770621344198,
+          "utilisation_ratio_to_exact": 1.0
+        },
+        "+/-20%": {
+          "accounting_error": 0.0,
+          "peak_lag_quanta": 1.033800000000003,
+          "utilisation": 1.0880770621344198,
+          "utilisation_ratio_to_exact": 1.0
+        }
+      },
+      "definition": "safe = accounting still exact (it is measured, not predicted), lag still bounded, utilisation within 5% of the exact-predictor run",
+      "criterion": "predictor error {±5%,±10%,±20%} 下能够安全降级"
+    },
+    "c7_algorithm_freeze": {
+      "status": "PASS",
+      "verifier": "scripts/freeze_gate_c_algorithm.py",
+      "manifest": "experiments/manifests/gate_c_algorithm_freeze.json",
+      "decision_log": "docs/gate-c-decision-log.md",
+      "decision_log_present": true,
+      "output": "PASS: 14 functions, 3 tables and 4 behavioural digests match the freeze",
+      "criterion": "算法、公式和 action 顺序冻结，修改须写 decision log"
+    }
+  }
+}

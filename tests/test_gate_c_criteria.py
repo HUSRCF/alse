@@ -239,9 +239,13 @@ class C6_SafeDegradationUnderPredictorError(unittest.TestCase):
 
     def test_accounting_and_lag_survive_predictor_error(self):
         for error in (0.05, 0.10, 0.20):
-            with self.subTest(error=error):
+          for trace_name, trace, horizon in (
+              ("matched", matched_trace(), 600.0),
+              ("mismatched", mismatched_trace(), 1200.0),
+          ):
+            with self.subTest(error=error, trace=trace_name):
                 result = simulate(
-                    mismatched_trace(), POLICY, horizon_s=1200.0,
+                    trace, POLICY, horizon_s=horizon,
                     predictor=Predictor(relative_error=error, seed=11),
                 )
                 # Accounting is measured, not predicted, so error must not
@@ -249,6 +253,38 @@ class C6_SafeDegradationUnderPredictorError(unittest.TestCase):
                 # not past the bound.
                 self.assertLess(result.accounting_error(), 0.01)
                 self.assertLessEqual(result.peak_service_lag_quanta(), 2.0)
+
+    def test_predictor_error_cannot_starve_a_tenant(self):
+        """The failure this criterion exists to catch.
+
+        An earlier version ranked every request by predicted cost and
+        paired the two cheapest. With an exact predictor equal costs
+        tie-break on request id, which alternates tenants, so it looked
+        correct. Under +/-5% error two of one tenant's requests could both
+        predict cheapest, hold the die between them and leave the other
+        tenant unserved for the whole run -- 22.37 quanta of lag at
+        *unchanged* throughput, so no utilisation or accounting check
+        could have seen it.
+
+        Several predictor seeds, because one seed that happens not to
+        reorder the queue proves nothing.
+        """
+        for error in (0.05, 0.10, 0.20):
+            for seed in (3, 11, 99):
+                with self.subTest(error=error, seed=seed):
+                    result = simulate(
+                        matched_trace(), POLICY, horizon_s=600.0,
+                        predictor=Predictor(relative_error=error, seed=seed),
+                    )
+                    self.assertLessEqual(
+                        result.peak_service_lag_quanta(), 2.0
+                    )
+                    self.assertGreaterEqual(result.jain_index(), 0.98)
+                    self.assertEqual(len(result.quota_seconds_by_tenant), 2)
+                    for tenant, charged in (
+                        result.quota_seconds_by_tenant.items()
+                    ):
+                        self.assertGreater(charged, 0.0, tenant)
 
     def test_throughput_degrades_gracefully(self):
         exact = simulate(matched_trace(), POLICY, horizon_s=600.0)

@@ -173,6 +173,15 @@ def step_matched_pairing(states: Sequence[RequestState], units: int,
     on mismatched tenants and a peak lag of 12.17 quanta doing it, because
     it runs one request to completion before starting the next. Rotating on
     deficit keeps the same throughput with lag bounded by one round.
+
+    Pairing is across tenants, never within one. Ranking every request by
+    predicted cost and taking the first two looks equivalent while the
+    predictor is exact -- equal predictions tie-break on request id, which
+    happens to alternate tenants -- and starves a tenant outright once the
+    predictor is not. Under +/-5% error two of one tenant's requests can
+    both predict cheapest, take the whole die between them, and leave the
+    other tenant unserved for the entire run: 22.37 quanta of lag at
+    unchanged throughput, which is why utilisation alone cannot detect it.
     """
     if not states:
         return {}
@@ -182,16 +191,33 @@ def step_matched_pairing(states: Sequence[RequestState], units: int,
         per_step = state.predicted_step_seconds.get(half)
         return float("inf") if per_step is None else per_step
 
-    ordered = sorted(
-        states, key=lambda s: (believed_step(s), s.request.request_id)
+    # One candidate per tenant -- its own cheapest request -- so a pair can
+    # never be one tenant with itself.
+    cheapest_per_tenant: dict[str, RequestState] = {}
+    for state in states:
+        held = cheapest_per_tenant.get(state.request.tenant)
+        if held is None or (
+            (believed_step(state), state.request.request_id)
+            < (believed_step(held), held.request.request_id)
+        ):
+            cheapest_per_tenant[state.request.tenant] = state
+
+    # Furthest behind first: pairing is also the moment to correct a
+    # deficit, and picking by predicted cost alone would let a tenant that
+    # is already ahead keep the seat.
+    candidates = sorted(
+        cheapest_per_tenant.values(),
+        key=lambda s: (s.tenant_quota_seconds, believed_step(s),
+                       s.request.request_id),
     )
-    if len(ordered) >= 2:
-        fast, slow = ordered[0], ordered[1]
-        quick, sluggish = believed_step(fast), believed_step(slow)
+    if len(candidates) >= 2:
+        first, second = candidates[0], candidates[1]
+        quick = min(believed_step(first), believed_step(second))
+        sluggish = max(believed_step(first), believed_step(second))
         if quick > 0 and sluggish / quick <= tolerance:
             return {
-                fast.request.request_id: half,
-                slow.request.request_id: units - half,
+                first.request.request_id: half,
+                second.request.request_id: units - half,
             }
     behind = min(
         states,

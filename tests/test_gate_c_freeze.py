@@ -57,7 +57,20 @@ class FreezeHoldsTest(unittest.TestCase):
                           "MEASURED_EXTERNALITY"})
         self.assertEqual(set(manifest["behavioural"]),
                          {"matched_tenants", "mismatched_tenants",
-                          "feasible_deadline"})
+                          "feasible_deadline",
+                          "matched_tenants_5pct_predictor_error"})
+
+    def test_a_behavioural_trace_covers_predictor_error(self):
+        """At least one trace has to run off the intended path.
+
+        The three branch-coverage traces use an exact predictor, and a
+        starvation defect fixed on 2026-08-06 left all three digests
+        byte-identical because the defective and correct algorithms agree
+        exactly when costs are exact.
+        """
+        manifest = json.loads(MANIFEST.read_text())
+        self.assertIn("matched_tenants_5pct_predictor_error",
+                      manifest["behavioural"])
 
 
 class FreezeCanFailTest(unittest.TestCase):

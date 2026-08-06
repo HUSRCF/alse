@@ -12,7 +12,7 @@
   "structural": {
     "policies.slo_aware_partitioning": "e055490000ceab3ca07e383a223172eccc37658dc639ea11286893ee0a741738",
     "policies.deadline_aware": "2cffe6bf348e621e1ce26d9280c0197ef3dc17073bc56e87d7fcf1dbfe462264",
-    "policies.step_matched_pairing": "2a59a87c77f6a5a2638a30fa50cef42a7e91787ecde092cd8cf707d7d75563d5",
+    "policies.step_matched_pairing": "192b5003939a8409ea95b88e61a3ad8c5257588b63d30ceb342680eadce11db8",
     "policies.static_even": "e1a9edb51e1e09321e56c4e05cc693be968a715ad001b4accf76bea5c5177763",
     "policies.exclusive_fcfs": "f974a8bd9cfca2e28420fdcec37c3f38804c029794858e2b20fd9b65b65766a7",
     "policies.measured_pairs_only": "c61bc10efe678db25728fb26221b568dba31b037adb7b4127732908684bd0f8e",
@@ -33,6 +33,7 @@
   "behavioural": {
     "matched_tenants": "0a672c0a05984508b323ccb373a159476d24aedae7b6000beba113d32f0cda06",
     "mismatched_tenants": "4fcfdb7bec97857a02a27e2be7173767f989f0e21b8cb49e26320eb5c67393f8",
-    "feasible_deadline": "c7ad717b6e9ab00feeb1f704b20960df4f8e28e0828bc2a0a5cce6d16a3d233b"
+    "feasible_deadline": "c7ad717b6e9ab00feeb1f704b20960df4f8e28e0828bc2a0a5cce6d16a3d233b",
+    "matched_tenants_5pct_predictor_error": "8dfea9e5a4265a0880eb7ca2b180f44d23f6fc3a2569f45931896f894ca5d66c"
   }
 }

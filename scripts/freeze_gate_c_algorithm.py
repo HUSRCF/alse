@@ -39,7 +39,12 @@ sys.path.insert(0, str(REPO / "src"))
 
 from burstserve import policies, trace_sim                      # noqa: E402
 from burstserve.deadline_feasibility import edf_whole_die       # noqa: E402
-from burstserve.trace_sim import Request, Trace, simulate       # noqa: E402
+from burstserve.trace_sim import (                              # noqa: E402
+    Predictor,
+    Request,
+    Trace,
+    simulate,
+)
 
 MANIFEST = REPO / "experiments" / "manifests" / "gate_c_algorithm_freeze.json"
 
@@ -116,9 +121,17 @@ def table_hash(name: str) -> str:
 def behavioural_digests() -> dict[str, str]:
     """Frozen policy on fixed traces -- what the freeze is really about.
 
-    Three traces, each exercising a different branch of the action order:
+    Four traces. Three exercise the branches of the action order --
     matched tenants take the pairing branch, mismatched take the deficit
-    rotation, and the deadline trace takes the override.
+    rotation, the deadline trace takes the override. All three run an
+    exact predictor, and that is precisely the regime in which a
+    starvation defect fixed on 2026-08-06 was invisible: with exact costs
+    the defective and correct algorithms agree exactly. The fourth runs
+    matched tenants under a +/-5% predictor, which is what separates them.
+
+    Traces chosen to demonstrate intended behaviour miss defects that
+    appear off the intended path, so at least one has to be chosen for
+    where things go wrong.
     """
     matched = Trace([
         Request(request_id=i, tenant=f"t{i % 2}", model="sdxl",
@@ -151,6 +164,9 @@ def behavioural_digests() -> dict[str, str]:
             mismatched, policy, horizon_s=1200.0).digest(),
         "feasible_deadline": simulate(
             deadline, policy, horizon_s=400.0).digest(),
+        "matched_tenants_5pct_predictor_error": simulate(
+            matched, policy, horizon_s=600.0,
+            predictor=Predictor(relative_error=0.05, seed=11)).digest(),
     }
 
 
