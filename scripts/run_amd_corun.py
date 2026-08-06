@@ -59,14 +59,25 @@ def disjoint_masks(units_a: int, units_b: int) -> tuple[str, str]:
     return hex(mask_a), hex(mask_b)
 
 
-def cell_argv(args, *, model: str, batch: int, steps: int) -> list[str]:
+def cell_argv(args, *, model: str, batch: int, steps: int,
+              height: int | None = None, width: int | None = None
+              ) -> list[str]:
+    """Build one side's command.
+
+    Resolution is per side, not shared. Two tenants running the same model
+    at different resolutions is the only way to get step-time ratios
+    between 1.0 and 3.4 out of the two models measured so far, and the
+    frozen 1.6 pairing tolerance is untested without them. Falls back to
+    the shared --height/--width when a side does not override, so every
+    existing invocation keeps its meaning.
+    """
     return [
         sys.executable, str(REPO / "scripts/amd_profile_cell.py"),
         "--model", model,
         "--batch", str(batch),
         "--steps", str(steps),
-        "--height", str(args.height),
-        "--width", str(args.width),
+        "--height", str(args.height if height is None else height),
+        "--width", str(args.width if width is None else width),
         "--frames", str(args.frames),
         "--seed", str(args.seed),
         "--target-cv", str(args.target_cv),
@@ -94,7 +105,8 @@ def collect(proc: subprocess.Popen, label: str) -> dict:
 
 def solo(args, side: dict, mask: str, label: str) -> dict:
     argv = cell_argv(args, model=side["model"], batch=side["batch"],
-                     steps=side["steps"])
+                     steps=side["steps"], height=side.get("height"),
+                     width=side.get("width"))
     argv += ["--warmup", str(args.warmup), "--samples", str(args.samples),
              "--max-samples", str(args.max_samples)]
     return collect(launch(argv, mask), label)
@@ -109,7 +121,8 @@ def corun(args, side_a: dict, side_b: dict, mask_a: str, mask_b: str) -> tuple:
             (side_b, mask_b, "b", "a"),
         ):
             argv = cell_argv(args, model=side["model"], batch=side["batch"],
-                             steps=side["steps"])
+                             steps=side["steps"], height=side.get("height"),
+                             width=side.get("width"))
             argv += [
                 "--warmup", str(args.warmup),
                 "--barrier-dir", barrier_dir,
@@ -206,6 +219,13 @@ def main() -> int:
     parser.add_argument("--steps-b", type=int, default=20)
     parser.add_argument("--height", type=int, default=1024)
     parser.add_argument("--width", type=int, default=1024)
+    # Per-side overrides. Both sides are recorded in the emitted table, so
+    # a pair measured at different resolutions cannot be mistaken later for
+    # one measured at the shared default.
+    parser.add_argument("--height-a", type=int)
+    parser.add_argument("--width-a", type=int)
+    parser.add_argument("--height-b", type=int)
+    parser.add_argument("--width-b", type=int)
     parser.add_argument("--frames", type=int, default=49)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--warmup", type=int, default=5)
@@ -223,8 +243,14 @@ def main() -> int:
     args = parser.parse_args()
 
     mask_a, mask_b = disjoint_masks(args.units_a, args.units_b)
-    side_a = {"model": args.model_a, "batch": args.batch_a, "steps": args.steps_a}
-    side_b = {"model": args.model_b, "batch": args.batch_b, "steps": args.steps_b}
+    side_a = {"model": args.model_a, "batch": args.batch_a,
+              "steps": args.steps_a,
+              "height": args.height_a if args.height_a else args.height,
+              "width": args.width_a if args.width_a else args.width}
+    side_b = {"model": args.model_b, "batch": args.batch_b,
+              "steps": args.steps_b,
+              "height": args.height_b if args.height_b else args.height,
+              "width": args.width_b if args.width_b else args.width}
 
     libsmctrl_pin = json.loads(
         (REPO / "vendor/LIBSMCTRL_SOURCE.json").read_text()
