@@ -98,5 +98,60 @@ class PhaseSummaryTest(unittest.TestCase):
         self.assertEqual(cell.phase_summary([]), {})
 
 
+class TelemetryMustNotShareTheTimedProcessTest(unittest.TestCase):
+    """Sampling power inside a timed run perturbs the run.
+
+    A thread calling rocm-smi every 0.25 s shares the GIL with the loop
+    launching kernels, and the interference scales with how slow those
+    kernels are -- 552 samples at 4 units against 85 at 32, which
+    manufactured a quota-dependent efficiency trend a kernel trace later
+    showed did not exist.
+    """
+
+    def test_the_profile_cell_does_not_sample_power_while_timing(self):
+        source = (SCRIPTS / "amd_profile_cell.py").read_text("utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "main":
+                body = ast.unparse(node)
+                self.assertNotIn(
+                    "package_power_watts()", body,
+                    "the cell samples power inside the timed run, which "
+                    "contends for the GIL with kernel launches",
+                )
+                return
+        self.fail("main() not found")
+
+    def test_the_power_sweep_runs_its_load_in_a_child_process(self):
+        source = (SCRIPTS / "run_amd_power_sweep.py").read_text("utf-8")
+        self.assertIn("subprocess.Popen", source)
+        self.assertIn("PowerSampler", source)
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "run_quota":
+                body = ast.unparse(node)
+                self.assertIn("Popen", body)
+                self.assertIn("sampler.start()", body)
+                return
+        self.fail("run_quota() not found")
+
+    def test_the_power_load_is_not_a_chain(self):
+        """A chained matmul spills to memory and never reaches the cap.
+
+        53.95 TFLOPS at 150 W against 122.58 at 300 W for a single matmul,
+        so the chain measures the memory system rather than the CUs.
+        """
+        source = (SCRIPTS / "amd_matmul_load.py").read_text("utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.While):
+                body = ast.unparse(node)
+                # One mm per iteration, and its result is not fed back in.
+                self.assertEqual(body.count("torch.mm"), 1)
+                self.assertNotIn("x = torch.mm(x", body)
+                return
+        self.fail("no timing loop found")
+
+
 if __name__ == "__main__":
     unittest.main()
