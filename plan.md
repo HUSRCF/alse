@@ -426,10 +426,11 @@ $$
 | predictor error ±5/10/20% 安全降级 | 记账仍 0%、lag ≤ 2、利用率在精确预测的 5% 以内 |
 | 算法冻结 + decision log | `gate_c_algorithm_freeze.json`（14 函数 AST + 3 测量表 + 4 行为 digest）与 `docs/gate-c-decision-log.md` |
 
-调度器 `slo_aware_partitioning` 的 action 顺序已冻结：deadline override →
-步长匹配配对（1.6×）→ 亏欠轮转。匹配租户利用率 **1.1862**（较全 die 独占 **+18.6%**），失配租户 1.0000（不劣于独占）。
+调度器 `probing_partitioning` 的 action 顺序已冻结：deadline override →
+步长匹配配对（1.6×）→ 亏欠轮转 → 慢态 deadline 预算 → 探测重组。匹配租户
+利用率 **1.1862**（较全 die 独占 **+18.6%**），失配租户 1.0000（不劣于独占）。
 
-> 2026-08-06 更正：上述 +18.9% 此前记为 +8.8%。simulator 的 SDXL 成本表
+> 2026-08-06 更正：上述 +18.6% 此前记为 +8.8%。simulator 的 SDXL 成本表
 > `step_seconds_at_full` 原为 0.1521 s、注释写 "1024x1024"，但 Gate B 对
 > SDXL **只在 768×768 测过**，且 0.1521 是 768 在 **16 units**（半 die）
 > 的值被当成了全 die 值；其余配额再由 **call** p50 比值缩放得出，而 call
