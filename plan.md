@@ -39,8 +39,15 @@
   1. **Gate A 六条验收只完成一条**（映射）。未做：10,000 次动态重配置、
      mask 更新 p99 ≤ 100 μs、masked/unmasked/co-run 确定性一致、
      profiler 可见真实 stream overlap、两 stream 互斥分区并发执行
-  2. **AMD 映射仅抽样 4/32 bit**，与 NVIDIA 线当初 4/64 的过度外推是同一
-     类问题，须扫满 32 bit 才能作全 die 主张
+  2. ~~**AMD 映射仅抽样 4/32 bit**，与 NVIDIA 线当初 4/64 的过度外推是同一
+     类问题，须扫满 32 bit 才能作全 die 主张~~ **已关闭**：全 32 bit 扫描
+     的聚合为 `experiments/aggregates/amd_r9700_cu_mask_fulldie_20260802.json`
+     （manifest `amd-r9700-gfx1201-x570-fulldie-20260802`）——
+     `tpc_bits` 0–31、**192 cells**（32 bit × 2 mode × 3 trial）全部 accepted、
+     `rejected` 为空、15 项 check 全 True，TPC→SM 映射 32 条且**覆盖全部
+     32 个 SM 互不重复**。此前 blocker 文本对应的是旧的 4-bit 聚合
+     `amd_r9700_cu_mask_20260802.json`（`tpc_bits: 4`、24 cells），该文件
+     保留为历史证据但**不得再引用为当前映射依据**
   3. 第二 GPU SKU 预约仍未关闭（Phase 0 硬门）。**已决定：R9700 不顶替该
      要求。** AMD 线是 NVIDIA 线的补充而非替代，因此 NVIDIA 侧的第二 SKU
      （H100 优先，A100/A800 备选）仍须独立覆盖，该硬门不因 AMD 线的进展
