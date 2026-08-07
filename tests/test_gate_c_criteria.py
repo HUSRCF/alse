@@ -303,30 +303,24 @@ class C6_SafeDegradationUnderPredictorError(unittest.TestCase):
                         self.assertGreater(charged, 0.0, tenant)
 
     def test_throughput_degrades_gracefully(self):
-        """Safe means "no worse than not predicting", not "within 5% of
-        perfect".
+        """Within 5% of the exact-predictor run, in the arrangement the
+        runtime uses.
 
-        The probing policy earns its gain by acting on a prediction, so
-        degrading it must cost something -- that is what a predictor is
-        for. The measured pairing states are 45% apart while the error
-        reaches 20%, so at the top of the range a slow pairing can look
-        fast and be kept. What must not happen is that consulting a bad
-        predictor leaves the scheduler worse off than consulting none,
-        and blind pairing is what "none" means here.
-
-        Judged against a fixed 5% of its own exact-predictor run, this
-        test would demand that information be worthless.
+        The 5% form was briefly replaced by "no worse than not
+        predicting" while the simulator drew a pairing state by default:
+        the probe acts on its prediction, so a bad predictor cost it
+        real throughput. In-process co-runs take the fast state in 17 of
+        17 trials, the draw is off by default, and the stricter form
+        holds again.
         """
-        blind = simulate(
-            matched_trace(), slo_aware_partitioning, horizon_s=600.0,
-        ).utilisation()
+        exact = simulate(matched_trace(), POLICY, horizon_s=600.0)
         for error in (0.05, 0.10, 0.20):
             with self.subTest(error=error):
                 noisy = simulate(
                     matched_trace(), POLICY, horizon_s=600.0,
                     predictor=Predictor(relative_error=error, seed=11),
                 ).utilisation()
-                self.assertGreater(noisy, blind)
+                self.assertGreaterEqual(noisy, exact.utilisation() * 0.95)
 
 
 class TheCompositionIsNecessary(unittest.TestCase):
@@ -355,11 +349,32 @@ class TheCompositionIsNecessary(unittest.TestCase):
         self.assertTrue(self._passes_everything(POLICY))
 
     def test_no_other_baseline_does(self):
+        """With one exception, which is the correct outcome.
+
+        ``slo_aware_partitioning`` also passes, because the probing
+        policy *is* it plus two steps that do nothing when every pairing
+        lands fast -- which is what the runtime's arrangement does, 17
+        trials out of 17. The probe earns its place only under the
+        two-process bistability, and test_pairing_probe.py is where that
+        is measured. A test demanding it beat its own base case in an
+        arrangement without the problem would be demanding overhead.
+        """
         for name, policy in BASELINES.items():
-            if policy is POLICY:
+            if policy is POLICY or name == "slo_aware_partitioning":
                 continue
             with self.subTest(policy=name):
                 self.assertFalse(self._passes_everything(policy))
+
+    def test_the_probe_is_free_where_the_problem_does_not_occur(self):
+        """And costs nothing to keep for where it does."""
+        from burstserve.policies import slo_aware_partitioning as base
+
+        trace = matched_trace()
+        self.assertAlmostEqual(
+            simulate(trace, POLICY, horizon_s=600.0).utilisation(),
+            simulate(trace, base, horizon_s=600.0).utilisation(),
+            places=6,
+        )
 
 
 if __name__ == "__main__":

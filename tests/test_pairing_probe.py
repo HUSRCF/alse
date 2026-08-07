@@ -1,5 +1,14 @@
 """The scheduler action that survives not knowing why pairings degrade.
 
+Everything here runs with the bistability **explicitly enabled**, because
+it is a property of the two-process measurement harness and not of the
+arrangement the runtime uses -- two streams in one process took the fast
+state in 17 of 17 trials. The probe is kept and tested anyway: it costs
+nothing when every draw is fast (asserted below), and the two-process
+behaviour is what most of this project's co-run evidence was collected
+under.
+
+
 The same 16+16 pairing, measured 44 times, lands in one of two states:
 fast (+21.8 to +26.4% per-step penalty, cv 0.25%) or slow (+72.9 to
 +83.4%, cv 1-3%), drawn per pairing at roughly 30% fast. Four causes were
@@ -50,7 +59,8 @@ def backlogged() -> Trace:
 def utilisations(policy) -> list[float]:
     return [
         simulate(backlogged(), policy, horizon_s=1200.0,
-                 pairing_states=PairingStates(seed=s)).utilisation()
+                 pairing_states=PairingStates(seed=s, enabled=True)
+                 ).utilisation()
         for s in SEEDS
     ]
 
@@ -89,15 +99,15 @@ class ProbingBeatsBlindPairing(unittest.TestCase):
     def test_it_still_holds_the_lag_bound(self):
         for seed in SEEDS:
             with self.subTest(seed=seed):
-                result = simulate(backlogged(), probing_partitioning,
-                                  horizon_s=1200.0,
-                                  pairing_states=PairingStates(seed=seed))
+                result = simulate(
+                    backlogged(), probing_partitioning, horizon_s=1200.0,
+                    pairing_states=PairingStates(seed=seed, enabled=True))
                 self.assertLessEqual(result.peak_service_lag_quanta(), 2.0)
 
 
 class TheModelMatchesTheMeasurement(unittest.TestCase):
     def test_the_two_states_are_the_measured_ones(self):
-        self.assertAlmostEqual(FAST_PAIRING_EXTERNALITY, 1.2362, places=4)
+        self.assertAlmostEqual(FAST_PAIRING_EXTERNALITY, 1.2367, places=4)
         self.assertAlmostEqual(SLOW_PAIRING_EXTERNALITY, 1.7866, places=4)
         self.assertAlmostEqual(PAIRING_STATE_RATE, 0.30, places=2)
 
@@ -110,7 +120,7 @@ class TheModelMatchesTheMeasurement(unittest.TestCase):
     def test_re_forming_a_pairing_draws_again(self):
         """Without this the probe would be pointless -- it could detect a
         bad pairing and never escape it."""
-        states = PairingStates(seed=3)
+        states = PairingStates(seed=3, enabled=True)
         members = frozenset({0, 1})
         draws = set()
         for _ in range(40):
@@ -121,14 +131,14 @@ class TheModelMatchesTheMeasurement(unittest.TestCase):
     def test_holding_a_pairing_does_not_redraw(self):
         """And with this, a policy cannot launder a slow pairing by simply
         asking again."""
-        states = PairingStates(seed=3)
+        states = PairingStates(seed=3, enabled=True)
         members = frozenset({0, 1})
         first = states.factor_for(members)
         for _ in range(20):
             self.assertEqual(states.factor_for(members), first)
 
     def test_a_solo_request_has_no_pairing_penalty(self):
-        states = PairingStates(seed=3)
+        states = PairingStates(seed=3, enabled=True)
         self.assertEqual(states.factor_for(frozenset({0})),
                          FAST_PAIRING_EXTERNALITY)
 
@@ -142,6 +152,12 @@ class ProbingIsHarmlessWithoutBistability(unittest.TestCase):
     """
 
     def test_it_matches_blind_pairing_when_every_draw_is_fast(self):
+        """Which is the arrangement the runtime actually uses.
+
+        17 in-process trials, all fast. The probe must therefore be free
+        there, or it is a permanent tax for a problem the target
+        architecture does not have.
+        """
         def run(policy):
             return simulate(
                 backlogged(), policy, horizon_s=1200.0,

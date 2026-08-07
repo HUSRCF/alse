@@ -266,7 +266,7 @@ def slo_aware_partitioning(states: Sequence[RequestState], units: int,
 
 def probing_partitioning(states: Sequence[RequestState], units: int,
                          now: float, tolerance: float = 1.6,
-                         slow_factor: float = 1.4) -> dict[int, int]:
+                         slow_factor: float = 1.3) -> dict[int, int]:
     """Pair, check what the pairing actually cost, re-form it if it is slow.
 
     The same 16+16 pairing measured 44 times lands in one of two states,
@@ -280,9 +280,21 @@ def probing_partitioning(states: Sequence[RequestState], units: int,
     again. Pairing blindly loses 10% against the whole die; pairing with
     a probe gains 19%.
 
-    ``slow_factor`` sits between the two states rather than being fitted
-    to either: 1.4 against a separation of 1.45x. A threshold tuned to
-    the observed values would be a threshold tuned to this card.
+    ``slow_factor`` multiplies the *paired* expectation. The states are
+    1.445x apart, and 1.3 is chosen to fail safe rather than to sit at
+    the midpoint:
+
+      * a fast pairing under a -20% prediction reads as 1.25x, below the
+        threshold, so it is not thrown away;
+      * a slow pairing under a +20% prediction reads as 1.20x, also below
+        it, so it is not caught.
+
+    Those two bands overlap, so at +/-20% no threshold both catches slow
+    pairings and spares fast ones. 1.3 resolves that toward doing
+    nothing: past roughly 10% predictor error the probe degrades to a
+    no-op and the policy behaves exactly like ``slo_aware_partitioning``,
+    which is the safe direction. Acting on a prediction too noisy to
+    support the action is how a probe turns into damage.
     """
     if not states:
         return {}
@@ -319,7 +331,13 @@ def probing_partitioning(states: Sequence[RequestState], units: int,
         )
         if observed is None or not expected:
             continue
-        if observed > expected * slow_factor:
+        # Against the *paired* expectation, not the solo one. The
+        # prediction is a solo step cost; a pairing in the fast state
+        # already costs 1.24x that, so comparing observed to the raw
+        # prediction left only 13% of headroom under a 1.4 threshold and
+        # a -20% prediction error crossed it. The states are 1.445x
+        # apart, so the midpoint between them is the natural threshold.
+        if observed > expected * FAST_PAIRING_EXTERNALITY * slow_factor:
             # Drop the pairing for one round. Re-forming it next round is
             # a fresh draw; holding it is not.
             behind = min(

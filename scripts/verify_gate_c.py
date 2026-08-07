@@ -206,11 +206,10 @@ def c6_safe_degradation() -> dict:
         )
         ok &= (row["accounting_error"] < 0.01
                and row["peak_lag_quanta"] <= 2.0
-               # Safe = better off consulting a bad predictor than none.
-               # The probing policy acts on its prediction, so degrading
-               # the predictor must cost something; what it must not do
-               # is fall below the policy that predicts nothing.
-               and row["utilisation_vs_blind_pairing"] > 1.0)
+               and row["utilisation_ratio_to_exact"] >= 0.95
+               # And never below the policy that consults no predictor,
+               # which is the floor a probe must not fall through.
+               and row["utilisation_vs_blind_pairing"] >= 1.0)
         rows[f"+/-{int(error * 100)}%"] = row
     return {
         "status": PASS if ok else FAIL,
@@ -219,13 +218,11 @@ def c6_safe_degradation() -> dict:
         "by_error_level": rows,
         "definition": (
             "safe = accounting still exact (it is measured, not "
-            "predicted), lag still bounded, and utilisation above the "
-            "policy that consults no predictor at all. Not 'within 5% of "
-            "the exact-predictor run': the measured pairing states are "
-            "45% apart and the error band reaches 20%, so a slow pairing "
-            "can look fast and the probe keeps it. Demanding near-exact "
-            "throughput under a bad predictor demands that information "
-            "be worthless."
+            "predicted), lag still bounded, utilisation within 5% of the "
+            "exact-predictor run, and never below the policy that "
+            "consults no predictor. The probe degrades to a no-op past "
+            "roughly 10% error rather than acting on a prediction too "
+            "noisy to support the action, so the strict form holds."
         ),
     }
 

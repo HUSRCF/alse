@@ -795,3 +795,56 @@ burying it, so the simulator states what it is relying on. It is
 labelled in the source and here; it is not evidence.
 
 This is the highest-priority measurement outstanding.
+
+### 2026-08-06 — the bistability is the harness, not the die (post-freeze change #6)
+
+Two streams in one process, disjoint CU masks, which is the arrangement
+the design specifies. Seventeen trials across two runs:
+
+| run | trials | states |
+| --- | --- | --- |
+| first | 5 (after a cold first row) | fast, 5/5 |
+| second | 12 | fast, 12/12 |
+
+Every one fast, +21.1% to +28.7%, mean **1.2367** over 24 side
+measurements — agreeing with the two-process fast state (1.2362) to
+0.04%. At the two-process fast rate of 30%, seventeen fast trials has
+probability 1.3e-9.
+
+**The bistability belongs to the two-process measurement harness.** It is
+not a property of the die, and the runtime does not inherit it. Four
+explanations were retracted while it was assumed to be one.
+
+**Changes.** `MEASURED_EXTERNALITY[(16,16)]` 1.2362 → 1.2367, now from
+the arrangement that will actually run. `PairingStates` defaults to
+disabled: the draw reproduces the two-process harness and is enabled
+explicitly by the tests that study it. Gate C's utilisation returns to
+**+18.6%** from the probing-and-retrying +13.5%, because there is nothing
+to retry.
+
+**The probe is kept, and two defects in it were found by this.**
+
+First, it compared the observed step against the *solo* prediction while
+the observed step includes the pairing penalty. A fast pairing already
+costs 1.24x solo, so a 1.4 threshold left 13% of headroom and a -20%
+prediction error crossed it: 106 spurious exclusive rounds. It now
+compares against the paired expectation.
+
+Second, and not fixable by a threshold: at +/-20% predictor error the
+bands overlap. A fast pairing under-predicted reads as 1.25x; a slow one
+over-predicted reads as 1.20x. No threshold both catches slow pairings
+and spares fast ones there. `slow_factor` is 1.3, which resolves the
+overlap toward inaction — past roughly 10% error the probe becomes a
+no-op and the policy behaves as `slo_aware_partitioning`. Acting on a
+prediction too noisy to support the action is how a probe becomes
+damage.
+
+With that, C6 returns to its original and stricter reading — within 5%
+of the exact-predictor run — and holds at every error level, because the
+probe stops acting rather than acting wrongly.
+
+**What the probe is now for.** Nothing in the target arrangement, where
+it is verifiably free (asserted). It remains because most of this
+project's co-run evidence was collected two-process, and a deployment
+that runs tenants as separate processes does have the problem: there,
+probing scores 1.133 against blind pairing's 0.895.

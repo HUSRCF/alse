@@ -12,7 +12,7 @@
     "probe: drop a pairing whose observed step exceeds the predicted one by 1.4x, re-forming it next round"
   ],
   "structural": {
-    "policies.probing_partitioning": "af1da24c5253095923132195bc22dbc50e0e992e40ad4a15e28e28f3b2533d09",
+    "policies.probing_partitioning": "cae26bb54289de6386992b90f4d9ef1ec32c3e5ea18f9b500fd8236e9b22c9d5",
     "policies.slo_aware_partitioning": "e055490000ceab3ca07e383a223172eccc37658dc639ea11286893ee0a741738",
     "policies.deadline_aware": "2cffe6bf348e621e1ce26d9280c0197ef3dc17073bc56e87d7fcf1dbfe462264",
     "policies.step_matched_pairing": "192b5003939a8409ea95b88e61a3ad8c5257588b63d30ceb342680eadce11db8",
@@ -31,12 +31,12 @@
   "tables": {
     "MEASURED_MODELS": "9987d7edecc0e7ccb716038a701fb627758f4c9fbaa59b06f3a265a7d17dd75f",
     "MEASURED_QUOTA_SECONDS": "a38a5dab316174b8a1c2cf7fd94026d94bad7553063e956ac70348dfc00f6115",
-    "MEASURED_EXTERNALITY": "d8670776054abf0b5a779afa21dcb6656fae533c56ee0b742242977c51bee86b"
+    "MEASURED_EXTERNALITY": "235743e786fe7e5c64c4f037a662a042ac61739c14634b560e41377942510d01"
   },
   "behavioural": {
-    "matched_tenants": "216ea7f340e26b2abc278a6dd36f33d53898de21fb1e6d778d8ee06124247cf0",
+    "matched_tenants": "a5aa43579d8fce63fb568d5fb0817de49e9ac79fa6bfc567942b2467052551fa",
     "mismatched_tenants": "9e16d41228fcd3c6237369adc6c9b1f2ef7257efb72ea0b64df1aba761a2d343",
-    "feasible_deadline": "165b4bcf4e7d26f8aaee03dfef1b0a9612817087b76bb44338866fe58eb27541",
-    "matched_tenants_5pct_predictor_error": "fd770968b9499029a5cad1e9a45ea6afdb5199a1b907622940e8719379cb1946"
+    "feasible_deadline": "a98f1406393c3509e7e466c8396779dc483050be2351344fdab4354d5ecdb10f",
+    "matched_tenants_5pct_predictor_error": "594ef9618dcbe6b499a77d04309e862cacf5d6a3d5fff0c0483fe9697cbc5f64"
   }
 }

@@ -95,19 +95,18 @@ MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
 # Measured pairwise externality: (own units, peer units) -> slowdown factor
 # applied to this tenant's step time.
 #
-# (16,16) is the per-step penalty at 768x768, the mean of 18 side
-# measurements across nine co-runs launched 2-5 s apart (+21.8% to
-# +24.9%, mean +23.62%). It is the only entry the scheduler reads, since
+# (16,16) is the per-step penalty at 768x768, the mean of 24 side
+# measurements across 12 in-process trials (+21.1% to +28.7%, mean
+# +23.67%) -- the arrangement the runtime uses. The two-process harness's
+# fast state gives 1.2362 over 18 sides, agreeing to 0.04%. It is the only entry the scheduler reads, since
 # the policy either splits evenly or gives the whole die to one tenant.
 #
-# The launch stagger is not a detail. Co-runs whose processes start
-# together, or more than 8 s apart, land in a different state entirely --
-# 20 side measurements, +72.9% to +83.4%, mean +78.66% -- and in that
-# state partitioning loses 17.8% instead of gaining 20.8%. The state is
-# fixed before the first step and is not distinguished by temperature,
-# power, any clock, GPU utilisation or the CU mask. See
-# docs/gate-c-decision-log.md; the value here is the staggered one, and a
-# runtime that does not control launch alignment does not get it.
+# Two-process co-runs also produce a slow state -- 20 side measurements,
+# +72.9% to +83.4%, mean +78.66% -- where partitioning loses 17.8%
+# instead of gaining 20.8%. Which state a two-process run lands in is
+# fixed before its first step and is not distinguished by temperature,
+# power, any clock, GPU utilisation or the CU mask. It does not occur
+# in-process, and this entry is the in-process value.
 #
 # The remaining entries are call-level penalties measured at 512x512 and
 # are used only by the currency counterexample, whose argument is about
@@ -117,23 +116,28 @@ MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
 # card at all -- one process peaks at 28.54 GB and two need 57 on 34.2 GB --
 # so applying these to it is an extrapolation across models, recorded in
 # the decision log rather than hidden here.
-# The same 16+16 pairing measured 44 times falls into two disjoint states,
-# drawn independently per pairing at roughly a 30% rate for the fast one:
-# ten consecutive runs at one fixed setting gave low at positions 5, 7 and
-# 10, with no ordering or drift. Four explanations for the split were
-# proposed and retracted (working set, power cap, uncontrollable
-# bistability, launch stagger) before the null was measured; see
-# docs/gate-c-decision-log.md.
+# A 16+16 pairing measured with **two processes** falls into two disjoint
+# states, drawn per run at roughly 30% for the fast one. Four
+# explanations were proposed and retracted before the null was measured;
+# see docs/gate-c-decision-log.md.
 #
-# The states are 46% apart and each is internally tight (cv 0.25% low,
-# 1-3% high), so a scheduler can tell which one a pairing landed in from
-# its first step without knowing why.
+# It does not happen in the arrangement this runtime uses. Two streams in
+# one process, disjoint CU masks, 17 trials across two runs: every one
+# fast, +21.1% to +28.7%, mean 1.2367 -- agreeing with the two-process
+# fast state (1.2362) to 0.04%. At a 30% fast rate, 17 fast trials has
+# probability 1.3e-9, so the bistability belongs to the two-process
+# measurement harness rather than to the die.
+#
+# The states and the draw rate are kept because the harness that produced
+# most of this project's co-run data has them, and a policy is tested
+# against them. The simulator's default is the in-process arrangement,
+# which is what the design specifies.
 PAIRING_STATE_RATE = 0.30           # probability of the fast state
-FAST_PAIRING_EXTERNALITY = 1.2362   # 18 side measurements, +21.8 to +26.4%
+FAST_PAIRING_EXTERNALITY = 1.2367   # 24 in-process sides, +21.1 to +28.7%
 SLOW_PAIRING_EXTERNALITY = 1.7866   # 20 side measurements, +72.9 to +83.4%
 
 MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
-    (16, 16): 1.2362,
+    (16, 16): 1.2367,
     (8, 24): 1.495,
     (24, 8): 1.280,
     (4, 28): 1.307,
@@ -397,11 +401,16 @@ class Predictor:
 class PairingStates:
     """Which state each formed pairing landed in.
 
-    Measured behaviour, not a modelling choice: the same configuration
-    lands in a fast or a slow state, drawn per pairing, and the two are
-    46% apart with no overlap. A simulator that used the fast figure
-    unconditionally would report a gain the hardware supplies 30% of the
-    time.
+    Measured behaviour, not a modelling choice -- but measured of the
+    two-process harness, and off by default because the runtime this
+    project designs does not use it. Two streams in one process take the
+    fast state in 17 of 17 trials.
+
+    Enabled, the draw reproduces the two-process behaviour: a pairing
+    lands fast or slow, the two are 46% apart with no overlap, and a
+    simulator using the fast figure there would report a gain the
+    hardware supplies 30% of the time. That configuration is what
+    test_pairing_probe.py exercises.
 
     A pairing is identified by the set of request ids sharing the die, so
     re-forming a pairing -- dropping it and building it again -- draws
@@ -415,7 +424,7 @@ class PairingStates:
     """
 
     def __init__(self, *, seed: int = 0, rate: float = PAIRING_STATE_RATE,
-                 enabled: bool = True):
+                 enabled: bool = False):
         self._rng = random.Random(seed)
         self.rate = rate
         self.enabled = enabled
