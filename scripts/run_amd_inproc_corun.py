@@ -138,9 +138,18 @@ def one_trial(args, *, replace_streams: bool) -> dict:
         handles.append(handle)
         streams.append(torch.cuda.ExternalStream(handle.value))
 
+    # Warm before timing anything. The first call of the process pays for
+    # kernel selection and autotuning -- 10.4 s against a steady 1.82 s --
+    # and a solo baseline measured there makes every co-run look faster
+    # than solo, which is how trial 0 of the first run reported -79%.
+    with torch.cuda.stream(streams[0]):
+        for _ in range(args.solo_warmup):
+            args.pipelines[0][0](**args.pipelines[0][1])
+    torch.cuda.synchronize()
+
     solo = []
     with torch.cuda.stream(streams[0]):
-        for _ in range(2):
+        for _ in range(3):
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
             start.record(streams[0])
@@ -202,6 +211,9 @@ def main() -> int:
     parser.add_argument("--seconds", type=float, default=45.0)
     parser.add_argument("--trials", type=int, default=6)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--solo-warmup", type=int, default=2,
+                        help="untimed calls before the solo baseline; the "
+                             "process's first call costs 5x the steady one")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
