@@ -1,0 +1,51 @@
+{
+  "schema_version": "burstserve.amd-stream-mask-penetration/v1",
+  "question": "does a per-stream CU mask constrain the whole pipeline, or do framework-launched kernels escape to an unmasked stream",
+  "arrangement": "one process, one masked stream, one tenant",
+  "reference": "two-process ROC_GLOBAL_CU_MASK per-step curve, step_ratio_sdxl_768_perstep_curve_20260806.json",
+  "workpoint": "768x768",
+  "rows": [
+    {
+      "units": 4,
+      "mask": "0xf",
+      "per_step_p50_s": 0.5162059326171875,
+      "per_step_n": 40,
+      "cv": 0.029106948261771116,
+      "two_process_per_step_s": 0.52141,
+      "ratio_to_two_process": 0.9900192413210093
+    },
+    {
+      "units": 8,
+      "mask": "0xff",
+      "per_step_p50_s": 0.2657055969238281,
+      "per_step_n": 40,
+      "cv": 0.04881355513885272,
+      "two_process_per_step_s": 0.26875,
+      "ratio_to_two_process": 0.988671988553779
+    },
+    {
+      "units": 16,
+      "mask": "0xffff",
+      "per_step_p50_s": 0.15509309387207032,
+      "per_step_n": 40,
+      "cv": 0.062462587146725736,
+      "two_process_per_step_s": 0.1575,
+      "ratio_to_two_process": 0.9847180563306052
+    },
+    {
+      "units": 32,
+      "mask": "0xffffffff",
+      "per_step_p50_s": 0.11250875091552734,
+      "per_step_n": 40,
+      "cv": 0.047384189913664665,
+      "two_process_per_step_s": 0.11552,
+      "ratio_to_two_process": 0.9739330931053267
+    }
+  ],
+  "verdict": {
+    "worst_ratio": 0.9739330931053267,
+    "mean_ratio": 0.9843355948276801,
+    "ratio_at_lowest_quota": 0.9900192413210093,
+    "lowest_quota": 4
+  }
+}

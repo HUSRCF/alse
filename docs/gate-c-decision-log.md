@@ -925,3 +925,55 @@ Reducing frames from 9 to 5 did not help and is worth recording: it
 still OOMed, and allocated slightly *more*. The cost was the weights,
 not the activations, which is why halving the weights worked and
 shrinking the problem did not.
+
+### 2026-08-07 — the per-stream mask does constrain the whole pipeline
+
+plan.md chose two processes with `ROC_GLOBAL_CU_MASK` for Gate B's
+co-run cells, and said why: it avoids the coupling between per-stream
+masks and the framework's internal launches. A process mask binds every
+kernel; a stream mask binds only what reaches that stream, and work
+launched on the default stream would be unconstrained — making the
+partition nominal.
+
+Everything measured in-process rests on the stream mask: the externality
+table the simulator now uses, and the CogVideoX-2b co-run Gate B could
+not take. Reading the mask back proves the stream carries it, not that
+the pipeline's kernels went there.
+
+Measured directly — one process, one masked stream, one tenant, per-step
+from CUDA events, against the two-process quota curve:
+
+| units | in-process | two-process | ratio |
+| --- | --- | --- | --- |
+| 4 | 516.21 ms | 521.41 ms | **0.9900** |
+| 8 | 265.71 ms | 268.75 ms | 0.9887 |
+| 16 | 155.09 ms | 157.50 ms | 0.9847 |
+| 32 | 112.51 ms | 115.52 ms | **0.9739** |
+
+**The mask holds.** A leak helps most where the mask is tightest, so
+escaping kernels would make the low-quota cells disproportionately fast
+— 4 units pulled toward the full die's 115 ms. The measured trend runs
+the other way: 4 units agrees to 1.0%, 32 units to 2.6%. The residual is
+larger where the step is shortest, which is what a fixed per-call
+overhead the two-process harness pays (subprocess launch and
+synchronisation) looks like, and it is a difference of the harness
+rather than of the mask.
+
+Recording the criterion in advance mattered here. "Agreement" alone
+would have been satisfied by any of these numbers; the direction of the
+disagreement is what carries the argument, and it was named before the
+run.
+
+**A failure mode worth keeping.** The first attempt destroyed each
+stream between quotas. torch's ExternalStream and its caching allocator
+still refer to it, and the second measurement never produced a sample —
+2.5 hours at 97% GPU, looking exactly like a slow measurement rather
+than a hang. Streams are now kept alive for the process.
+
+**Consequence for Gate B-AMD's co-run clause.** The clause requires "two
+disjointly masked processes", and CogVideoX-2b is NOT_MEASURED under it
+because two processes need 57 GB on a 34.2 GB card. The reason the
+clause named processes was the risk this measurement rules out. The
+decision to amend it belongs to the project owner and is recorded as
+open; the evidence for amending is here rather than in an argument from
+convenience.
