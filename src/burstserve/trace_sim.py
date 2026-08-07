@@ -117,6 +117,21 @@ MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
 # card at all -- one process peaks at 28.54 GB and two need 57 on 34.2 GB --
 # so applying these to it is an extrapolation across models, recorded in
 # the decision log rather than hidden here.
+# The same 16+16 pairing measured 44 times falls into two disjoint states,
+# drawn independently per pairing at roughly a 30% rate for the fast one:
+# ten consecutive runs at one fixed setting gave low at positions 5, 7 and
+# 10, with no ordering or drift. Four explanations for the split were
+# proposed and retracted (working set, power cap, uncontrollable
+# bistability, launch stagger) before the null was measured; see
+# docs/gate-c-decision-log.md.
+#
+# The states are 46% apart and each is internally tight (cv 0.25% low,
+# 1-3% high), so a scheduler can tell which one a pairing landed in from
+# its first step without knowing why.
+PAIRING_STATE_RATE = 0.30           # probability of the fast state
+FAST_PAIRING_EXTERNALITY = 1.2362   # 18 side measurements, +21.8 to +26.4%
+SLOW_PAIRING_EXTERNALITY = 1.7866   # 20 side measurements, +72.9 to +83.4%
+
 MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
     (16, 16): 1.2362,
     (8, 24): 1.495,
@@ -255,6 +270,11 @@ class RequestState:
     # are, and deriving it from steps_done would be wrong: a step is worth a
     # different amount of die-time in every model and at every quota.
     tenant_quota_seconds: float = 0.0
+    # The last step's measured cost. None before the first step. A policy
+    # comparing this against predicted_step_seconds sees whether the
+    # pairing it formed landed in the fast or slow state -- the two are
+    # 46% apart, so the comparison needs no threshold tuning.
+    observed_step_seconds: float | None = None
 
     @property
     def complete(self) -> bool:
@@ -372,6 +392,45 @@ class Predictor:
 
     def is_exact(self) -> bool:
         return self.relative_error == 0.0
+
+
+class PairingStates:
+    """Which state each formed pairing landed in.
+
+    Measured behaviour, not a modelling choice: the same configuration
+    lands in a fast or a slow state, drawn per pairing, and the two are
+    46% apart with no overlap. A simulator that used the fast figure
+    unconditionally would report a gain the hardware supplies 30% of the
+    time.
+
+    A pairing is identified by the set of request ids sharing the die, so
+    re-forming a pairing -- dropping it and building it again -- draws
+    again. That is what makes probing worthwhile and is exactly what the
+    hardware does when the processes are relaunched.
+    """
+
+    def __init__(self, *, seed: int = 0, rate: float = PAIRING_STATE_RATE,
+                 enabled: bool = True):
+        self._rng = random.Random(seed)
+        self.rate = rate
+        self.enabled = enabled
+        self._state: dict[frozenset[int], bool] = {}
+
+    def factor_for(self, members: frozenset[int]) -> float:
+        """Externality multiplier for the pairing, drawing once per pairing."""
+        if not self.enabled or len(members) < 2:
+            return FAST_PAIRING_EXTERNALITY
+        if members not in self._state:
+            self._state[members] = self._rng.random() < self.rate
+        return (FAST_PAIRING_EXTERNALITY if self._state[members]
+                else SLOW_PAIRING_EXTERNALITY)
+
+    def is_fast(self, members: frozenset[int]) -> bool | None:
+        return self._state.get(members)
+
+    def forget(self, members: frozenset[int]) -> None:
+        """Re-form the pairing: the next draw is independent."""
+        self._state.pop(members, None)
 
 
 @dataclass
@@ -581,6 +640,7 @@ def simulate(
     quantum_s: float = 0.25,
     seed: int = 0,
     predictor: "Predictor | None" = None,
+    pairing_states: "PairingStates | None" = None,
 ) -> SimulationResult:
     """Run a trace under a policy.
 
@@ -600,6 +660,8 @@ def simulate(
     # the measurement of what those decisions cost.
     if predictor is None:
         predictor = Predictor(relative_error=0.0, seed=seed)
+    if pairing_states is None:
+        pairing_states = PairingStates(seed=seed)
 
     costs = {name: QuotaCostModel.for_model(name) for name in MEASURED_MODELS}
     pending = list(trace.requests)
@@ -679,6 +741,12 @@ def simulate(
         # Externality needs each tenant's peer. Only pairs are measured, so
         # a triple is reported rather than approximated.
         active = sorted(granted.items())
+        members = frozenset(rid for rid, _ in active)
+        # Pairings that are no longer formed are forgotten, so re-forming
+        # one draws a fresh state. That is the whole basis of probing: the
+        # hardware draws again when the processes are relaunched.
+        for stale in [m for m in list(pairing_states._state) if m != members]:
+            pairing_states.forget(stale)
         for rid, units in active:
             peer = None
             if len(active) == 2:
@@ -689,6 +757,10 @@ def simulate(
             state = states[rid]
             try:
                 factor = externality(units, peer)
+                if peer is not None:
+                    # The table entry is the fast state. Which state this
+                    # pairing is actually in is drawn per pairing.
+                    factor = pairing_states.factor_for(members)
             except UnmeasuredPairing:
                 unmeasured.append((units, peer if peer is not None else -1))
                 factor = 1.0
@@ -706,6 +778,10 @@ def simulate(
             if state.started_s is None:
                 state.started_s = now
             state.steps_done += taken
+            # What the scheduler can observe after the fact, which is how a
+            # probe works: it does not read the state, it reads the step it
+            # just paid for.
+            state.observed_step_seconds = step_cost
             spent = taken * step_cost
             state.service_seconds += spent
             state.quota_seconds += units * spent

@@ -53,6 +53,7 @@ MANIFEST = REPO / "experiments" / "manifests" / "gate_c_algorithm_freeze.json"
 # helper must be added here consciously, and until it is, the behavioural
 # lock is what catches it.
 FROZEN_FUNCTIONS = [
+    ("policies.probing_partitioning", policies.probing_partitioning),
     ("policies.slo_aware_partitioning", policies.slo_aware_partitioning),
     ("policies.deadline_aware", policies.deadline_aware),
     ("policies.step_matched_pairing", policies.step_matched_pairing),
@@ -156,7 +157,7 @@ def behavioural_digests() -> dict[str, str]:
                 deadline_s=achieved[r.request_id] * 1.35)
         for r in plain.requests
     ])
-    policy = policies.slo_aware_partitioning
+    policy = policies.probing_partitioning
     return {
         "matched_tenants": simulate(
             matched, policy, horizon_s=600.0).digest(),
@@ -176,7 +177,7 @@ def build() -> dict:
         "manifest_id": "gate-c-algorithm-freeze-20260806",
         "frozen_at_stage": "plan.md week 5-6, Gate C",
         "decision_log": "docs/gate-c-decision-log.md",
-        "policy_under_freeze": "policies.slo_aware_partitioning",
+        "policy_under_freeze": "policies.probing_partitioning",
         "action_order": [
             "deadline override: exclusive to a request that misses shared "
             "and makes it whole-die",
@@ -184,6 +185,10 @@ def build() -> dict:
             "within 1.6x",
             "deficit rotation: whole die to the tenant furthest behind on "
             "quota-seconds",
+            "slow-state budget: exclusive to any deadline that the slow "
+            "pairing state would miss",
+            "probe: drop a pairing whose observed step exceeds the "
+            "predicted one by 1.4x, re-forming it next round",
         ],
         "structural": {
             name: structural_hash(func) for name, func in FROZEN_FUNCTIONS

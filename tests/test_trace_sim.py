@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from burstserve.trace_sim import (
+    PairingStates,
     MEASURED_EXTERNALITY,
     MEASURED_MODELS,
     QuotaCostModel,
@@ -261,6 +262,16 @@ class UnmeasuredPairingsAreReportedTest(unittest.TestCase):
 
 
 
+def _fast():
+    """Pin the fast pairing state.
+
+    The gain these tests assert is a fast-state property; under
+    the measured 30/70 draw, blind pairing loses to the whole
+    die. test_pairing_probe.py covers the drawn case.
+    """
+    return PairingStates(seed=0, enabled=False)
+
+
 class UtilisationClaimTest(unittest.TestCase):
     """Spatial partitioning finishes more work per second than a full die.
 
@@ -290,8 +301,8 @@ class UtilisationClaimTest(unittest.TestCase):
         from burstserve.policies import exclusive_fcfs, static_even
 
         trace = self._saturated()
-        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0)
-        split = simulate(trace, static_even, horizon_s=120.0)
+        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0, pairing_states=_fast())
+        split = simulate(trace, static_even, horizon_s=120.0, pairing_states=_fast())
         self.assertGreater(split.utilisation(), exclusive.utilisation())
         self.assertGreater(split.utilisation(), 1.0)
         # The measured margin, not an arbitrary threshold.
@@ -304,8 +315,8 @@ class UtilisationClaimTest(unittest.TestCase):
         from burstserve.policies import exclusive_fcfs, static_even
 
         trace = self._saturated()
-        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0)
-        split = simulate(trace, static_even, horizon_s=120.0)
+        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0, pairing_states=_fast())
+        split = simulate(trace, static_even, horizon_s=120.0, pairing_states=_fast())
         self.assertLess(split.horizon_s, exclusive.horizon_s)
 
     def test_both_policies_complete_the_same_work(self):
@@ -313,8 +324,8 @@ class UtilisationClaimTest(unittest.TestCase):
         from burstserve.policies import exclusive_fcfs, static_even
 
         trace = self._saturated()
-        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0)
-        split = simulate(trace, static_even, horizon_s=120.0)
+        exclusive = simulate(trace, exclusive_fcfs, horizon_s=120.0, pairing_states=_fast())
+        split = simulate(trace, static_even, horizon_s=120.0, pairing_states=_fast())
         self.assertEqual(len(exclusive.completed), len(trace))
         self.assertEqual(len(split.completed), len(trace))
         self.assertEqual(exclusive.steps_executed, split.steps_executed)

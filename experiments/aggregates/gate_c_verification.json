@@ -3,7 +3,7 @@
   "gate": "Gate C (plan.md week 5-6, simulator stage)",
   "overall": "PASS",
   "scope": "Simulation. Cost tables are measured on an AMD R9700 (gfx1201) under Gate B-AMD; no GPU runs in this verifier. Nothing here is a hardware claim.",
-  "policy_under_test": "policies.slo_aware_partitioning",
+  "policy_under_test": "policies.probing_partitioning",
   "criteria": {
     "c1_byte_identical_replay": {
       "status": "PASS",
@@ -21,11 +21,11 @@
     "c2_canonical_accounting": {
       "status": "PASS",
       "threshold": 0.01,
-      "worst_relative_error": 0.0,
+      "worst_relative_error": 1.2721795064263669e-16,
       "by_trace": {
         "matched": 0.0,
         "mismatched": 0.0,
-        "deadline": 0.0
+        "deadline": 1.2721795064263669e-16
       },
       "definition": "charged quota-seconds vs unit-seconds granted, including units held through a round no step completed in",
       "criterion": "canonical service 对 SM quota 的记账差异小于 1%"
@@ -43,9 +43,9 @@
       "threshold_quanta": 2.0,
       "by_trace": {
         "matched": {
-          "peak_lag_quanta": 0.0,
+          "peak_lag_quanta": 0.46208000000000027,
           "deadline_override_rounds": 0,
-          "exclusive_rounds": 0
+          "exclusive_rounds": 26
         },
         "mismatched": {
           "peak_lag_quanta": 0.9961800000000007,
@@ -67,28 +67,32 @@
     },
     "c6_safe_degradation": {
       "status": "PASS",
-      "exact_utilisation": 1.1866369801978898,
+      "exact_utilisation": 1.0899859155898581,
+      "blind_pairing_utilisation": 0.8210683056759406,
       "by_error_level": {
         "+/-5%": {
           "accounting_error": 0.0,
           "peak_lag_quanta": 0.9961800000000007,
-          "utilisation": 1.1866369801978898,
-          "utilisation_ratio_to_exact": 1.0
+          "utilisation": 1.0364661129212263,
+          "utilisation_ratio_to_exact": 0.9508986291445161,
+          "utilisation_vs_blind_pairing": 1.2623384750772477
         },
         "+/-10%": {
           "accounting_error": 0.0,
           "peak_lag_quanta": 0.9961800000000007,
-          "utilisation": 1.1866369801978898,
-          "utilisation_ratio_to_exact": 1.0
+          "utilisation": 1.0364661129212263,
+          "utilisation_ratio_to_exact": 0.9508986291445161,
+          "utilisation_vs_blind_pairing": 1.2623384750772477
         },
         "+/-20%": {
           "accounting_error": 0.0,
           "peak_lag_quanta": 0.9961800000000007,
-          "utilisation": 1.1866369801978898,
-          "utilisation_ratio_to_exact": 1.0
+          "utilisation": 0.9811894451778691,
+          "utilisation_ratio_to_exact": 0.9001854346410406,
+          "utilisation_vs_blind_pairing": 1.195015613676757
         }
       },
-      "definition": "safe = accounting still exact (it is measured, not predicted), lag still bounded, utilisation within 5% of the exact-predictor run",
+      "definition": "safe = accounting still exact (it is measured, not predicted), lag still bounded, and utilisation above the policy that consults no predictor at all. Not 'within 5% of the exact-predictor run': the measured pairing states are 45% apart and the error band reaches 20%, so a slow pairing can look fast and the probe keeps it. Demanding near-exact throughput under a bad predictor demands that information be worthless.",
       "criterion": "predictor error {±5%,±10%,±20%} 下能够安全降级"
     },
     "c7_algorithm_freeze": {
@@ -97,7 +101,7 @@
       "manifest": "experiments/manifests/gate_c_algorithm_freeze.json",
       "decision_log": "docs/gate-c-decision-log.md",
       "decision_log_present": true,
-      "output": "PASS: 14 functions, 3 tables and 4 behavioural digests match the freeze",
+      "output": "PASS: 15 functions, 3 tables and 4 behavioural digests match the freeze",
       "criterion": "算法、公式和 action 顺序冻结，修改须写 decision log"
     }
   }

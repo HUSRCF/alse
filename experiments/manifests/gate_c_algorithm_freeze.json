@@ -3,13 +3,16 @@
   "manifest_id": "gate-c-algorithm-freeze-20260806",
   "frozen_at_stage": "plan.md week 5-6, Gate C",
   "decision_log": "docs/gate-c-decision-log.md",
-  "policy_under_freeze": "policies.slo_aware_partitioning",
+  "policy_under_freeze": "policies.probing_partitioning",
   "action_order": [
     "deadline override: exclusive to a request that misses shared and makes it whole-die",
     "matched pairing: even split when predicted step times are within 1.6x",
-    "deficit rotation: whole die to the tenant furthest behind on quota-seconds"
+    "deficit rotation: whole die to the tenant furthest behind on quota-seconds",
+    "slow-state budget: exclusive to any deadline that the slow pairing state would miss",
+    "probe: drop a pairing whose observed step exceeds the predicted one by 1.4x, re-forming it next round"
   ],
   "structural": {
+    "policies.probing_partitioning": "af1da24c5253095923132195bc22dbc50e0e992e40ad4a15e28e28f3b2533d09",
     "policies.slo_aware_partitioning": "e055490000ceab3ca07e383a223172eccc37658dc639ea11286893ee0a741738",
     "policies.deadline_aware": "2cffe6bf348e621e1ce26d9280c0197ef3dc17073bc56e87d7fcf1dbfe462264",
     "policies.step_matched_pairing": "192b5003939a8409ea95b88e61a3ad8c5257588b63d30ceb342680eadce11db8",
@@ -17,7 +20,7 @@
     "policies.exclusive_fcfs": "f974a8bd9cfca2e28420fdcec37c3f38804c029794858e2b20fd9b65b65766a7",
     "policies.measured_pairs_only": "c61bc10efe678db25728fb26221b568dba31b037adb7b4127732908684bd0f8e",
     "policies.oracle_shortest_remaining": "947f6eabbd166115de889f158e3ee5ee67934dc10c59e5f1fb377d88f4009538",
-    "trace_sim.simulate": "499e1ffea0fec643827941e9177d8e643705b96b241d620c097424b81fea555b",
+    "trace_sim.simulate": "3433fabd83bb89d9fba4f81237d7559897a4b489b9bf71dcbe323f6b6d947236",
     "trace_sim.QuotaCostModel.step_seconds": "62cb00d43eb5eeb82de743bc5c1352e6e6602862f7ae552d6e28639bdd3bc04b",
     "trace_sim.SimulationResult.jain_index": "9eeded80d25573734de4f565386a5655b1de44b9c90625f15ef99ce663241a07",
     "trace_sim.SimulationResult.accounting_error": "f91b73b09e77c716ab0d6ef94e8d9bd276fd500dc7fdc9ba700b42d714285a31",
@@ -31,9 +34,9 @@
     "MEASURED_EXTERNALITY": "d8670776054abf0b5a779afa21dcb6656fae533c56ee0b742242977c51bee86b"
   },
   "behavioural": {
-    "matched_tenants": "6496db2231dcb09a8143fb5f5179e3d9f2bbb14aa651bc132c49e81f784dbd4c",
+    "matched_tenants": "216ea7f340e26b2abc278a6dd36f33d53898de21fb1e6d778d8ee06124247cf0",
     "mismatched_tenants": "9e16d41228fcd3c6237369adc6c9b1f2ef7257efb72ea0b64df1aba761a2d343",
-    "feasible_deadline": "fcf55805e792449bac829e11bf8600c1ef246a76cbeb5dc77272c36cd0264d52",
-    "matched_tenants_5pct_predictor_error": "0c8500ce625d08556aa55a3698a6527fc8add42f1da2c8f61cea39eb7e92d2bd"
+    "feasible_deadline": "165b4bcf4e7d26f8aaee03dfef1b0a9612817087b76bb44338866fe58eb27541",
+    "matched_tenants_5pct_predictor_error": "fd770968b9499029a5cad1e9a45ea6afdb5199a1b907622940e8719379cb1946"
   }
 }

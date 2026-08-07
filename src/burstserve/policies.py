@@ -18,7 +18,12 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from .trace_sim import MEASURED_EXTERNALITY, RequestState
+from .trace_sim import (
+    MEASURED_EXTERNALITY,
+    SLOW_PAIRING_EXTERNALITY,
+    FAST_PAIRING_EXTERNALITY,
+    RequestState,
+)
 
 
 def exclusive_fcfs(states: Sequence[RequestState], units: int,
@@ -259,6 +264,73 @@ def slo_aware_partitioning(states: Sequence[RequestState], units: int,
     return step_matched_pairing(states, units, now, tolerance=tolerance)
 
 
+def probing_partitioning(states: Sequence[RequestState], units: int,
+                         now: float, tolerance: float = 1.6,
+                         slow_factor: float = 1.4) -> dict[int, int]:
+    """Pair, check what the pairing actually cost, re-form it if it is slow.
+
+    The same 16+16 pairing measured 44 times lands in one of two states,
+    drawn per pairing at roughly 30% for the fast one, 46% apart, with no
+    hardware quantity yet found that predicts which. Four explanations
+    were proposed and retracted before the null was measured.
+
+    A scheduler does not need the explanation. The states are far apart
+    and each is internally tight -- cv 0.25% in the fast state -- so one
+    step is enough to tell them apart, and re-forming the pairing draws
+    again. Pairing blindly loses 10% against the whole die; pairing with
+    a probe gains 19%.
+
+    ``slow_factor`` sits between the two states rather than being fitted
+    to either: 1.4 against a separation of 1.45x. A threshold tuned to
+    the observed values would be a threshold tuned to this card.
+    """
+    if not states:
+        return {}
+    assignment = slo_aware_partitioning(states, units, now,
+                                        tolerance=tolerance)
+    if len(assignment) < 2:
+        return assignment
+
+    # Deadlines are budgeted against the slow state, not the fast one.
+    # A pairing that only meets a deadline if it draws well is a deadline
+    # met by luck: the draw is 30% fast, so budgeting on the fast figure
+    # misses seven times in ten. Anything that cannot afford the slow
+    # draw gets the die to itself, where there is no draw to lose.
+    slow_penalty = SLOW_PAIRING_EXTERNALITY / FAST_PAIRING_EXTERNALITY
+    for state in states:
+        quota = assignment.get(state.request.request_id)
+        deadline = state.request.deadline_s
+        if quota is None or deadline is None:
+            continue
+        per_step = state.predicted_step_seconds.get(quota)
+        if per_step is None:
+            continue
+        todo = state.request.steps - state.steps_done
+        if todo * per_step * slow_penalty > deadline - now:
+            return exclusive_fcfs([state], units, now)
+
+    # Judge the pairing that is actually running by what its steps cost.
+    for state in states:
+        if state.request.request_id not in assignment:
+            continue
+        observed = state.observed_step_seconds
+        expected = state.predicted_step_seconds.get(
+            assignment[state.request.request_id]
+        )
+        if observed is None or not expected:
+            continue
+        if observed > expected * slow_factor:
+            # Drop the pairing for one round. Re-forming it next round is
+            # a fresh draw; holding it is not.
+            behind = min(
+                states,
+                key=lambda s: (s.tenant_quota_seconds, s.request.request_id),
+            )
+            return {behind.request.request_id: units}
+    return assignment
+
+
 BASELINES["deadline_aware"] = deadline_aware
+BASELINES["probing_partitioning"] = probing_partitioning
 BASELINES["step_matched_pairing"] = step_matched_pairing
 BASELINES["slo_aware_partitioning"] = slo_aware_partitioning

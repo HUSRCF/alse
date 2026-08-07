@@ -37,10 +37,15 @@ class FreezeHoldsTest(unittest.TestCase):
     def test_the_manifest_records_the_action_order(self):
         manifest = json.loads(MANIFEST.read_text())
         order = manifest["action_order"]
-        self.assertEqual(len(order), 3)
+        self.assertEqual(len(order), 5)
         self.assertIn("deadline override", order[0])
         self.assertIn("matched pairing", order[1])
         self.assertIn("deficit rotation", order[2])
+        # Added when the pairing bistability was measured: budget
+        # deadlines against the slow state, and drop a pairing that
+        # lands in it.
+        self.assertIn("slow-state budget", order[3])
+        self.assertIn("probe", order[4])
 
     def test_the_decision_log_exists_and_is_referenced(self):
         self.assertTrue(LOG.exists())

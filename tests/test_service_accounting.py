@@ -24,7 +24,12 @@ from burstserve.policies import (
     static_even,
     step_matched_pairing,
 )
-from burstserve.trace_sim import Request, Trace, simulate
+from burstserve.trace_sim import (
+    PairingStates,
+    Request,
+    Trace,
+    simulate,
+)
 
 
 def backlogged_trace(per_tenant: int = 3, steps: int = 40,
@@ -143,10 +148,18 @@ class HeterogeneousTenantsTest(unittest.TestCase):
     """
 
     def test_matched_tenants_are_where_partitioning_wins(self):
+        """In the fast pairing state, which is pinned rather than drawn.
+
+        Blind pairing loses against the whole die once the measured
+        bistability is in play; that this is a statement about the fast
+        state is the point of pinning it here. The policy that copes with
+        the draw is tested in test_pairing_probe.py.
+        """
+        fast = lambda: PairingStates(seed=0, enabled=False)
         same = simulate(backlogged_trace(model="sdxl"), static_even,
-                        horizon_s=600.0)
+                        horizon_s=600.0, pairing_states=fast())
         excl = simulate(backlogged_trace(model="sdxl"), exclusive_fcfs,
-                        horizon_s=600.0)
+                        horizon_s=600.0, pairing_states=fast())
         self.assertGreater(same.utilisation(), excl.utilisation())
 
     def test_mismatched_step_lengths_erode_the_gain(self):
@@ -160,7 +173,7 @@ class HeterogeneousTenantsTest(unittest.TestCase):
         exclusive = simulate(mixed, exclusive_fcfs, horizon_s=1200.0)
         self.assertLess(shared.utilisation(), exclusive.utilisation())
 
-    def test_the_erosion_is_step_length_mismatch_not_the_model(self):
+    def test_the_erosion_is_step_length_mismatch_not_the_model(self):  # noqa: E501
         """Two CogVideoX tenants pair fine; it is the ratio that hurts.
 
         If the loss came from CogVideoX being expensive rather than from
@@ -168,8 +181,11 @@ class HeterogeneousTenantsTest(unittest.TestCase):
         """
         both_slow = backlogged_trace(per_tenant=2, steps=20,
                                      model="cogvideox-2b")
-        shared = simulate(both_slow, static_even, horizon_s=1200.0)
-        exclusive = simulate(both_slow, exclusive_fcfs, horizon_s=1200.0)
+        fast = lambda: PairingStates(seed=0, enabled=False)
+        shared = simulate(both_slow, static_even, horizon_s=1200.0,
+                          pairing_states=fast())
+        exclusive = simulate(both_slow, exclusive_fcfs, horizon_s=1200.0,
+                             pairing_states=fast())
         self.assertGreater(shared.utilisation(), exclusive.utilisation())
 
 
@@ -184,7 +200,9 @@ class StepMatchedPairingTest(unittest.TestCase):
     """
 
     def _both_conditions(self, trace, horizon):
-        result = simulate(trace, step_matched_pairing, horizon_s=horizon)
+        result = simulate(trace, step_matched_pairing, horizon_s=horizon,
+                          pairing_states=PairingStates(seed=0,
+                                                       enabled=False))
         self.assertLessEqual(result.peak_service_lag_quanta(), 2.0)
         self.assertLess(result.accounting_error(), 0.01)
         return result
@@ -192,7 +210,8 @@ class StepMatchedPairingTest(unittest.TestCase):
     def test_matched_tenants_keep_the_partitioning_gain(self):
         trace = backlogged_trace()
         mine = self._both_conditions(trace, 600.0)
-        theirs = simulate(trace, exclusive_fcfs, horizon_s=600.0)
+        theirs = simulate(trace, exclusive_fcfs, horizon_s=600.0,
+                          pairing_states=PairingStates(seed=0, enabled=False))
         self.assertGreater(mine.utilisation(), theirs.utilisation() * 1.05)
 
     def test_mismatched_tenants_do_not_cost_throughput(self):
@@ -203,8 +222,11 @@ class StepMatchedPairingTest(unittest.TestCase):
                     arrival_s=0.0, steps=40),
         ])
         mine = self._both_conditions(trace, 1200.0)
-        split = simulate(trace, static_even, horizon_s=1200.0)
-        excl = simulate(trace, exclusive_fcfs, horizon_s=1200.0)
+        fast = lambda: PairingStates(seed=0, enabled=False)
+        split = simulate(trace, static_even, horizon_s=1200.0,
+                         pairing_states=fast())
+        excl = simulate(trace, exclusive_fcfs, horizon_s=1200.0,
+                        pairing_states=fast())
         self.assertGreater(mine.utilisation(), split.utilisation())
         self.assertGreaterEqual(mine.utilisation(), excl.utilisation() - 1e-9)
 

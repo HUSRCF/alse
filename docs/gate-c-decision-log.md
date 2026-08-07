@@ -721,3 +721,50 @@ The claim's status: the +18.7% is available to a scheduler that probes,
 and is not available to one that pairs blindly, which would lose 9.5%.
 That is a design requirement rather than a caveat, and it is testable
 without knowing what the hardware is doing.
+
+### 2026-08-06 — probing added to the action order (post-freeze change #5)
+
+**Changed:** the frozen policy becomes `probing_partitioning`, which is
+`slo_aware_partitioning` plus two steps that exist because of the
+measured pairing bistability. The action order gains two entries:
+
+4. slow-state budget: exclusive to any deadline the slow pairing state
+   would miss.
+5. probe: drop a pairing whose observed step exceeds the predicted one
+   by 1.4x, re-forming it next round.
+
+**Why the simulator now draws a state.** Modelling the pairing penalty as
+the fast figure was reporting a gain the hardware supplies 30% of the
+time. `PairingStates` draws per pairing, and a pairing that is dropped
+and re-formed draws again — which is what the hardware does and what
+makes probing work at all. With the draw in place, blind pairing scores
+0.896 against the whole die's 1.000, and probing scores 1.135.
+
+**Why the deadline branch budgets against the slow state.** A pairing
+that meets a deadline only on a good draw meets it three times in ten.
+Anything that cannot afford the slow figure gets the die to itself,
+where there is no draw. Without this, C5 fails outright: the feasible
+deadline trace picked up three avoidable misses as soon as the draw was
+modelled.
+
+**Threshold.** 1.4 sits between the states, which are 1.45x apart. Fitted
+to neither, because a threshold fitted to these two numbers is fitted to
+this card.
+
+**What C6 had to be re-read as.** The probe acts on a prediction, so
+degrading the predictor must cost something — that is what a predictor
+is for. At +/-20% error a slow pairing can look fast (the states are 45%
+apart and the error band reaches 20%), and utilisation falls to about
+88% of the exact-predictor run. Judged against a fixed 5% of its own
+best case, the criterion would demand that information be worthless.
+Judged as Gate C words it — safe degradation — the test is that
+consulting a bad predictor leaves the scheduler better off than
+consulting none, and it does: 0.98 against blind pairing's 0.896 at every
+error level.
+
+**A test that was wrong about the simulator, corrected.** C4 asserted
+that a policy without deadline logic records no overrides. It records
+five: the simulator judges the conditions rather than the policy's
+intent, and exclusive_fcfs does hand the die to requests that need it.
+That is the correct reading. What the detection must not do is fire
+where no deadline exists, and that is what the test now checks.
