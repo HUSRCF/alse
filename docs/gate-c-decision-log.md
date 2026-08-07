@@ -674,3 +674,50 @@ Standing facts, unchanged by this retraction:
 - `MEASURED_EXTERNALITY[(16,16)] = 1.2362` is the low-state mean over 20
   side measurements and is unaffected; what is unknown is how to
   guarantee the low state, not what its value is.
+
+### 2026-08-06 — the baseline, and what it makes possible
+
+Ten consecutive co-runs at one fixed setting (stagger 0, warmup 3,
+seed 1, 768x768, 16+16):
+
+```
+seq01 +76.4%   seq02 +71.0%   seq03 +84.2%   seq04 +75.0%   seq05 +24.8%
+seq06 +75.9%   seq07 +24.7%   seq08 +76.0%   seq09 +74.8%   seq10 +24.4%
+```
+
+Low at positions 5, 7 and 10. No ordering, no drift, no dependence on
+run history. **The state is drawn independently per run, with a low-state
+rate near 30%.**
+
+That accounts for all four retracted explanations at once. Each was a
+parameter varied across a handful of runs, a clean-looking split, and a
+causal claim — and with a 30% base rate and six or seven such
+experiments, a clean split appearing somewhere is ordinary rather than
+surprising. The error was not any single inference; it was doing six
+inferences without ever measuring the null.
+
+**What this makes possible, and it is better than the explanations it
+replaces.** The state is distinguishable at the first step: 192 ms
+against 281 ms, a 46% difference, against a within-state cv of 0.25%.
+A scheduler does not need to know *why* a pairing degrades in order to
+notice that it has:
+
+| policy | externality | pairing vs whole die |
+| --- | --- | --- |
+| take whatever comes | 1.6215 (30/70 mix) | **−9.5%** |
+| detect and retry until low | 1.2362 | **+18.7%** |
+
+Expected retries to reach the low state is 3.3, each costing roughly one
+step — about 0.7 s of probing to secure a 18.7% steady-state gain on a
+request that runs for tens of seconds. Detection is cheap because the
+two states are far apart and each is internally tight.
+
+This is a scheduler action the design does not currently have: **probe
+the pairing, and re-form it if the first step lands in the slow state.**
+It requires no explanation of the underlying cause, only that the states
+stay disjoint and independently drawn, both of which are measured.
+
+The claim's status: the +18.7% is available to a scheduler that probes,
+and is not available to one that pairs blindly, which would lose 9.5%.
+That is a design requirement rather than a caveat, and it is testable
+without knowing what the hardware is doing.
