@@ -253,6 +253,11 @@ def main() -> int:
     parser.add_argument("--seconds", type=float, default=45.0)
     parser.add_argument("--trials", type=int, default=6)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--share-weights", action="store_true",
+                        help="two pipeline objects over one copy of the "
+                             "weights, as a serving runtime would hold "
+                             "them. Required for CogVideoX-2b, where two "
+                             "full pipelines do not fit")
     parser.add_argument("--solo-warmup", type=int, default=2,
                         help="untimed calls before the solo baseline; the "
                              "process's first call costs 5x the steady one")
@@ -265,12 +270,28 @@ def main() -> int:
         print(json.dumps({"status": "no_external_stream"}))
         return 2
 
-    print(f"loading two {args.model} pipelines ...", flush=True)
-    args.pipelines = [
-        build(args.model, args.height, args.width, args.steps,
-              args.seed + i, frames=args.frames)
-        for i in range(2)
-    ]
+    print(f"loading {args.model} ...", flush=True)
+    first = build(args.model, args.height, args.width, args.steps,
+                  args.seed, frames=args.frames)
+    if args.share_weights:
+        # One copy of the weights, two pipeline objects. This is what a
+        # serving runtime does -- it does not hold a second transformer
+        # and a second T5 to serve a second tenant -- and it is the
+        # difference between measurable and not: two full CogVideoX-2b
+        # pipelines take 29.2 GB of a 31.9 GB budget and OOM during
+        # inference, while the modules themselves are stateless under
+        # concurrent forward passes.
+        from diffusers import DiffusionPipeline
+        second_pipe = DiffusionPipeline.from_pipe(first[0])
+        second_pipe.set_progress_bar_config(disable=True)
+        second_call = dict(first[1])
+        second_call["generator"] = torch.Generator(
+            device="cuda").manual_seed(args.seed + 1)
+        second = (second_pipe, second_call)
+    else:
+        second = build(args.model, args.height, args.width, args.steps,
+                       args.seed + 1, frames=args.frames)
+    args.pipelines = [first, second]
     print(f"  peak memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GB",
           flush=True)
 
@@ -300,7 +321,10 @@ def main() -> int:
             "does the pairing bistability exist with two streams in one "
             "process, and does replacing the streams redraw it"
         ),
-        "arrangement": "one process, one context, two masked streams",
+        "arrangement": ("one process, one context, two masked streams"
+                        + (", shared weights" if args.share_weights
+                           else ", two weight copies")),
+        "shared_weights": args.share_weights,
         "units": {"a": args.units_a, "b": args.units_b},
         "workpoint": (f"{args.frames}f" if args.model.startswith("cogvideox")
                       else f"{args.width}x{args.height}"),
