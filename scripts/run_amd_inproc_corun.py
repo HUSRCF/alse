@@ -82,12 +82,17 @@ def masked_stream(mask: int):
 
 def build(model: str, height: int, width: int, steps: int, seed: int):
     import torch
-    from diffusers import StableDiffusionXLPipeline
+    from diffusers import DiffusionPipeline
 
+    # Same loader and arguments as amd_profile_cell, so the two harnesses
+    # measure the same model. local_files_only is deliberately not set:
+    # the cached snapshot is missing 27 files the pipeline does not need
+    # (licences, sample images), and refusing to load without them would
+    # measure the cache rather than the model.
     repo = {"sdxl": "stabilityai/stable-diffusion-xl-base-1.0"}[model]
-    pipeline = StableDiffusionXLPipeline.from_pretrained(
+    pipeline = DiffusionPipeline.from_pretrained(
         repo, torch_dtype=torch.float16, variant="fp16",
-        use_safetensors=True, local_files_only=True,
+        use_safetensors=True,
     ).to("cuda")
     pipeline.set_progress_bar_config(disable=True)
     call = {
