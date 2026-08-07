@@ -127,7 +127,7 @@ def run_side(pipeline, call, stream, rounds: int, out: list, barrier,
         pipeline(**call)                      # warm
     torch.cuda.synchronize()
     barrier.wait()
-    while time.time() < stop_at and len(out) < rounds:
+    while time.time() < stop_at:
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         with torch.cuda.stream(stream):
@@ -151,29 +151,40 @@ def one_trial(args, *, replace_streams: bool) -> dict:
         handles.append(handle)
         streams.append(torch.cuda.ExternalStream(handle.value))
 
-    # Warm before timing anything. The first call of the process pays for
-    # kernel selection and autotuning -- 10.4 s against a steady 1.82 s --
-    # and a solo baseline measured there makes every co-run look faster
-    # than solo, which is how trial 0 of the first run reported -79%.
-    with torch.cuda.stream(streams[0]):
-        for _ in range(args.solo_warmup):
-            args.pipelines[0][0](**args.pipelines[0][1])
-    torch.cuda.synchronize()
-
-    solo = []
-    with torch.cuda.stream(streams[0]):
-        for _ in range(3):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record(streams[0])
-            args.pipelines[0][0](**args.pipelines[0][1])
-            end.record(streams[0])
-            end.synchronize()
-            solo.append(start.elapsed_time(end) / 1000.0)
+    # A solo baseline per side, each on its own mask. Measuring one side
+    # and dividing both by it made an 8+24 pair read -44.6% for the wide
+    # side: it was being compared against the narrow side's solo cost.
+    # Externality is a tenant's slowdown against *its own* quota alone.
+    #
+    # Warm first: the process's first call pays for kernel selection --
+    # 10.4 s against a steady 1.82 s -- and a baseline measured there
+    # makes every co-run look faster than solo.
+    solos = []
+    for index, stream in enumerate(streams):
+        pipeline, call = args.pipelines[index]
+        with torch.cuda.stream(stream):
+            for _ in range(args.solo_warmup):
+                pipeline(**call)
+        torch.cuda.synchronize()
+        samples = []
+        with torch.cuda.stream(stream):
+            for _ in range(3):
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                start.record(stream)
+                pipeline(**call)
+                end.record(stream)
+                end.synchronize()
+                samples.append(start.elapsed_time(end) / 1000.0)
+        solos.append(sorted(samples)[len(samples) // 2])
 
     left, right = [], []
     barrier = threading.Barrier(2)
-    stop_at = time.time() + args.seconds + 60.0
+    # Both sides run for the whole window rather than a fixed round
+    # count. With a count, the faster side finishes early and the slower
+    # one keeps measuring with the die to itself, which is not a co-run
+    # -- an 8+24 pair showed 12.7% cv from exactly that.
+    stop_at = time.time() + args.seconds
     threads = [
         threading.Thread(target=run_side,
                          args=(pipe, call, stream, args.rounds, out, barrier,
@@ -189,27 +200,42 @@ def one_trial(args, *, replace_streams: bool) -> dict:
     for handle in handles:
         hip.hipStreamDestroy(handle)
 
+    # Only samples that ran while both sides were active. A sample that
+    # started before the peer's first call, or ended after its last, was
+    # not measuring a co-run -- the same guard the two-process harness
+    # applies, for the same reason.
+    if left and right:
+        overlap_start = max(left[0]["wall"] - left[0]["s"],
+                            right[0]["wall"] - right[0]["s"])
+        overlap_end = min(left[-1]["wall"], right[-1]["wall"])
+    else:
+        overlap_start, overlap_end = 0.0, 0.0
+
     def summarise(values):
-        if len(values) < 2:
-            return {}
-        durations = sorted(v["s"] for v in values)
+        inside = [v["s"] for v in values
+                  if v["wall"] - v["s"] >= overlap_start
+                  and v["wall"] <= overlap_end]
+        if len(inside) < 2:
+            return {"n_total": len(values), "n_in_overlap": len(inside)}
+        durations = sorted(inside)
         return {
-            "n": len(durations),
+            "n_total": len(values),
+            "n_in_overlap": len(durations),
             "p50_s": durations[len(durations) // 2],
             "cv": statistics.stdev(durations) / statistics.mean(durations),
         }
 
-    solo_p50 = sorted(solo)[len(solo) // 2]
     out = {
-        "solo_p50_s": solo_p50,
+        "solo_p50_s": {"left": solos[0], "right": solos[1]},
+        "overlap_seconds": max(0.0, overlap_end - overlap_start),
         "left": summarise(left),
         "right": summarise(right),
         "masks": [hex(left_mask), hex(right_mask)],
         "streams_replaced": replace_streams,
     }
-    for side in ("left", "right"):
+    for index, side in enumerate(("left", "right")):
         if "p50_s" in out[side]:
-            out[side]["externality"] = out[side]["p50_s"] / solo_p50 - 1.0
+            out[side]["externality"] = out[side]["p50_s"] / solos[index] - 1.0
     return out
 
 
@@ -260,9 +286,13 @@ def main() -> int:
         trials.append(row)
         left = row["left"].get("externality")
         right = row["right"].get("externality")
-        print(f"  trial {index}: solo {row['solo_p50_s']:.3f}s  "
+        print(f"  trial {index}: solo "
+              f"{row['solo_p50_s']['left']:.3f}/"
+              f"{row['solo_p50_s']['right']:.3f}s  "
               f"left {left * 100:+.1f}%  right {right * 100:+.1f}%  "
-              f"cv {row['left'].get('cv', 0) * 100:.2f}%", flush=True)
+              f"cv {row['left'].get('cv', 0) * 100:.2f}%  "
+              f"n {row['left'].get('n_in_overlap')}/"
+              f"{row['right'].get('n_in_overlap')}", flush=True)
 
     payload = {
         "schema_version": "burstserve.amd-inproc-corun/v1",
