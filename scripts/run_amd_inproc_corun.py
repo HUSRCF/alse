@@ -281,8 +281,11 @@ def main() -> int:
         # pipelines take 29.2 GB of a 31.9 GB budget and OOM during
         # inference, while the modules themselves are stateless under
         # concurrent forward passes.
-        from diffusers import DiffusionPipeline
-        second_pipe = DiffusionPipeline.from_pipe(first[0])
+        # type(...)(**components) rather than from_pipe: the latter
+        # dispatches on the base class and rejects it. Passing the
+        # components explicitly builds the same concrete pipeline over
+        # the same tensors.
+        second_pipe = type(first[0])(**first[0].components)
         second_pipe.set_progress_bar_config(disable=True)
         second_call = dict(first[1])
         second_call["generator"] = torch.Generator(
