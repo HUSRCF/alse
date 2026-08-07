@@ -101,16 +101,22 @@ MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
 # fast state gives 1.2362 over 18 sides, agreeing to 0.04%. It is the only entry the scheduler reads, since
 # the policy either splits evenly or gives the whole die to one tenant.
 #
-# Two-process co-runs also produce a slow state -- 20 side measurements,
-# +72.9% to +83.4%, mean +78.66% -- where partitioning loses 17.8%
-# instead of gaining 20.8%. Which state a two-process run lands in is
-# fixed before its first step and is not distinguished by temperature,
-# power, any clock, GPU utilisation or the CU mask. It does not occur
-# in-process, and this entry is the in-process value.
+# Every entry is now in-process at 768x768, replacing call-level figures
+# taken at 512x512 with two processes. The replacement was not cosmetic:
+# the old (28,4) entry read 1.926 against a measured 1.070, an 80%
+# overstatement, and (8,24) and (24,8) were out by 14%.
 #
-# The remaining entries are call-level penalties measured at 512x512 and
-# are used only by the currency counterexample, whose argument is about
-# non-linearity rather than about absolute values.
+# The old table was also non-monotone in own-quota -- 16+16 appearing to
+# cost less than 8+24 -- and that was the stated reason this function
+# refuses to interpolate. The measured curve is monotone: 1.338, 1.307,
+# 1.237, 1.126, 1.071 as own-quota rises. Interpolation is still refused,
+# but now because five points do not establish a shape, not because the
+# shape was strange.
+#
+# Two-process co-runs also produce a slow state -- 20 side measurements,
+# +72.9% to +83.4% at 16+16 -- fixed before the first step and not
+# distinguished by temperature, power, any clock, GPU utilisation or the
+# CU mask. It does not occur in-process.
 #
 # One entry per split, not per model: CogVideoX-2b cannot be co-run on this
 # card at all -- one process peaks at 28.54 GB and two need 57 on 34.2 GB --
@@ -137,11 +143,11 @@ FAST_PAIRING_EXTERNALITY = 1.2367   # 24 in-process sides, +21.1 to +28.7%
 SLOW_PAIRING_EXTERNALITY = 1.7866   # 20 side measurements, +72.9 to +83.4%
 
 MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
+    (4, 28): 1.3383,
+    (8, 24): 1.3070,
     (16, 16): 1.2367,
-    (8, 24): 1.495,
-    (24, 8): 1.280,
-    (4, 28): 1.307,
-    (28, 4): 1.926,
+    (24, 8): 1.1259,
+    (28, 4): 1.0706,
 }
 
 

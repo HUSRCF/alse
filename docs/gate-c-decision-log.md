@@ -848,3 +848,44 @@ it is verifiably free (asserted). It remains because most of this
 project's co-run evidence was collected two-process, and a deployment
 that runs tenants as separate processes does have the problem: there,
 probing scores 1.133 against blind pairing's 0.895.
+
+### 2026-08-06 — the whole externality table remeasured in-process (post-freeze change #7)
+
+Every entry replaced. The old table was call-level, at 512x512, with two
+processes; the new one is per-step, at 768x768, in one process with two
+masked streams — the arrangement that will run.
+
+| own+peer | old | new | n (overlap samples) | error in the old |
+| --- | --- | --- | --- | --- |
+| 4+28 | 1.307 | **1.3383** | 21 | −2.3% |
+| 8+24 | 1.495 | **1.3070** | 42 | +14.4% |
+| 16+16 | 1.223 | **1.2367** | 24 sides | −1.1% |
+| 24+8 | 1.280 | **1.1259** | 106 | +13.7% |
+| 28+4 | 1.926 | **1.0706** | 113 | **+79.9%** |
+
+**Two defects in the harness had to be fixed first**, and both were
+found because asymmetric quotas made them visible where 16+16 had not.
+The solo baseline was measured once on the narrow side's mask and both
+sides divided by it, so an 8+24 pair reported −44.6% externality for the
+wide side. And a fixed round count let the fast side finish early,
+leaving the slow one measuring alone: 12.7% per-sample cv against 0.4%
+for 16+16. Each side now has its own baseline and only samples
+overlapping the peer's active period are counted. The first batch was
+discarded rather than corrected — it measured the wrong comparison.
+
+**The corrected curve is monotone in own-quota:** 1.338, 1.307, 1.237,
+1.126, 1.071. The old table was not, and its non-monotonicity was the
+documented reason `externality()` refuses to interpolate — "16+16 costs
+less than 8+24 despite the larger share". That shape was an artifact of
+the 1.926 entry. Interpolation is still refused, now because five points
+do not establish a shape, and a test pins the monotonicity so a future
+entry that breaks it is noticed.
+
+**The currency counterexample survives, smaller.** At 4+28 a unit in the
+small tenant's hands buys 1.29x the progress of one in the large
+tenant's, where the old table said 2.2x. Separability still fails —
+divergence 0.772 and 0.832 at the two uneven splits — so the argument
+holds and its headline number was inflated by the same 1.926 entry.
+
+Gate C's utilisation is unchanged at 1.1862, since the scheduler reads
+only (16,16), which moved 1.1%.

@@ -40,13 +40,19 @@ class SeparabilityTest(unittest.TestCase):
         """The sharpest statement of the counterexample.
 
         At a 4+28 split a unit held by the smaller tenant delivers about
-        2.2x the progress of a unit held by the larger one, so charging
+        1.29x the progress of a unit held by the larger one, so charging
         both per unit-second charges them for different things.
+
+        The figure was 2.2x against the call-level table measured at 512
+        with two processes, whose (28,4) entry read 1.926 against an
+        in-process 1.071 -- an 80% overstatement that inflated this ratio
+        with it. The counterexample survives the correction; its
+        magnitude does not, and the smaller number is the real one.
         """
         small, large = pair_outcomes(4, 28)
         per_unit_small = small.corun_speed / small.units
         per_unit_large = large.corun_speed / large.units
-        self.assertGreater(per_unit_small / per_unit_large, 2.0)
+        self.assertGreater(per_unit_small / per_unit_large, 1.2)
 
     def test_it_is_the_peer_that_decides_not_the_tenant(self):
         """A tenant's own allocation does not determine its cost.

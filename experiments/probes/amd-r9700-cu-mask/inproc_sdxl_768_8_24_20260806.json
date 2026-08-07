@@ -1,0 +1,93 @@
+{
+  "schema_version": "burstserve.amd-inproc-corun/v1",
+  "question": "does the pairing bistability exist with two streams in one process, and does replacing the streams redraw it",
+  "arrangement": "one process, one context, two masked streams",
+  "units": {
+    "a": 8,
+    "b": 24
+  },
+  "workpoint": "768x768",
+  "trials": [
+    {
+      "solo_p50_s": {
+        "left": 3.054649169921875,
+        "right": 1.4890323486328125
+      },
+      "overlap_seconds": 31.827155113220215,
+      "left": {
+        "n_total": 8,
+        "n_in_overlap": 6,
+        "p50_s": 4.04181396484375,
+        "cv": 0.006171254455822324,
+        "externality": 0.3231679777311782
+      },
+      "right": {
+        "n_total": 19,
+        "n_in_overlap": 19,
+        "p50_s": 1.6877271728515626,
+        "cv": 0.015266921376909215,
+        "externality": 0.13343889029757205
+      },
+      "masks": [
+        "0xff",
+        "0xffffff00"
+      ],
+      "streams_replaced": true,
+      "trial": 0
+    },
+    {
+      "solo_p50_s": {
+        "left": 3.130372802734375,
+        "right": 1.4959268798828125
+      },
+      "overlap_seconds": 31.94154667854309,
+      "left": {
+        "n_total": 8,
+        "n_in_overlap": 6,
+        "p50_s": 4.03447509765625,
+        "cv": 0.002968700216994205,
+        "externality": 0.28881617363022816
+      },
+      "right": {
+        "n_total": 19,
+        "n_in_overlap": 19,
+        "p50_s": 1.6993123779296875,
+        "cv": 0.01672578802267548,
+        "externality": 0.13595951833074071
+      },
+      "masks": [
+        "0xff",
+        "0xffffff00"
+      ],
+      "streams_replaced": true,
+      "trial": 1
+    },
+    {
+      "solo_p50_s": {
+        "left": 3.138036376953125,
+        "right": 1.495888427734375
+      },
+      "overlap_seconds": 31.94315457344055,
+      "left": {
+        "n_total": 8,
+        "n_in_overlap": 6,
+        "p50_s": 4.036431640625,
+        "cv": 0.0038184868672685042,
+        "externality": 0.2862921763017199
+      },
+      "right": {
+        "n_total": 19,
+        "n_in_overlap": 19,
+        "p50_s": 1.693921875,
+        "cv": 0.01702173021911325,
+        "externality": 0.13238517231232305
+      },
+      "masks": [
+        "0xff",
+        "0xffffff00"
+      ],
+      "streams_replaced": true,
+      "trial": 2
+    }
+  ]
+}

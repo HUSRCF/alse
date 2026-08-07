@@ -98,15 +98,27 @@ class ExternalityTest(unittest.TestCase):
         with self.assertRaises(UnmeasuredPairing):
             externality(12, 20)
 
-    def test_the_table_is_not_monotone_so_interpolation_is_unsound(self):
-        """The reason the refusal above is not merely cautious."""
-        self.assertGreater(
-            MEASURED_EXTERNALITY[(8, 24)], MEASURED_EXTERNALITY[(16, 16)]
-        )
-        self.assertGreater(
-            MEASURED_EXTERNALITY[(28, 4)], MEASURED_EXTERNALITY[(24, 8)]
-        )
+    def test_the_table_is_monotone_but_still_too_sparse_to_interpolate(self):
+        """The refusal stands; the reason for it has changed.
 
+        The old call-level table was non-monotone -- 16+16 appearing to
+        cost less than 8+24 -- and that was cited as proof that a value
+        invented between two entries could be wrong in an unknown
+        direction. In-process measurement made the curve monotone:
+        1.338, 1.307, 1.237, 1.126, 1.071 as own-quota rises. The old
+        shape was an artifact of a (28,4) entry that read 1.926 against a
+        measured 1.071.
+
+        Interpolation is still refused, because five points do not
+        establish a shape, and this test now pins the monotonicity so a
+        future entry that breaks it has to be noticed.
+        """
+        by_own = sorted(MEASURED_EXTERNALITY.items(), key=lambda kv: kv[0][0])
+        factors = [value for _, value in by_own]
+        for wider, narrower in zip(factors, factors[1:]):
+            self.assertGreater(wider, narrower)
+        with self.assertRaises(UnmeasuredPairing):
+            externality(12, 20)
 
 class ReproducibilityTest(unittest.TestCase):
     """Gate C requires byte-identical results from the same seed."""
