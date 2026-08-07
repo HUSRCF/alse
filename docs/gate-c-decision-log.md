@@ -889,3 +889,39 @@ holds and its headline number was inflated by the same 1.926 entry.
 
 Gate C's utilisation is unchanged at 1.1862, since the scheduler reads
 only (16,16), which moved 1.1%.
+
+### 2026-08-06 — CogVideoX-2b's co-run, which Gate B recorded as impossible (post-freeze change #8)
+
+Gate B marked this NOT_MEASURED with a reason: one process peaks at
+28.54 GB and two need 57 on a 34.2 GB card. The premise was two
+processes. In the arrangement the runtime specifies -- one process, one
+copy of the weights, two masked streams -- it needs **14.7 GB**, and the
+measurement is available.
+
+Six side measurements at 9 frames, 16+16: +26.3% to +30.6%, mean
+**1.2891**. SDXL at the same split is 1.2367, so the penalty is
+model-dependent by 4.2% and the shared table under-states it here.
+`MEASURED_EXTERNALITY_BY_MODEL` holds the override; other splits fall
+back to the SDXL table and are extrapolations across models, labelled as
+such.
+
+Three things had to be fixed to get there, each a difference between the
+harness and a runtime rather than a workaround:
+
+- **Two weight copies do not fit.** 29.2 GB of a 31.9 GB budget, then an
+  OOM 380 MB into inference. A serving runtime does not hold a second
+  transformer and a second T5 to serve a second tenant; sharing the
+  components halves it.
+- **The tokenizer is not reentrant.** Two pipelines encoding
+  concurrently raise "Already borrowed". The prompt is now encoded once
+  and passed as embeddings, which is also what a runtime does -- it does
+  not re-encode per denoising round -- and it takes the text encoder out
+  of a measurement that quota decisions do not affect.
+- **from_pipe dispatches on the base class** and rejects
+  DiffusionPipeline; the second pipeline is built from the first's
+  components.
+
+Reducing frames from 9 to 5 did not help and is worth recording: it
+still OOMed, and allocated slightly *more*. The cost was the weights,
+not the activations, which is why halving the weights worked and
+shrinking the problem did not.

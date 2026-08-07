@@ -151,6 +151,22 @@ MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
 }
 
 
+# Per-model overrides where the model's own co-run has been measured.
+# Gate B recorded CogVideoX-2b's co-run as impossible -- two processes
+# need 57 GB on a 34.2 GB card -- and it is measurable in the runtime's
+# arrangement, where one copy of the weights serves both streams: 14.7 GB
+# instead of 29.2, and 6 side measurements at 9 frames giving 1.2891.
+#
+# It is 4.2% above SDXL's 1.2367 at the same split, so the penalty is
+# model-dependent and the shared table under-states it for this model.
+# Only (16,16) is measured per-model; other splits fall back to the SDXL
+# table and are extrapolations across models, recorded as such rather
+# than presented as measurements.
+MEASURED_EXTERNALITY_BY_MODEL: dict[str, dict[tuple[int, int], float]] = {
+    "cogvideox-2b": {(16, 16): 1.2891},
+}
+
+
 class UnmeasuredPairing(LookupError):
     """Raised when a co-run pairing has no measured externality.
 
@@ -227,17 +243,27 @@ MEASURED_WORKPOINT: dict[str, str] = {
 }
 
 
-def externality(own_units: int, peer_units: int | None) -> float:
+def externality(own_units: int, peer_units: int | None,
+                model: str | None = None) -> float:
     """Slowdown factor for a tenant sharing the die with one peer.
 
-    Keyed by quota alone. The measured penalty also depends strongly on
-    the workpoint -- see MEASURED_WORKPOINT -- and this function silently
-    assumes the one the table was built at, because a trace does not
-    carry a resolution to key on.
+    Uses the model's own measurement where one exists and the shared
+    table otherwise. The penalty is model-dependent -- CogVideoX-2b is
+    4.2% above SDXL at 16+16 -- so a fallback is an extrapolation across
+    models, not a lookup.
+
+    Keyed by quota and model, not by workpoint. The penalty depends
+    strongly on that too -- see MEASURED_WORKPOINT -- and this function
+    silently assumes the one the table was built at, because a trace does
+    not carry a resolution to key on.
     """
     if peer_units is None:
         return 1.0
     key = (own_units, peer_units)
+    if model is not None:
+        own_table = MEASURED_EXTERNALITY_BY_MODEL.get(model)
+        if own_table and key in own_table:
+            return own_table[key]
     if key not in MEASURED_EXTERNALITY:
         raise UnmeasuredPairing(
             f"no measured externality for {own_units}+{peer_units}; "
@@ -776,7 +802,7 @@ def simulate(
                 peer = None
             state = states[rid]
             try:
-                factor = externality(units, peer)
+                factor = externality(units, peer, state.request.model)
                 if peer is not None:
                     # The table entry is the fast state. Which state this
                     # pairing is actually in is drawn per pairing.

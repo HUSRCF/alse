@@ -22,9 +22,11 @@ sys.dont_write_bytecode = True
 
 from burstserve.trace_sim import (
     MEASURED_EXTERNALITY,
+    MEASURED_EXTERNALITY_BY_MODEL,
     MEASURED_MODELS,
     MEASURED_QUOTA_SECONDS,
     MEASURED_WORKPOINT,
+    externality,
 )
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -277,6 +279,64 @@ class WorkpointIsDeclared(unittest.TestCase):
             with self.subTest(side=key):
                 self.assertEqual(payload["sides"][key]["height"], 768)
                 self.assertEqual(payload["sides"][key]["width"], 768)
+
+
+class PerModelExternalityMatchesItsProbe(unittest.TestCase):
+    """CogVideoX-2b's own co-run, which Gate B recorded as impossible.
+
+    Two processes need 57 GB on a 34.2 GB card. One process holding one
+    copy of the weights for two masked streams needs 14.7 GB, so the
+    measurement Gate B could not take is available in the arrangement the
+    runtime specifies.
+    """
+
+    CVX = (PROBES / "inproc_cogvideox2b_9f_shared_20260806.json")
+
+    def test_the_entry_is_the_mean_of_its_probe(self):
+        if not self.CVX.exists():
+            self.skipTest(f"probe not present: {self.CVX.name}")
+        payload = json.loads(self.CVX.read_text())
+        sides = [t[s]["externality"] for t in payload["trials"]
+                 for s in ("left", "right") if "externality" in t[s]]
+        self.assertGreaterEqual(len(sides), 4)
+        measured = 1.0 + sum(sides) / len(sides)
+        self.assertAlmostEqual(
+            MEASURED_EXTERNALITY_BY_MODEL["cogvideox-2b"][(16, 16)],
+            measured, places=3,
+        )
+
+    def test_the_probe_shared_one_copy_of_the_weights(self):
+        """Which is the whole reason it fits, and is the runtime's own
+        arrangement rather than a measurement trick."""
+        if not self.CVX.exists():
+            self.skipTest(f"probe not present: {self.CVX.name}")
+        payload = json.loads(self.CVX.read_text())
+        self.assertTrue(payload["shared_weights"])
+
+    def test_the_penalty_is_model_dependent(self):
+        """If it were not, one table would do and the override would be
+        dead weight."""
+        shared = MEASURED_EXTERNALITY[(16, 16)]
+        own = MEASURED_EXTERNALITY_BY_MODEL["cogvideox-2b"][(16, 16)]
+        self.assertGreater(abs(own / shared - 1.0), 0.02)
+
+    def test_a_model_with_its_own_measurement_uses_it(self):
+        self.assertAlmostEqual(
+            externality(16, 16, "cogvideox-2b"),
+            MEASURED_EXTERNALITY_BY_MODEL["cogvideox-2b"][(16, 16)],
+        )
+
+    def test_a_model_without_one_falls_back(self):
+        self.assertAlmostEqual(externality(16, 16, "sdxl"),
+                               MEASURED_EXTERNALITY[(16, 16)])
+        self.assertAlmostEqual(externality(16, 16, None),
+                               MEASURED_EXTERNALITY[(16, 16)])
+
+    def test_an_unmeasured_split_falls_back_rather_than_inventing(self):
+        """CogVideoX has one measured split; the rest are the shared
+        table, which is an extrapolation across models."""
+        self.assertAlmostEqual(externality(8, 24, "cogvideox-2b"),
+                               MEASURED_EXTERNALITY[(8, 24)])
 
 
 if __name__ == "__main__":
