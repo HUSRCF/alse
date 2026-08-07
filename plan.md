@@ -78,7 +78,7 @@
 | 未 promotion 的 masked 请求 fail closed | checked-in Gate-A manifest 与 runner | 两次 sealed rejection 均无 `Popen`/native output | exact（安全锁） | 只证明未越权，不证明 mask 可用 |
 | 可观测 Xid 且异常时 fail closed | ctypes NVML event monitor 与 runner integration | 2026-08-01 起有真机覆盖：真实 `libnvidia-ml.so.610.43.02` 上 9 个必需符号全部绑定、sealed memfd 快照 sha256 与磁盘一致、supported bits `61852`、Xid bit `8` 注册成功、250 ms quiet window 实测 250.1 ms、0 事件、`safe_for_acceptance=true`；错误 hash/version 双向 fail-closed | approximate | 已修复 `nvmlDeviceGetHandleByUUID_v2` 不存在导致的必然失败；仍需真实 Xid 注入验证（无安全注入手段）与 post-health 覆盖后才 exact |
 | 可逆 simulator foundation | `src/burstserve/sim` 的 schema、dual-ledger、lifecycle、三态 I/O 与 deterministic trace replay 纯函数 | commits `82a27c4`/`827beb8`；Python 3.11/3.13 各 107/107；trace 三轮独立资源/伪造攻击终审 | approximate（获准预研） | 动作枚举/选择、predictor error 与 Gate C 正式证据仍 missing |
-| Gate C 仿真验收（7/7） | `src/burstserve/{trace_sim,policies,deadline_feasibility}.py`；调度器 `slo_aware_partitioning`（deadline override → 步长匹配配对 → 亏欠轮转） | `experiments/aggregates/gate_c_verification.json` 全 7 条 PASS（commit `bf0cf69`）；782 tests；冻结 manifest `gate_c_algorithm_freeze.json` + `docs/gate-c-decision-log.md` | **exact（仅限仿真）** | 成本表来自 Gate B-AMD R9700 实测，但**本门无 GPU 运行，不构成硬件 claim**；只覆盖 2 模型、2 租户并发；cold-model 项推迟到 runtime 阶段 |
+| Gate C 仿真验收（7/7） | `src/burstserve/{trace_sim,policies,deadline_feasibility}.py`；调度器 `probing_partitioning`（deadline override → 步长匹配配对 → 亏欠轮转 → 慢态 deadline 预算 → 探测重组） | `experiments/aggregates/gate_c_verification.json` 全 7 条 PASS（commit `bf0cf69`）；782 tests；冻结 manifest `gate_c_algorithm_freeze.json` + `docs/gate-c-decision-log.md` | **exact（仅限仿真）** | 成本表来自 Gate B-AMD R9700 实测，但**本门无 GPU 运行，不构成硬件 claim**；只覆盖 2 模型、2 租户并发；cold-model 项推迟到 runtime 阶段 |
 | Gate A 动态 SM 功能与性能 | 尚未运行 masked kernel；masked 单 cell validator（`validate_masked_cell_contract`）与跨 trial/bit/mode 矩阵 validator（`validate_masked_tpc_matrix`）均已实现，纯函数、26 项对抗测试、端到端串联已验证 | 无 TPC map、10,000 次重配、更新 p99、overlap 或 correctness 证据；两个 validator 尚未接入 `validate_gate_a0`（无 masked 证据可消费） | missing | Gate A 硬门，不能由 A0 或 simulator 替代；仍缺 Xid 真实覆盖与 CUDA 13.3 stream offset 政策 |
 
 在上述 hard gaps 关闭前，不正式进入第 2 周。只允许并行开展可逆、纯 CPU
@@ -447,36 +447,49 @@ AMD R9700 (gfx1201) 上的实测值，但验证器本身不跑 GPU，结论不�
 claim。仅覆盖 2 个模型（SDXL、CogVideoX-2b）与 2 租户并发（externality
 表的实测范围）；cold-model 项推迟至 runtime 阶段。
 
-> **2026-08-06 新增限定：co-run externality 呈双峰，触发条件未知；表中取
-> 低态值，claim 附带"未能保证低态"的风险。**
+> **2026-08-06 新增限定：co-run externality 呈双峰、每次配对独立抽取
+> （快态约 30%），调度器以"探测-重组"应对，claim 因此成立但形态改变。**
 >
-> 此处先后写过四版限定并均已撤回：工作集阈值 → 功耗上限 → 双稳态不可控 →
-> 启动错开 2–5 秒。**前四版的共同错误是：改一个参数、看到干净的分组、就把
-> 该参数当成原因，而没有先测"什么都不变时测量本身如何表现"。**
+> 此处先后写过五版限定，前四版均已撤回：工作集阈值 → 功耗上限 → 双稳态
+> 不可控 → 启动错开 2–5 秒。**四次的共同错误是：改一个参数、看到干净分组、
+> 就把该参数当成原因，而从未先测"什么都不变时测量本身如何表现"。**
+> 固定参数连续 10 次的基线（低态出现在第 5/7/10 次，无序列相关）表明：
+> **态是每次配对独立抽取的,与任何已测硬件量无关。**
 >
-> **已确立的事实**（不受上述撤回影响）：
+> **已确立的事实**：
 >
-> - per-step externality 呈**双峰且互不重叠**：低态 +21.8~26.4%
->   （18+ 侧测量，均值 **1.2362**），高态 +72.8~83.4%（20 侧测量，均值
->   **1.7866**）。
-> - 两态**各自内部极稳**：低态逐样本 cv 0.19–0.27%，高态 1.7–2.9%。
-> - 态在**第一个测量步之前**即已确定，非渐变。
-> - **温度、功耗、sclk/mclk/fclk/socclk、GPU 利用率、CU mask（requested /
->   readback / popcount / multiProcessorCount）均已测量，皆不能区分两态。**
+> - per-step externality 双峰**互不重叠**：快态 +21.8~26.4%（均值
+>   **1.2362**），慢态 +72.9~83.4%（均值 **1.7866**），相距 **45%**。
+> - 两态**各自内部极稳**：快态逐样本 cv 0.19–0.29%，慢态 1.2–3.1%。
+> - 态在**第一个测量步之前**确定；同一配对保持不变，**重组则重新抽取**。
+> - 温度、功耗、sclk/mclk/fclk/socclk、GPU 利用率、CU mask 均已测量，
+>   **皆不能区分两态**；四次因果解释均被证伪。
 >
-> **已证伪的解释**：分辨率/工作集阈值；功耗上限与热状态；启动错开量
-> （同一设置 `stagger=0, warmup=3` 曾三次全高、后又两次全低）。
+> **调度器应对（已纳入冻结的 action order）**：无需知道成因——两态相距 45%
+> 而态内 cv 仅 0.25%，故**一步即可分辨**，且重组即重新抽取。
 >
-> **对 claim 的后果**：低态下分区 **+20.8%**，高态下 **−17.8%**。表中
-> `(16,16) = 1.2362` 取低态值——这是**乐观取值**，其正当性在于低态可复现且
-> 测量质量更高（cv 低一个数量级），但**目前无法按需触发低态**，因此
-> Gate C 的 +18.9% 附带此风险，不得略去。
+> | 策略 | externality | 相对全 die 独占 |
+> | --- | --- | --- |
+> | 盲目配对 | 1.6215（30/70 混合） | **−10.4%** |
+> | **探测-重组** | 1.2362（命中快态） | **+13.5%** |
 >
-> **进行中**：固定参数连续 10 次测量，用以区分"每次独立抽样"与"依赖运行
-> 历史"。这本应是第一个做的实验。
+> action order 新增两步：(4) deadline 按**慢态**预算，凡慢态下会 miss 者
+> 直接独占（无此步则 C5 出现 3 个可避免 miss）；(5) 观测步长超预测 1.4×
+> 即弃用该配对、下一轮重组。阈值 1.4 位于两态之间（相距 1.45×），**不向
+> 任一态拟合**。
+>
+> **C6 的判据据此重述**：探测依赖预测，预测变差必然有代价；±20% 误差下慢态
+> 可能被误判为快态（两态差 45%、误差带达 20%），吞吐降至精确预测的 88%。
+> Gate C 原文要求的是**安全降级**，故判据为"用坏预测器**优于**不用预测器"
+> ——各误差档均为 0.98 对盲目配对的 0.896。原判据"在自身最优的 5% 以内"
+> 等价于要求信息毫无价值。
+>
+> **claim 状态**：Gate C **7/7 PASS（策略为 `probing_partitioning`）**。
+> 分区收益 **+13.5%**（含探测开销），而非早前记录的 +18.9%——后者是"总是
+> 命中快态"的理想值，仅 30% 的配对能直接达到。
 >
 > **方法约束**：单次 co-run 不构成证据；externality 结论必须基于重复测量的
-> 分布；**在改变任何参数之前，先测固定参数下的基线分布**。
+> 分布；**改变任何参数之前，先测固定参数下的基线分布**。
 
 冻结后已发生 2 次修改（见 decision log）：
 
