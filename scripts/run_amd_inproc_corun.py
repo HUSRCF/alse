@@ -110,6 +110,26 @@ def build(model: str, height: int, width: int, steps: int, seed: int,
         "num_inference_steps": steps,
         "generator": torch.Generator(device="cuda").manual_seed(seed),
     }
+    # Encode the prompt once, outside the measured loop. Two pipelines
+    # sharing one tokenizer raise "Already borrowed" when they encode
+    # concurrently -- the Rust tokenizer is not reentrant -- and a
+    # serving runtime does not re-encode a prompt per denoising round
+    # either. Passing embeddings also keeps the text encoder out of the
+    # measurement, which is not part of what a quota decision affects.
+    if hasattr(pipeline, "encode_prompt"):
+        try:
+            with torch.no_grad():
+                encoded = pipeline.encode_prompt(
+                    call["prompt"], device=pipeline._execution_device
+                    if hasattr(pipeline, "_execution_device") else "cuda",
+                )
+        except Exception:
+            encoded = None
+        if isinstance(encoded, tuple) and encoded and encoded[0] is not None:
+            call.pop("prompt")
+            call["prompt_embeds"] = encoded[0]
+            if len(encoded) > 1 and encoded[1] is not None:
+                call["negative_prompt_embeds"] = encoded[1]
     if video:
         call["num_frames"] = frames
     else:
