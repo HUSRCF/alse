@@ -120,8 +120,15 @@ def main() -> int:
         return kwargs
 
     rows = []
+    # Streams are kept alive for the life of the process. Destroying one
+    # between quotas hung the second measurement: torch's ExternalStream
+    # and its caching allocator still refer to the stream, and the first
+    # quota completed while the second never produced a sample in 2.5
+    # hours at 97% GPU. A handful of leaked handles costs nothing here.
+    handles = []
     for units in [int(q) for q in args.quotas.split(",")]:
         handle, mask = masked_stream(units)
+        handles.append(handle)
         stream = torch.cuda.ExternalStream(handle.value)
         call = {
             "prompt": "a quiet street at dusk",
@@ -149,8 +156,6 @@ def main() -> int:
                     events[i].elapsed_time(events[i + 1]) / 1000.0
                     for i in range(len(events) - 1)
                 )
-        hip.hipStreamDestroy(handle)
-
         ordered = sorted(per_step)
         measured = ordered[len(ordered) // 2] if ordered else None
         reference = TWO_PROCESS_CURVE.get(units)
