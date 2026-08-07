@@ -80,7 +80,8 @@ def masked_stream(mask: int):
     return handle, got
 
 
-def build(model: str, height: int, width: int, steps: int, seed: int):
+def build(model: str, height: int, width: int, steps: int, seed: int,
+          frames: int = 9):
     import torch
     from diffusers import DiffusionPipeline
 
@@ -89,19 +90,31 @@ def build(model: str, height: int, width: int, steps: int, seed: int):
     # the cached snapshot is missing 27 files the pipeline does not need
     # (licences, sample images), and refusing to load without them would
     # measure the cache rather than the model.
-    repo = {"sdxl": "stabilityai/stable-diffusion-xl-base-1.0"}[model]
-    pipeline = DiffusionPipeline.from_pretrained(
-        repo, torch_dtype=torch.float16, variant="fp16",
-        use_safetensors=True,
-    ).to("cuda")
+    repos = {
+        "sdxl": "stabilityai/stable-diffusion-xl-base-1.0",
+        "cogvideox-2b": "THUDM/CogVideoX-2b",
+    }
+    variants = {"sdxl": "fp16"}
+    kwargs = {"torch_dtype": torch.float16, "use_safetensors": True}
+    if model in variants:
+        kwargs["variant"] = variants[model]
+    pipeline = DiffusionPipeline.from_pretrained(repos[model],
+                                                 **kwargs).to("cuda")
     pipeline.set_progress_bar_config(disable=True)
+    video = model.startswith("cogvideox")
+    if video and hasattr(pipeline, "vae"):
+        # The decode does not fit otherwise, established under Gate B.
+        pipeline.vae.enable_tiling()
     call = {
         "prompt": "a quiet street at dusk",
         "num_inference_steps": steps,
-        "height": height,
-        "width": width,
         "generator": torch.Generator(device="cuda").manual_seed(seed),
     }
+    if video:
+        call["num_frames"] = frames
+    else:
+        call["height"] = height
+        call["width"] = width
     return pipeline, call
 
 
@@ -129,8 +142,8 @@ def run_side(pipeline, call, stream, rounds: int, out: list, barrier,
 def one_trial(args, *, replace_streams: bool) -> dict:
     import torch
 
-    left_mask = (1 << args.units) - 1
-    right_mask = ((1 << args.units) - 1) << args.units
+    left_mask = (1 << args.units_a) - 1
+    right_mask = ((1 << args.units_b) - 1) << args.units_a
     handles = []
     streams = []
     for mask in (left_mask, right_mask):
@@ -203,10 +216,13 @@ def one_trial(args, *, replace_streams: bool) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="sdxl")
-    parser.add_argument("--units", type=int, default=16)
+    parser.add_argument("--units-a", type=int, default=16)
+    parser.add_argument("--units-b", type=int, default=16)
     parser.add_argument("--height", type=int, default=768)
     parser.add_argument("--width", type=int, default=768)
     parser.add_argument("--steps", type=int, default=8)
+    parser.add_argument("--frames", type=int, default=9,
+                        help="video models only; images ignore it")
     parser.add_argument("--rounds", type=int, default=12)
     parser.add_argument("--seconds", type=float, default=45.0)
     parser.add_argument("--trials", type=int, default=6)
@@ -226,7 +242,7 @@ def main() -> int:
     print(f"loading two {args.model} pipelines ...", flush=True)
     args.pipelines = [
         build(args.model, args.height, args.width, args.steps,
-              args.seed + i)
+              args.seed + i, frames=args.frames)
         for i in range(2)
     ]
     print(f"  peak memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GB",
@@ -255,8 +271,9 @@ def main() -> int:
             "process, and does replacing the streams redraw it"
         ),
         "arrangement": "one process, one context, two masked streams",
-        "units_each": args.units,
-        "workpoint": f"{args.width}x{args.height}",
+        "units": {"a": args.units_a, "b": args.units_b},
+        "workpoint": (f"{args.frames}f" if args.model.startswith("cogvideox")
+                      else f"{args.width}x{args.height}"),
         "trials": trials,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
