@@ -405,8 +405,13 @@ class PairingStates:
 
     A pairing is identified by the set of request ids sharing the die, so
     re-forming a pairing -- dropping it and building it again -- draws
-    again. That is what makes probing worthwhile and is exactly what the
-    hardware does when the processes are relaunched.
+    again. **This is an assumption, and it is the one this model is most
+    exposed on.** What the hardware has shown is that relaunching the two
+    processes draws afresh. The runtime being designed is one process
+    with a stream per model, where re-forming means changing a stream's
+    CU mask rather than relaunching; whether that redraws, or whether the
+    bistability exists there at all, is unmeasured. See
+    docs/gate-c-decision-log.md.
     """
 
     def __init__(self, *, seed: int = 0, rate: float = PAIRING_STATE_RATE,

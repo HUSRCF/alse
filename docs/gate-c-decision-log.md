@@ -768,3 +768,30 @@ five: the simulator judges the conditions rather than the policy's
 intent, and exclusive_fcfs does hand the die to requests that need it.
 That is the correct reading. What the detection must not do is fire
 where no deadline exists, and that is what the test now checks.
+
+### 2026-08-06 — what the probing policy assumes and has not shown
+
+The probe is worth having only if re-forming a pairing draws a fresh
+state. What the hardware has demonstrated is narrower: **relaunching the
+processes** draws afresh, shown by ten runs at one fixed setting landing
+independently.
+
+The runtime this project is designing is one process, one context, one
+stream per model. There, re-forming a pairing means changing a stream's
+CU mask, not relaunching anything. Two questions follow, neither
+answered:
+
+1. Does the bistability exist at all with two streams in one process?
+2. If it does, does changing a stream's mask redraw the state?
+
+A "no" to either makes the probing action unimplementable as designed,
+and Gate C's +13.5% would need recomputing against whatever remains. The
+nearest evidence is the transition probe -- changing a mask mid-run costs
+no measurable transient, MAPE 0.23% -- but that is single-tenant and says
+nothing about a pairing state.
+
+`PairingStates.forget` encodes the assumption explicitly rather than
+burying it, so the simulator states what it is relying on. It is
+labelled in the source and here; it is not evidence.
+
+This is the highest-priority measurement outstanding.
