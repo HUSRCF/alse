@@ -189,6 +189,13 @@ class SdxlStepAdapter:
                                      return_dict=False)[0]
         end.record()
         self._pending_events = (start, end)
+        if self.last_step_seconds is None:
+            # The first step has no predecessor to hide the wait behind,
+            # and leaving it unmeasured would make the runtime charge it
+            # from the cost model -- which is the one thing the ledger
+            # must not do. One drain per request is a bounded cost; a
+            # charge that did not come from measurement is not.
+            self.drain_timing()
 
         return StepState(
             step_index=state.step_index + 1,
