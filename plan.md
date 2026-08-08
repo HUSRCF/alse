@@ -536,6 +536,22 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 
 ### 第 7–8 周：2026-09-10 至 09-23——ASLE Temporal Runtime
 
+> **进行中（2026-08-08）**：已落地 `src/burstserve/{executor,queues,runtime}.py`
+> 与 `scripts/amd_sdxl_adapter.py`。
+>
+> **验收第 1 条的核心属性已在真机验证**：R9700 上 SDXL 768×768、8 步、
+> seed 0，一次不中断 vs 一次**每步挂起并以不同配额（4/8/16/32）重新调度**，
+> 最终 latent 的 SHA256 **完全相同**、`max|diff| = 0`（7 次挂起 / 7 次恢复）。
+> 证据 `step_adapter_exactness_20260808.json`。
+>
+> **明确未覆盖的部分**：该验证证明的是"**调度不改变结果**"，尚**未**与原
+> ASLE baseline 的输出做逐位比对——后者需要对齐 ASLE 的 pipeline 配置
+> （guidance、scheduler、步数），是另一条独立证据。验收条文原文为"对原
+> ASLE seed 的最终 latent 在确定性模式下 hash 一致"，因此该条**尚未关闭**。
+>
+> 其余待办：真实 adapter 接入 runtime loop、一小时压测、video stall 界、
+> scheduler p99 的真机测量（目前只有注入时钟下的单元测试）。
+
 实现：
 
 - 将 callback 内同步 `serve_pending()` 拆成显式 denoising-step executors。

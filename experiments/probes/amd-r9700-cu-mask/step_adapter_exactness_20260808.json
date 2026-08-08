@@ -1,0 +1,20 @@
+{
+  "schema_version": "burstserve.amd-step-adapter/v1",
+  "question": "does suspending and rescheduling between denoising steps change the latent",
+  "steps": 8,
+  "workpoint": "768x768",
+  "seed": 0,
+  "uninterrupted_quota": 32,
+  "interrupted_quotas": [
+    4,
+    8,
+    16,
+    32
+  ],
+  "suspensions": 7,
+  "resumptions": 7,
+  "uninterrupted_digest": "7de3e567c2ddbeda23fb0f535213e35276d09196256f15de174cb954a13dd060",
+  "interrupted_digest": "7de3e567c2ddbeda23fb0f535213e35276d09196256f15de174cb954a13dd060",
+  "identical": true,
+  "max_abs_difference": 0.0
+}
