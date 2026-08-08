@@ -127,20 +127,54 @@ MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
 # explanations were proposed and retracted before the null was measured;
 # see docs/gate-c-decision-log.md.
 #
-# It does not happen in the arrangement this runtime uses. Two streams in
-# one process, disjoint CU masks, 17 trials across two runs: every one
-# fast, +21.1% to +28.7%, mean 1.2367 -- agreeing with the two-process
-# fast state (1.2362) to 0.04%. At a 30% fast rate, 17 fast trials has
-# probability 1.3e-9, so the bistability belongs to the two-process
-# measurement harness rather than to the die.
+# 2026-08-08: the paragraph that stood here said the bistability belonged
+# to the two-process harness rather than to the die, on 17 in-process
+# trials that all came out fast. Those were whole-``pipeline(...)`` calls.
+# Measured per step, in exactly the arrangement this runtime uses -- one
+# process, two disjoint CU masks -- eight processes ran twelve co-run
+# episodes each and two of them latched slow:
 #
-# The states and the draw rate are kept because the harness that produced
-# most of this project's co-run data has them, and a policy is tested
-# against them. The simulator's default is the in-process arrangement,
-# which is what the design specifies.
+#   steady state fast   6 of 8 processes   n=54   1.176   (1.163-1.202)
+#   steady state slow   2 of 8 processes   n=18   1.776   (1.732-1.850)
+#
+# The die has the bistability. What the call-level harness saw was the
+# VAE decode diluting it, the same granularity error that put a call-level
+# externality into a per-step decision.
+#
+# Three properties decide what a scheduler can do about it, and all three
+# were measured rather than assumed. The state is drawn per *mask pair*
+# and latches: 0 of 8 processes flipped across nine later episodes, and
+# every episode built fresh adapters and re-acquired its streams, so
+# re-forming a pairing does not redraw. Interposing a different pair does
+# not disturb it: sixteen before/after checks, sixteen unchanged. And it
+# is visible in a single step -- each episode's first step against its own
+# median gives a mean absolute error of 0.00% over 72 episodes.
+#
+# The first co-run in a process is a surcharge over whichever state was
+# drawn, not a third state: fast processes open at 1.52-1.61 over a 1.176
+# plateau, slow ones at 2.04-2.09 over 1.776.
 PAIRING_STATE_RATE = 0.30           # probability of the fast state
 FAST_PAIRING_EXTERNALITY = 1.2367   # 24 in-process sides, +21.1 to +28.7%
 SLOW_PAIRING_EXTERNALITY = 1.7866   # 20 side measurements, +72.9 to +83.4%
+
+# The per-step measurements. Deliberately separate from the two constants
+# above, which are call-level: ``probing_partitioning`` multiplies
+# FAST_PAIRING_EXTERNALITY by its slow_factor to get a threshold of
+# 1.608x, and that threshold happens to be well placed for the per-step
+# states -- it keeps a fast pairing (1.176) and its first-co-run surcharge
+# (1.52-1.61), and catches a slow one (1.776) and its surcharge
+# (2.04-2.09). Replacing the constant with the measured 1.176 would move
+# the threshold to 1.529 and start discarding fast pairings on their first
+# step. The number is load-bearing as a threshold coefficient, so the
+# measurements go beside it rather than into it.
+MEASURED_STEP_PAIRING_FAST = 1.176   # 54 episodes, 6 processes
+MEASURED_STEP_PAIRING_SLOW = 1.776   # 18 episodes, 2 processes
+MEASURED_STEP_PAIRING_FAST_RATE = 0.75   # 6 of 8 processes; see below
+# The rate is the one thing here a design should not lean on. Two slow
+# draws in eight is 25% with a wide interval, and ten decorrelation
+# processes earlier the same day all drew fast, which at 25% has
+# probability 0.056. What a scheduler needs is that the state is
+# detectable, which it is; not that it is rare, which is unestablished.
 
 MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
     (4, 28): 1.3383,
@@ -461,26 +495,65 @@ class PairingStates:
     """
 
     def __init__(self, *, seed: int = 0, rate: float = PAIRING_STATE_RATE,
-                 enabled: bool = False):
+                 enabled: bool = False, latched: bool = False,
+                 fast: float | None = None, slow: float | None = None):
         self._rng = random.Random(seed)
         self.rate = rate
         self.enabled = enabled
+        # ``latched`` models what the die was measured to do rather than
+        # what the two-process harness suggested. Under it the draw is
+        # keyed by the pair of granted widths -- the mask pair -- and
+        # ``forget`` does nothing, because eight processes re-formed their
+        # pairings nine times each with fresh adapters and fresh streams
+        # and not one redrew. A policy that drops a slow pairing hoping the
+        # next round is a new coin is, under this mode, simply paying for a
+        # round it already knows the cost of.
+        self.latched = latched
+        self.fast = (MEASURED_STEP_PAIRING_FAST if fast is None
+                     else fast) if latched else (
+            FAST_PAIRING_EXTERNALITY if fast is None else fast)
+        self.slow = (MEASURED_STEP_PAIRING_SLOW if slow is None
+                     else slow) if latched else (
+            SLOW_PAIRING_EXTERNALITY if slow is None else slow)
         self._state: dict[frozenset[int], bool] = {}
+        self._latched: dict[tuple[int, ...], bool] = {}
 
-    def factor_for(self, members: frozenset[int]) -> float:
-        """Externality multiplier for the pairing, drawing once per pairing."""
+    def factor_for(self, members: frozenset[int],
+                   quotas: Sequence[int] | None = None) -> float:
+        """Externality multiplier for the pairing.
+
+        Without ``latched`` the draw is per member set and a re-formed
+        pairing draws again. With it, the draw is per mask pair and
+        survives re-forming, which is what the hardware does; ``quotas``
+        supplies that key and falls back to the member set when a caller
+        has not been updated to pass it.
+        """
         if not self.enabled or len(members) < 2:
-            return FAST_PAIRING_EXTERNALITY
+            return self.fast
+        if self.latched:
+            key = tuple(sorted(quotas)) if quotas else tuple(sorted(members))
+            if key not in self._latched:
+                self._latched[key] = self._rng.random() < self.rate
+            return self.fast if self._latched[key] else self.slow
         if members not in self._state:
             self._state[members] = self._rng.random() < self.rate
-        return (FAST_PAIRING_EXTERNALITY if self._state[members]
-                else SLOW_PAIRING_EXTERNALITY)
+        return self.fast if self._state[members] else self.slow
 
     def is_fast(self, members: frozenset[int]) -> bool | None:
         return self._state.get(members)
 
+    def is_fast_for_quotas(self, quotas: Sequence[int]) -> bool | None:
+        return self._latched.get(tuple(sorted(quotas)))
+
     def forget(self, members: frozenset[int]) -> None:
-        """Re-form the pairing: the next draw is independent."""
+        """Re-form the pairing: the next draw is independent.
+
+        A no-op under ``latched``. Re-forming was measured not to redraw,
+        and a simulator that let it would report a recovery the hardware
+        does not offer.
+        """
+        if self.latched:
+            return
         self._state.pop(members, None)
 
 
@@ -810,8 +883,12 @@ def simulate(
                 factor = externality(units, peer, state.request.model)
                 if peer is not None:
                     # The table entry is the fast state. Which state this
-                    # pairing is actually in is drawn per pairing.
-                    factor = pairing_states.factor_for(members)
+                    # pairing is actually in is drawn per pairing -- or,
+                    # under ``latched``, per mask pair, which is why the
+                    # granted widths are passed rather than only the
+                    # members.
+                    factor = pairing_states.factor_for(
+                        members, quotas=[u for _, u in active])
             except UnmeasuredPairing:
                 unmeasured.append((units, peer if peer is not None else -1))
                 factor = 1.0

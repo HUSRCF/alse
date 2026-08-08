@@ -330,6 +330,45 @@ def probing_partitioning(states: Sequence[RequestState], units: int,
     # Reading either as evidence about a pairing deadlocks the probe: the
     # verdict stops the request being paired, so no newer observation
     # ever arrives, so the verdict stands forever.
+    #
+    # The comparison is against the *paired* expectation, not the solo
+    # one. The prediction is a solo step cost; a pairing in the fast state
+    # already costs 1.24x that, so comparing observed to the raw
+    # prediction left only 13% of headroom under a 1.4 threshold and a
+    # -20% prediction error crossed it. The states are 1.445x apart, so
+    # the midpoint between them is the natural threshold. The test itself
+    # lives in ``_pairing_reads_slow`` so the sticky variant cannot drift
+    # from it.
+    if _pairing_reads_slow(states, assignment, slow_factor):
+        # Drop the pairing for one round. Re-forming it next round is a
+        # fresh draw; holding it is not.
+        #
+        # 2026-08-08: the hardware says otherwise. Eight processes
+        # re-formed their pairings nine times each, with fresh adapters
+        # and re-acquired streams, and none redrew; the state is keyed by
+        # the mask pair and survives even interposing a different pair. So
+        # this drops for one round and pays for the same answer again next
+        # round, indefinitely. The frozen algorithm is left as it is and
+        # the alternative lives beside it in
+        # ``make_sticky_probing_partitioning`` -- a frozen baseline is
+        # worth more as a comparison than as a thing to quietly improve.
+        behind = min(
+            states,
+            key=lambda s: (s.tenant_quota_seconds, s.request.request_id),
+        )
+        return {behind.request.request_id: units}
+    return assignment
+
+
+def _pairing_reads_slow(states: Sequence[RequestState],
+                        assignment: dict[int, int],
+                        slow_factor: float) -> bool:
+    """Does a formed pairing's own measurement say it is in the slow state?
+
+    Extracted from ``probing_partitioning`` verbatim so the two policies
+    cannot drift apart on the threshold. The behavioural lock covers the
+    frozen policy, so a change here that altered it would fail there.
+    """
     for state in states:
         if state.request.request_id not in assignment:
             continue
@@ -340,21 +379,84 @@ def probing_partitioning(states: Sequence[RequestState], units: int,
         expected = state.predicted_step_seconds.get(quota)
         if observed is None or not expected:
             continue
-        # Against the *paired* expectation, not the solo one. The
-        # prediction is a solo step cost; a pairing in the fast state
-        # already costs 1.24x that, so comparing observed to the raw
-        # prediction left only 13% of headroom under a 1.4 threshold and
-        # a -20% prediction error crossed it. The states are 1.445x
-        # apart, so the midpoint between them is the natural threshold.
         if observed > expected * FAST_PAIRING_EXTERNALITY * slow_factor:
-            # Drop the pairing for one round. Re-forming it next round is
-            # a fresh draw; holding it is not.
-            behind = min(
-                states,
-                key=lambda s: (s.tenant_quota_seconds, s.request.request_id),
-            )
-            return {behind.request.request_id: units}
-    return assignment
+            return True
+    return False
+
+
+def make_sticky_probing_partitioning(*, tolerance: float = 1.6,
+                                     slow_factor: float = 1.3,
+                                     base_backoff_s: float = 1.0,
+                                     max_backoff_s: float = 60.0):
+    """``probing_partitioning``, but it remembers which pairings are slow.
+
+    The frozen policy re-forms a slow pairing every round because
+    re-forming was believed to redraw the state. Measured on the die, it
+    does not: the draw is keyed by the mask pair, survives fresh adapters,
+    fresh streams and an interposed different pair, and did not flip once
+    in eight processes over nine episodes each. A policy that keeps
+    re-forming therefore pays one degraded paired round in every two, for
+    as long as the pairing is offered.
+
+    So a slow verdict here is remembered against the pair of granted
+    widths -- the mask pair, which is what the hardware keys on, not the
+    request ids, which change as requests complete.
+
+    **The backoff is not decoration.** Nothing measured rules out the
+    state changing on timescales longer than the two minutes observed, and
+    a policy that never re-probes could not find out. Doubling from one
+    second to a minute costs one degraded round per doubling and keeps the
+    recovery path open. A permanent verdict would be a stronger claim than
+    the evidence supports.
+
+    Returns a fresh closure per call: the memory is per run, and sharing
+    one instance between simulations would carry a verdict across
+    experiments that have nothing to do with each other.
+    """
+    memory: dict[tuple[int, ...], dict[str, float]] = {}
+
+    def policy(states: Sequence[RequestState], units: int,
+               now: float) -> dict[int, int]:
+        if not states:
+            return {}
+        provisional = slo_aware_partitioning(states, units, now,
+                                             tolerance=tolerance)
+        pair_key = tuple(sorted(provisional.values()))
+        if len(provisional) >= 2:
+            entry = memory.get(pair_key)
+            if entry is not None and now < entry["until"]:
+                # Known slow and still within its backoff. Rotating beats a
+                # slow pairing by 25.9%, so this is the cheaper answer and
+                # it is already paid for.
+                behind = min(states, key=lambda s: (s.tenant_quota_seconds,
+                                                    s.request.request_id))
+                return {behind.request.request_id: units}
+
+        decided = probing_partitioning(states, units, now,
+                                       tolerance=tolerance,
+                                       slow_factor=slow_factor)
+        # Record only what the pairing's own measurement says. The frozen
+        # policy also goes exclusive to rescue a deadline, and attributing
+        # that to a slow draw would poison a pairing that is fine.
+        if len(provisional) >= 2 and _pairing_reads_slow(states, provisional,
+                                                         slow_factor):
+            entry = memory.get(pair_key)
+            backoff = (base_backoff_s if entry is None
+                       else min(max_backoff_s, entry["backoff"] * 2))
+            memory[pair_key] = {"backoff": backoff, "until": now + backoff}
+        return decided
+
+    policy.memory = memory
+    policy.__name__ = "sticky_probing_partitioning"
+    return policy
+
+
+# Stateful policies are built per run rather than shared, so they are kept
+# out of BASELINES -- tests iterate that dict, and a policy carrying a
+# verdict from one simulation into the next would be a silent coupling.
+POLICY_FACTORIES = {
+    "sticky_probing_partitioning": make_sticky_probing_partitioning,
+}
 
 
 BASELINES["deadline_aware"] = deadline_aware

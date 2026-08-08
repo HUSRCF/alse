@@ -54,6 +54,11 @@ MANIFEST = REPO / "experiments" / "manifests" / "gate_c_algorithm_freeze.json"
 # lock is what catches it.
 FROZEN_FUNCTIONS = [
     ("policies.probing_partitioning", policies.probing_partitioning),
+    # The slow-state test, extracted from probing_partitioning so the
+    # sticky variant cannot drift from its threshold. It is on the frozen
+    # policy's decision path, so it is listed here -- exactly the case the
+    # note above is about.
+    ("policies._pairing_reads_slow", policies._pairing_reads_slow),
     ("policies.slo_aware_partitioning", policies.slo_aware_partitioning),
     ("policies.deadline_aware", policies.deadline_aware),
     ("policies.step_matched_pairing", policies.step_matched_pairing),

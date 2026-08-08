@@ -1388,3 +1388,82 @@ therefore pays one degraded paired round in every two, indefinitely, in
 a process that drew slow. A sticky verdict with backoff keeps the
 recovery path -- nothing here rules out the state changing on timescales
 longer than the ~2 minutes measured -- while removing the standing cost.
+
+### Post-freeze change 10 -- extract the slow test, add a sticky variant beside the frozen policy
+
+Two structural hashes move; no behavioural digest and no table does.
+
+**What changed.** ``probing_partitioning``'s slow-state test is now
+``policies._pairing_reads_slow``, called rather than inlined. The
+extraction is verbatim -- both return on the first observation over
+``expected * FAST_PAIRING_EXTERNALITY * slow_factor`` -- and the
+behavioural lock confirms it: the frozen policy's decisions on all four
+locked traces are byte-identical. The helper is added to
+``FROZEN_FUNCTIONS``, because it is now on the frozen decision path and
+the manifest's own note says a helper must be listed consciously.
+
+``trace_sim.simulate`` passes the granted widths to
+``PairingStates.factor_for``. Under the default (unlatched) mode they are
+ignored, which is why the behavioural digests are unchanged.
+
+**What did not change.** ``probing_partitioning`` still drops a slow
+pairing for one round and re-forms it the next. The measurement says that
+is wrong -- the state is keyed by the mask pair and does not redraw -- but
+a frozen baseline is worth more as something to compare against than as
+something to quietly improve. The alternative is
+``make_sticky_probing_partitioning``: a slow verdict is remembered against
+the pair of granted widths, with a backoff doubling from 1 s to 60 s.
+
+The backoff is not decoration. Nothing measured rules out the state
+changing on timescales longer than the two minutes observed, and a policy
+that never re-probed could not find out. A permanent verdict would claim
+more than the evidence supports.
+
+It returns a fresh closure per call and is kept out of ``BASELINES``,
+which the tests iterate: a policy carrying a verdict from one simulation
+into the next is a coupling nobody would look for.
+
+**On the constant that was not changed.** The obvious edit -- replace
+``FAST_PAIRING_EXTERNALITY`` with the per-step 1.176 -- would be wrong,
+and the reason is worth recording because it is not obvious. That
+constant is not used as data in the policy; it is multiplied by
+``slow_factor`` to make the threshold, 1.2367 x 1.3 = 1.608. Against the
+per-step states that threshold is well placed: it keeps a fast pairing
+(1.176) *and* its first-co-run surcharge (1.52-1.61), and catches a slow
+one (1.776) *and* its surcharge (2.04-2.09). Substituting 1.176 moves the
+threshold to 1.529 and starts discarding fast pairings on their first
+step, which is the one step every pairing has. The per-step measurements
+go beside the constant, as ``MEASURED_STEP_PAIRING_FAST`` and
+``MEASURED_STEP_PAIRING_SLOW``, not into it.
+
+#### What the sticky variant is worth, and what it bets on
+
+Twelve seeds, six backlogged SDXL requests, utilisation against a whole
+die of 1.0:
+
+| policy | latched die (measured) | spread | unlatched (the old model) |
+| --- | --- | --- | --- |
+| exclusive, whole die | 1.0000 | 0.0000 | 1.0000 |
+| blind pairing | 0.9664 | 0.4214 | 0.8955 |
+| probing_partitioning (frozen) | 1.0367 | 0.3161 | **1.1346** |
+| sticky_probing_partitioning | **1.0767** | 0.2561 | 1.0591 |
+
+Under the die as measured, the sticky variant is four points better than
+the frozen probe and steadier. That is roughly what the hardware numbers
+predict: the fast state pays +13.0%, six of eight processes drew it, so
+about +9.8% before the probe and the scheduler's own overheads, against a
+simulated +7.7%.
+
+**It is a bet, and the table shows what it costs if the bet is wrong.**
+Under the unlatched model the frozen probe wins by seven points, because
+there re-forming really does redraw and dropping a pairing buys a new
+coin. Each policy is better under the model it was designed for. The
+evidence for the latch is strong -- 0 flips in 72 episodes across eight
+processes, surviving fresh adapters, re-acquired streams and an
+interposed different pair -- but it is two minutes of observation, and
+the backoff exists so that a policy which bet wrong is only wrong until
+it re-probes.
+
+Neither number is a claim about hardware throughput. They are what the
+simulator returns given a cost model, which is the only thing a
+simulator can say.
