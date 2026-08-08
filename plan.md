@@ -652,9 +652,30 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 > 该风险,我在 adapter 里重建切换时没有把顺序一并带过来。**基于时序的检查
 > 抓不到它——竞态让步骤变快而非变慢**;抓到它的是逐位比对。
 >
+> **10,000 次 action 切换压测已通过（2026-08-08）**，证据
+> `action_churn_v2_20260808.json`：2956 s、1225 个 filler 请求保证
+> **全程设备繁忙**（`device_busy_throughout=true`）。
+>
+> | 检查项 | 实测 |
+> | --- | --- |
+> | 每次切换 mask 均按请求安装 | **0 mismatch / 10000** |
+> | 切换期间 latent 正确 | 与不切换 reference **逐位相同** |
+> | mask 更新 p99 < 100 µs | p50 **10.1** / p99 **25.3** / max 58.1 µs |
+> | 无延迟漂移 | 首十分位 10.3 µs → 末十分位 **10.1 µs** |
+> | 无按次累积 | **+0.00 bytes/switch** |
+>
+> **首次运行的结果被我自己作废,尽管它全绿**：`steps_under_churn=200` 而
+> 总切换 10000，即后 9800 次是在**空闲 GPU** 上做的（全程仅 99 s）。彼时
+> 1.4 µs 的中位切换、零增长、无漂移三项**测的都是"对着空设备切换"**，而
+> 条文要求的是服务期间的切换。此类结果最危险处正在于它全绿——mask 安装与
+> latent 逐位两条仍然成立，但三个性能数字并不支撑它们看起来支撑的结论。
+> 加入 filler 负载后重测，切换代价由 1.4/14.2 µs 变为 **10.1/25.3 µs**
+> （慢 7 倍，仍在界内）。报告新增 `filler_requests` 与
+> `device_busy_throughout`，使"空闲设备"与"繁忙设备"两种测量不可混淆。
+>
 > 其余待办：`Q × SM × G × co-run` action executor、action watchdog、
-> 10,000 次 action 切换压测、Nsight overlap 确认、co-run step prediction
-> MAPE ≤ 15%、profile 缺失/drift > 15% 时回退到 serial action。
+> Nsight overlap 确认、co-run step prediction MAPE ≤ 15%、
+> profile 缺失/drift > 15% 时回退到 serial action。
 
 实现：
 
