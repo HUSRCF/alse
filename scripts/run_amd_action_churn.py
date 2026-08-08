@@ -143,6 +143,9 @@ def main() -> int:
     samples: list[dict] = []
     mismatches: list[dict] = []
     step = 0
+    filler = None
+    filler_steps = 8
+    filler_completed = 0
     started = time.perf_counter()
 
     for index in range(args.switches):
@@ -163,13 +166,32 @@ def main() -> int:
                 "installed": hex(installed),
             })
 
-        # Keep real work flowing under the churn, restarting the request
-        # when it finishes so the die is never idle.
+        # Keep real work flowing under the churn. The first run of this
+        # test denoised for its first 200 switches and then span through
+        # 9800 more on an idle device in 0.1 s -- so its 1.4 us median
+        # measured switching against nothing, which is not the claim.
+        #
+        # The measured request runs once, for the latent comparison.
+        # After it finishes, filler requests keep the die busy so every
+        # switch is made against real work.
         if step < args.steps:
             more = churn.run_step(quota_units=units)
             step += 1
             if more:
                 churn.resume(churn.suspend())
+        else:
+            if filler is None or filler.complete:
+                filler = StepExecutor(
+                    object(),
+                    SdxlStepAdapter(pipeline, height=args.height,
+                                    width=args.width, steps=filler_steps,
+                                    seed=args.seed + 1000 + index),
+                    total_steps=filler_steps)
+                filler.prepare()
+                filler_completed += 1
+            filler.adapter.stream = stream.handle
+            if filler.run_step(quota_units=units):
+                filler.resume(filler.suspend())
 
         if index % args.sample_every == 0:
             torch.cuda.synchronize()
@@ -201,6 +223,11 @@ def main() -> int:
         "quotas": quotas,
         "elapsed_seconds": elapsed,
         "steps_under_churn": step,
+        "filler_requests": filler_completed,
+        # Switching against an idle device is a different measurement
+        # from switching against a busy one, and only the second is the
+        # claim. Recorded so the two cannot be confused later.
+        "device_busy_throughout": filler_completed > 0,
         "streams_created": pool.creations,
         "mask_mismatches": mismatches,
         "every_mask_held": not mismatches,
