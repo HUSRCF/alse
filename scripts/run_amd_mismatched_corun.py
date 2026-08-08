@@ -254,6 +254,10 @@ def main() -> int:
     parser.add_argument("--frames", type=int, default=9)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--split", default="16+16")
+    parser.add_argument("--episodes", type=int, default=6,
+                        help="co-run episodes in one process; the first "
+                             "carries a surcharge over the drawn state, so "
+                             "one is not interpretable")
     parser.add_argument("--keep-text-encoders", action="store_true")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -297,40 +301,68 @@ def main() -> int:
             print(f"  solo {model:13s} {width:2d}u: "
                   f"{p50(samples) * 1000:8.1f} ms", flush=True)
 
-    print(f"co-run {models[0]}@{units[0]} + {models[1]}@{units[1]} ...",
-          flush=True)
-    paired = run_pair(models, adapters, pool, units, args)
-
     def solo_at(model, width):
         for row in solo:
             if row["model"] == model and row["units"] == width:
                 return row["p50_s"]
         return None
 
-    verdict = []
-    for name, model, quota in (("a", models[0], units[0]),
-                               ("b", models[1], units[1])):
-        corun = p50(paired[f"{name}_all"])
-        overlap = p50(paired[f"{name}_overlap"])
-        alone_at_quota = solo_at(model, quota)
-        alone_full = solo_at(model, 32)
-        share = quota / 32.0
-        # Under rotation this tenant runs alone on the whole die for
-        # `share` of the wall clock; under partitioning it holds `share`
-        # of the die all the time.
-        rotating_equivalent = alone_full / share if alone_full else None
-        verdict.append({
-            "side": name, "model": model, "units": quota, "share": share,
-            "corun_p50_s": corun,
-            "corun_overlap_p50_s": overlap,
-            "solo_at_quota_s": alone_at_quota,
-            "solo_full_die_s": alone_full,
-            "externality": (corun / alone_at_quota
-                            if corun and alone_at_quota else None),
-            "rotating_equivalent_s": rotating_equivalent,
-            "partitioning_gain": ((rotating_equivalent / corun - 1)
-                                  if corun and rotating_equivalent else None),
-        })
+    # Episodes, not one measurement. The die draws a co-run state per mask
+    # pair and latches it, and the first co-run in a process carries a
+    # surcharge over whichever state it drew -- fast processes opened at
+    # 1.52-1.61 over a 1.176 plateau. A single co-run cannot be told apart
+    # from that surcharge, so one number here would be uninterpretable
+    # whatever it said.
+    episodes = []
+    for index in range(1, args.episodes + 1):
+        print(f"co-run {models[0]}@{units[0]} + {models[1]}@{units[1]} "
+              f"[episode {index}] ...", flush=True)
+        paired = run_pair(models, adapters, pool, units, args)
+        verdict = []
+        for name, model, quota in (("a", models[0], units[0]),
+                                   ("b", models[1], units[1])):
+            corun = p50(paired[f"{name}_all"])
+            overlap = p50(paired[f"{name}_overlap"])
+            alone_at_quota = solo_at(model, quota)
+            alone_full = solo_at(model, 32)
+            share = quota / 32.0
+            # Under rotation this tenant runs alone on the whole die for
+            # `share` of the wall clock; under partitioning it holds
+            # `share` of the die all the time.
+            rotating_equivalent = alone_full / share if alone_full else None
+            verdict.append({
+                "side": name, "model": model, "units": quota, "share": share,
+                "corun_p50_s": corun,
+                "corun_overlap_p50_s": overlap,
+                "solo_at_quota_s": alone_at_quota,
+                "solo_full_die_s": alone_full,
+                "externality": (corun / alone_at_quota
+                                if corun and alone_at_quota else None),
+                "rotating_equivalent_s": rotating_equivalent,
+                "partitioning_gain": (
+                    (rotating_equivalent / corun - 1)
+                    if corun and rotating_equivalent else None),
+            })
+        episodes.append({"episode": index, "verdict": verdict,
+                         "a_series_s": paired["a_all"],
+                         "b_series_s": paired["b_all"]})
+        for row in verdict:
+            print(f"    {row['model']:13s} co-run "
+                  f"{row['corun_p50_s'] * 1000:8.1f} ms  "
+                  f"ext {row['externality']:6.3f}  "
+                  f"partitioning {row['partitioning_gain'] * 100:+6.1f}%",
+                  flush=True)
+
+    # Solo again at the end. The die warms by 30 C over a campaign and
+    # solo drifts about 5% with it, so a ratio taken against a solo
+    # measured before the episodes is a ratio against a colder card.
+    solo_after = []
+    for index, model in enumerate(models):
+        for width in (units[index], 32):
+            samples = run_solo(adapters[model], pool, width, args)
+            solo_after.append({"model": model, "units": width,
+                               "p50_s": p50(samples)})
+    verdict = episodes[-1]["verdict"]
 
     payload = {
         "schema_version": "burstserve.amd-mismatched-corun/v1",
@@ -347,7 +379,10 @@ def main() -> int:
                                 f"x{args.frames}f"),
         "text_encoders_released_bytes": released,
         "stream_attestation": pool.attestation(),
+        "episodes": args.episodes,
         "solo": solo,
+        "solo_after": solo_after,
+        "per_episode": episodes,
         "verdict": verdict,
         "comparison": ("rotating gives a tenant the full die for its share "
                        "of the wall clock; partitioning gives it its share "
