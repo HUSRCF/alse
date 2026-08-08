@@ -139,14 +139,13 @@ def make_adapter(model: str, pipeline, args, seed: int):
                                 steps=args.steps, seed=seed)
 
 
-def warm(model, pipeline, pool, units, args, rounds: int = 3) -> None:
+def warm(adapter, pool, units, args, rounds: int = 3) -> None:
     """Pay kernel compilation before anything is measured.
 
     The first width used in a process paid it once and read 1773 ms for
     an 8-unit step, which moved a solo MAPE from 3% to 24%. It is a
     property of the process, not of the quota.
     """
-    adapter = make_adapter(model, pipeline, args, seed=99991)
     adapter.stream = pool.for_quota(units).handle
     executor = StepExecutor(object(), adapter, total_steps=rounds)
     executor.prepare()
@@ -156,8 +155,7 @@ def warm(model, pipeline, pool, units, args, rounds: int = 3) -> None:
     adapter.drain_timing()
 
 
-def run_solo(model, pipeline, pool, units, args, seed: int) -> list[float]:
-    adapter = make_adapter(model, pipeline, args, seed=seed)
+def run_solo(adapter, pool, units, args) -> list[float]:
     adapter.stream = pool.for_quota(units).handle
     executor = StepExecutor(object(), adapter, total_steps=args.steps)
     executor.prepare()
@@ -174,21 +172,24 @@ def run_solo(model, pipeline, pool, units, args, seed: int) -> list[float]:
     return seen[args.warmup:]
 
 
-def run_pair(models, pipelines, pool, units, args, seeds):
-    """Two models on disjoint masks, stepping concurrently."""
+def run_pair(models, adapters, pool, units, args):
+    """Two models on disjoint masks, stepping concurrently.
+
+    One adapter per model, reused rather than rebuilt. That is what the
+    runtime does -- a model's weights and conditioning are resident and a
+    request is a state passed through them -- and it is also what makes
+    this measurable at all: the adapter constructors encode prompts, and
+    both text encoders cannot stay resident beside both models.
+    """
     left, right = pool.disjoint_pair(units[0], units[1])
     streams = {"a": left, "b": right}
     out: dict[str, list[float]] = {"a": [], "b": []}
     windows: dict[str, list[tuple[float, float, float]]] = {"a": [], "b": []}
     barrier = threading.Barrier(2)
 
-    # Adapters are built here, on the main thread. Their constructors
-    # encode prompts, the Rust tokenizer is not reentrant, and two threads
-    # entering it concurrently raise "Already borrowed".
     prepared = {}
-    for name, model, seed in (("a", models[0], seeds[0]),
-                              ("b", models[1], seeds[1])):
-        adapter = make_adapter(model, pipelines[model], args, seed=seed)
+    for name, model in (("a", models[0]), ("b", models[1])):
+        adapter = adapters[model]
         adapter.stream = streams[name].handle
         executor = StepExecutor(object(), adapter, total_steps=args.steps)
         executor.prepare()
@@ -264,18 +265,16 @@ def main() -> int:
     pool = MaskedStreamPool(make_stream)
 
     pipelines = {}
+    adapters = {}
     released = {}
     for model in models:
         print(f"loading {model} ...", flush=True)
-        pipelines[model] = build_pipeline(model,
-                                          drop_text_encoders=False)
-
-    # Encode once per model by constructing a throwaway adapter, then
-    # release the encoders. CogVideoX carries a 4.7B T5 and both models
-    # must be resident together.
-    if not args.keep_text_encoders:
-        for model in models:
-            make_adapter(model, pipelines[model], args, seed=0)
+        pipelines[model] = build_pipeline(model, drop_text_encoders=False)
+        # Built while its encoder is still resident; the embeddings it
+        # holds are all that is needed afterwards.
+        adapters[model] = make_adapter(model, pipelines[model], args,
+                                       seed=args.seed + models.index(model))
+        if not args.keep_text_encoders:
             released[model] = free_text_encoders(pipelines[model])
             print(f"  {model}: released "
                   f"{released[model] / 2**30:.2f} GB of text encoder",
@@ -287,13 +286,12 @@ def main() -> int:
     print(f"warming widths {widths} for both models ...", flush=True)
     for model in models:
         for width in widths:
-            warm(model, pipelines[model], pool, width, args)
+            warm(adapters[model], pool, width, args)
 
     solo: list[dict] = []
-    for model in models:
-        for width in (units[models.index(model)], 32):
-            samples = run_solo(model, pipelines[model], pool, width, args,
-                               seed=args.seed)
+    for index, model in enumerate(models):
+        for width in (units[index], 32):
+            samples = run_solo(adapters[model], pool, width, args)
             solo.append({"model": model, "units": width,
                          "p50_s": p50(samples), "samples": len(samples)})
             print(f"  solo {model:13s} {width:2d}u: "
@@ -301,8 +299,7 @@ def main() -> int:
 
     print(f"co-run {models[0]}@{units[0]} + {models[1]}@{units[1]} ...",
           flush=True)
-    paired = run_pair(models, pipelines, pool, units, args,
-                      seeds=(args.seed, args.seed + 1))
+    paired = run_pair(models, adapters, pool, units, args)
 
     def solo_at(model, width):
         for row in solo:
