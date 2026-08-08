@@ -1017,3 +1017,63 @@ measurement is worse than one bounded drain per request.
 Both of these are the project's recurring failure in its runtime form: a
 scheduler behaving correctly on what it was told, where what it was told
 was an artefact of how the telling was measured.
+
+### 2026-08-08 — the externality table is call-level, and I fixed only half of this on 08-06
+
+Measuring co-run prediction error through the runtime's own path found
+that the externality table describes a different quantity from the one
+the scheduler pays. Measured per step, against each side's own solo
+cost at the same width:
+
+| units | table (call-level) | measured per-step | ratio |
+| --- | --- | --- | --- |
+| 8 | 1.307 | **1.376** | 1.05x |
+| 16 | 1.2367 | **1.525** | 1.23x |
+| 24 | 1.126 | **2.68** | 2.38x |
+
+**This is the same defect I corrected on 2026-08-06 and corrected only
+halfway.** That entry found `MEASURED_QUOTA_SECONDS` holding call p50s
+while the scheduler charges per step, rebuilt it from per-step
+measurements, and wrote at length about why the two are not
+interchangeable -- a call is denoising steps plus a VAE decode, and the
+decode does not scale the way the steps do. The externality table was
+measured by the same script, `run_amd_inproc_corun.py`, timing the same
+`pipeline(**call)`. It was left as it was.
+
+The dilution has exactly the shape that argument predicts. The wider a
+side's quota, the shorter its steps, the larger the decode's share of
+its call, and the more the call-level figure understates the per-step
+penalty: 1.05x at 8 units, 2.38x at 24.
+
+**What it does to the claim.** Recomputing the 16+16 comparison from
+measurements taken the way the runtime takes them:
+
+    paired    157.8 ms x 1.525 = 240.7 ms per step for both tenants
+    rotating  2 x 106.7 ms     = 213.5 ms
+
+Partitioning **loses 11.3%** where Gate C, using the table, reports a
+18.6% gain. Every utilisation figure in this project rests on the
+call-level entry.
+
+**Not yet corrected, deliberately.** Three points do not establish the
+shape of a curve, and the last time this table was rebuilt on thin
+evidence the rebuilt values needed correcting twice. What is needed
+before touching it:
+
+- per-step externality at every measured split, both directions
+- repeated runs, since the first co-run measurements of this project
+  turned out to be bimodal and single runs were not evidence
+- a check of whether the lockstep harness inflates the wide side: the
+  24-unit side finishes its step long before the 8-unit side finishes
+  its own, and if the barrier makes it wait, some of that 2.68 is the
+  harness rather than the die
+
+The third is the one I would bet on being partly responsible, and it is
+also the one that would be most convenient to believe, so it gets
+measured rather than assumed.
+
+**Status: the utilisation claim is open again.** Not withdrawn -- the
+call-level figure was measured honestly and the per-step figure is not
+yet established -- and not asserted. Gate C's criteria are unaffected as
+statements about the scheduler given a cost model; what is in question
+is the cost model, for the second time.
