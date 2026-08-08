@@ -593,7 +593,24 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 > **"每完成请求字节数"**——原判据的阈值宽到足以放过 1.284 MB/请求，实际
 > 也确实放过了（`no_leak` 报 true 而曲线涨了 478 MB）。
 >
-> 其余待办：与 ASLE baseline 输出的逐位比对（需对齐 ASLE 的 pipeline 配置）。
+> **与 ASLE baseline 的逐位比对已通过（2026-08-08）**，证据
+> `asle_bitexact_v2_20260808.json`：把 ASLE `run_urgent` 的循环原样内联作
+> 参照（prompt "a red apple"、负提示为空、1024×1024、guidance 5.0、
+> seed 0、8 步、`scheduler.step` **不传 generator**），同样的工作经 executor
+> 运行并**每步挂起 + 以 4/8/16/32 轮换配额重新调度**，最终 latent 与逐步
+> 中间 latent **全部 `max_abs = 0`**、SHA256 相同。
+>
+> **过程中发现 baseline 的一个隐式状态依赖并已记录**：ASLE 先读
+> `init_noise_sigma` 再调 `set_timesteps`，而该读取有状态——刚加载的
+> scheduler 为 **14.6489**，任何一次 `set_timesteps(8)` 之后为 **7.4394**。
+> 因此 **ASLE 的第一个 urgent 请求的初始 latent 比其后每一个放大 1.97 倍，
+> 其 urgent 请求并非同分布**。首次比对在 step 0 相差 36.875 即源于此。
+> 比对**未**忠实复现该顺序：忠实复现会使测试依赖"哪一侧先跑"而非依赖被测
+> 运行时，故两侧均固定到除 ASLE 首个请求外所有请求实际使用的稳定值。
+>
+> **第 7–8 周验收至此全部通过**（六条：latent 逐位一致、scheduler p99
+> 11 µs、residency 后 0 bytes、一小时压测无泄漏/死锁/OOM、Jain 0.99915、
+> video stall 界含可失败测试）。
 
 实现：
 

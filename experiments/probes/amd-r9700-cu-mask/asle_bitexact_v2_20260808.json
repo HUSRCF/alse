@@ -1,0 +1,75 @@
+{
+  "schema_version": "burstserve.asle-bitexact/v1",
+  "question": "does the scheduled runtime reproduce ASLE's latent byte for byte",
+  "reference": "vendor/asle/r1_driver.py run_urgent, inlined",
+  "prompt": "a red apple",
+  "negative_prompt": "",
+  "guidance_scale": 5.0,
+  "latent_shape": [
+    1,
+    4,
+    128,
+    128
+  ],
+  "steps": 8,
+  "seed": 0,
+  "scheduled_quotas": [
+    4,
+    8,
+    16,
+    32
+  ],
+  "init_noise_sigma_note": "both sides call set_timesteps before reading init_noise_sigma. ASLE reads it first, which is state-dependent: 14.6489 on a freshly loaded scheduler against 7.4394 after any set_timesteps, so its first urgent request differs from every later one by a factor of 1.97",
+  "suspensions": 7,
+  "asle_digest": "664215de451c442334b18bf3d3cbb572c817f335399a8537e694f7797cbb5e23",
+  "scheduled_digest": "664215de451c442334b18bf3d3cbb572c817f335399a8537e694f7797cbb5e23",
+  "identical": true,
+  "first_divergence_step": null,
+  "per_step": [
+    {
+      "step": 0,
+      "identical": true,
+      "max_abs": 0.0
+    },
+    {
+      "step": 1,
+      "identical": true,
+      "max_abs": 0.0
+    },
+    {
+      "step": 2,
+      "identical": true,
+      "max_abs": 0.0
+    },
+    {
+      "step": 3,
+      "identical": true,
+      "max_abs": 0.0
+    },
+    {
+      "step": 4,
+      "identical": true,
+      "max_abs": 0.0
+    },
+    {
+      "step": 5,
+      "identical": true,
+      "max_abs": 0.0
+    },
+    {
+      "step": 6,
+      "identical": true,
+      "max_abs": 0.0
+    },
+    {
+      "step": 7,
+      "identical": true,
+      "max_abs": 0.0
+    },
+    {
+      "step": 8,
+      "identical": true,
+      "max_abs": 0.0
+    }
+  ]
+}
