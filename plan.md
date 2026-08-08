@@ -633,6 +633,29 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 
 ### 第 9–10 周：2026-09-24 至 10-07——动态空间分区集成
 
+> **进行中（2026-08-08）**：已落地 `src/burstserve/masked_streams.py`
+> （stream 池、mask 回读、不相交对构造）与 runtime 的整轮 mask 排布。
+>
+> **两条验收已在真机通过**，证据 `mask_actions_v2_20260808.json`：
+>
+> | 验收项 | 实测 |
+> | --- | --- |
+> | 每个 action 的实测 SM 集合与 manifest 完全一致 | 触及 **32/32** bit，**manifest 外 0 个**；每个 stream 的 `installed_mask` 与请求值逐一相符 |
+> | 动态重配只影响后续 kernel，不破坏 in-flight | 固定 32u vs 逐步 `[4,32,8,24,16,32,12,28]`，最终 latent **max_abs = 0** |
+> | （附带）每轮 mask 不相交 | 14/14 轮 |
+>
+> **动态重配的第一次验证是失败的,而且失败得很明确**:`max|diff| = NaN`。
+> 换 stream 时未建立跨 stream 顺序——后一步读前一步写入的张量,在其落盘前
+> 就读了。改为**新 stream 等待旧 stream 上记录的 event**;不用全局
+> `synchronize`,因为那会让每次切换都付一次调度器本不支付的 barrier,而那
+> 正是本设计要测量的成本。`run_amd_transition.py` 的 docstring 上周已写明
+> 该风险,我在 adapter 里重建切换时没有把顺序一并带过来。**基于时序的检查
+> 抓不到它——竞态让步骤变快而非变慢**;抓到它的是逐位比对。
+>
+> 其余待办：`Q × SM × G × co-run` action executor、action watchdog、
+> 10,000 次 action 切换压测、Nsight overlap 确认、co-run step prediction
+> MAPE ≤ 15%、profile 缺失/drift > 15% 时回退到 serial action。
+
 实现：
 
 - 将每个 model executor 绑定到独立 CUDA stream 和 SM mask。
