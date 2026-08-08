@@ -322,13 +322,22 @@ def probing_partitioning(states: Sequence[RequestState], units: int,
             return exclusive_fcfs([state], units, now)
 
     # Judge the pairing that is actually running by what its steps cost.
+    #
+    # Only an observation taken at the quota now being considered counts.
+    # A step measured while running alone says nothing about how a
+    # pairing performs, and on hardware a request's first step also
+    # carries kernel compilation -- 1.86 s against a 0.16 s steady step.
+    # Reading either as evidence about a pairing deadlocks the probe: the
+    # verdict stops the request being paired, so no newer observation
+    # ever arrives, so the verdict stands forever.
     for state in states:
         if state.request.request_id not in assignment:
             continue
+        quota = assignment[state.request.request_id]
+        if getattr(state, "observed_at_units", None) != quota:
+            continue
         observed = state.observed_step_seconds
-        expected = state.predicted_step_seconds.get(
-            assignment[state.request.request_id]
-        )
+        expected = state.predicted_step_seconds.get(quota)
         if observed is None or not expected:
             continue
         # Against the *paired* expectation, not the solo one. The

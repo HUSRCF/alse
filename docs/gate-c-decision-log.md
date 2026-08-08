@@ -977,3 +977,43 @@ clause named processes was the risk this measurement rules out. The
 decision to amend it belongs to the project owner and is recorded as
 open; the evidence for amending is here rather than in an argument from
 convenience.
+
+### 2026-08-08 — the probe deadlocked on hardware (post-freeze change #9)
+
+**Changed:** `probing_partitioning` now ignores an observation unless it
+was taken at the quota it is judging, and `RequestState` carries
+`observed_at_units` to make that checkable.
+
+Found by running the loop on the card rather than in the simulator. The
+scheduler paired in round 0 and never again, twenty-one rounds:
+
+```
+round 0: granted {0: 16, 1: 16}
+round 1: rid=0 observed 1.855 s against a 0.157 s prediction -> exclusive
+round 2: rid=0 observed 1.855 s  (unchanged)             -> exclusive
+```
+
+1.855 s was that request's **first step**, which carries kernel
+compilation; the other request measured 0.105 s because it ran after
+compilation had happened. The probe read the compilation as a slow
+pairing and stopped pairing that request. Being unpaired, it never
+produced a newer observation, so the verdict stood for the rest of the
+run. A single anomalous sample excluded a request permanently.
+
+Two things were wrong and only one is about compilation. The probe
+compared an observation to a prediction without checking they referred
+to the same quota, so a step measured *alone* could also condemn a
+pairing. Requiring the observation to come from the quota being judged
+fixes both, and needs no special case for first steps.
+
+**Also fixed, in the harness rather than the policy:** the adapter
+synchronised on the event it had just recorded, draining the pipeline
+every step and putting the drain inside the measurement -- a 0.1155 s
+step read as 0.256 s. Events are now read one step late, when the device
+has certainly passed them. The first step still drains, because there is
+no predecessor to hide behind and a charge that did not come from
+measurement is worse than one bounded drain per request.
+
+Both of these are the project's recurring failure in its runtime form: a
+scheduler behaving correctly on what it was told, where what it was told
+was an artefact of how the telling was measured.

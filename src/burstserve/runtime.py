@@ -138,6 +138,7 @@ class Runtime:
         state.observed_step_seconds = getattr(
             executor, "last_step_seconds", None
         )
+        state.observed_at_units = getattr(executor, "last_step_units", None)
         return state
 
     def tick(self, now_s: float) -> RoundRecord:
@@ -202,6 +203,7 @@ class Runtime:
                 charged_from = "measurement"
             spent = measured
             executor.last_step_seconds = spent
+            executor.last_step_units = units
             observed[rid] = spent
             charge_sources.add(charged_from)
 

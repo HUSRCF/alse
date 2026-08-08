@@ -311,6 +311,11 @@ class RequestState:
     # pairing it formed landed in the fast or slow state -- the two are
     # 46% apart, so the comparison needs no threshold tuning.
     observed_step_seconds: float | None = None
+    # The quota that observation was taken at. Without it a step measured
+    # alone, or a first step carrying kernel compilation, reads as
+    # evidence about a pairing -- and since that verdict stops the request
+    # being paired, no newer observation ever arrives.
+    observed_at_units: int | None = None
 
     @property
     def complete(self) -> bool:
@@ -828,6 +833,7 @@ def simulate(
             # probe works: it does not read the state, it reads the step it
             # just paid for.
             state.observed_step_seconds = step_cost
+            state.observed_at_units = units
             spent = taken * step_cost
             state.service_seconds += spent
             state.quota_seconds += units * spent
