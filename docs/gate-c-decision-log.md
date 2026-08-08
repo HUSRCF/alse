@@ -1315,3 +1315,76 @@ Held over, unchanged and still unmeasured: the mismatched SDXL x
 CogVideoX pairing. The adapter and harness for it are written and
 synced; running them before the state question is settled would produce
 another number nobody can interpret.
+
+### 2026-08-08 (night) -- the state is drawn per pairing, latches, and is visible in one step
+
+Eight processes, twelve co-run episodes each, solo remeasured before every
+one, with 8+24 interposed at episodes 5 and 9:
+
+| | n | mean ext | range |
+| --- | --- | --- | --- |
+| steady state, fast (6 of 8 processes) | 54 | **1.176** | 1.163-1.202 |
+| steady state, slow (2 of 8 processes) | 18 | **1.776** | 1.732-1.850 |
+
+Four things follow, and each was an open question this morning.
+
+**It never flips.** 0 of 8 processes moved between states across nine
+later episodes; the widest within-process spread was 0.106, against a
+gap of 0.57 between states. Every episode built fresh adapters and
+executors and re-acquired its streams, so re-forming a pairing is not a
+fresh draw. That matters directly: ``probing_partitioning`` carries the
+comment *"Re-forming it next round is a fresh draw; holding it is not"*,
+and the hardware says otherwise.
+
+**It is visible immediately.** Comparing each episode's first step
+against its own median: mean absolute error 0.00%, max 0.00%, n=72. The
+per-step series inside an episode is literally constant -- 194 194 194
+194 194. A probe costs one step, not a window.
+
+**It is per pairing, not per process.** 16+16 latched fast in p1 and p2
+alike, while 8+24 landed at (1.11, 1.17) in p1 and (1.37, 2.86) in p2,
+each consistent across both of its interpositions. And interposing 8+24
+never disturbed the 16+16 state: sixteen before/after checks, sixteen
+unchanged.
+
+**The first co-run in a process is a surcharge on the drawn state, not a
+third state.** Fast processes opened at 1.52-1.61 against a 1.176
+plateau; slow ones opened at 2.04-2.09 against 1.776.
+
+**That closes this morning's open question, and not the way it was
+leaning.** The five-repeat campaign read 2.145, 2.153, 2.088, 2.106,
+2.056, 2.028 and then 1.521, 1.551, 1.505, 1.640. Those are exactly
+slow-state and fast-state *first* co-runs -- 2.04/2.09 and 1.52-1.61 in
+this campaign. Three processes drew slow, two drew fast. The hung
+process resident on the card had nothing to do with it, and the entry
+above that named it "the obvious candidate" was wrong to suspect it. The
+instinct not to assert it was right; the suspicion itself was not
+evidence.
+
+**The claim this supports.** Against rotation at 2 x 108.9 ms:
+
+    steady state fast   ext 1.176   paired 192.8 ms   partitioning +13.0%
+    steady state slow   ext 1.776   paired 293.9 ms   partitioning -25.9%
+
+Partitioning pays 13% when the die grants it, the die granted it in six
+of eight processes, the state is readable in a single step and never
+flips. A scheduler that measures captures roughly +9.8% net of the
+probe; a scheduler calibrated to a constant takes the coin flip. That is
+a weaker headline than +18.6% and a true one, and it makes the dual
+ledger load-bearing rather than decorative -- charging from prediction
+would have made this invisible.
+
+**Not established.** The rate. Two slow draws in eight is 25% with a
+wide interval, and the ten decorrelation processes earlier today all
+drew fast, which at 25% has probability 0.056. Whether the rate depends
+on the harness, the pair, or something in the driver's state is
+unmeasured, and no scheduler decision should rest on its value -- only
+on the state being detectable, which it is.
+
+**Defect opened against the frozen policy (would be post-freeze #10).**
+The probe drops a slow pairing for one round and re-forms it the next,
+on the stated rationale that re-forming redraws. It does not. The policy
+therefore pays one degraded paired round in every two, indefinitely, in
+a process that drew slow. A sticky verdict with backoff keeps the
+recovery path -- nothing here rules out the state changing on timescales
+longer than the ~2 minutes measured -- while removing the standing cost.
