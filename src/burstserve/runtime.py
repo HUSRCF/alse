@@ -82,8 +82,15 @@ class Runtime:
 
     def __init__(self, policy: Callable, *, maskable_units: int = 32,
                  discipline: Discipline = Discipline.FCFS,
-                 clock: Callable[[], float] | None = None):
+                 clock: Callable[[], float] | None = None,
+                 stream_pool=None):
         self.policy = policy
+        # Optional so the loop stays testable without a GPU. When present,
+        # each granted request runs on a stream carrying its own CU mask,
+        # and the masks of a co-running pair are constructed disjoint
+        # rather than assumed to be.
+        self.stream_pool = stream_pool
+        self.mask_attestations: list[dict] = []
         self.maskable_units = maskable_units
         self.registry = TenantRegistry(discipline=discipline)
         self.executors: dict[int, StepExecutor] = {}
@@ -215,6 +222,36 @@ class Runtime:
         charge_sources: set[str] = set()
 
         active = sorted(granted.items())
+
+        # Lay the granted quotas out across the die before running any of
+        # them, so a pair gets disjoint masks by construction. Assigning
+        # each request a mask independently would let two 16-unit grants
+        # both take the low half, share every unit, and still be recorded
+        # as a partition.
+        streams: dict[int, object] = {}
+        if self.stream_pool is not None and active:
+            offset = 0
+            for granted_id, granted_units in active:
+                streams[granted_id] = self.stream_pool.for_quota(
+                    granted_units, offset=offset)
+                offset += granted_units
+            handles = list(streams.values())
+            overlap = 0
+            for index, left in enumerate(handles):
+                for right in handles[index + 1:]:
+                    overlap |= left.installed_mask & right.installed_mask
+            if overlap:
+                raise RuntimeError(
+                    f"granted masks overlap on {hex(overlap)}; this is not "
+                    f"a partition"
+                )
+            self.mask_attestations.append({
+                "round": self._round,
+                "masks": {rid: hex(st.installed_mask)
+                          for rid, st in streams.items()},
+                "units": {rid: st.units for rid, st in streams.items()},
+                "disjoint": overlap == 0,
+            })
         for rid, units in active:
             if units < 1:
                 continue
@@ -228,6 +265,9 @@ class Runtime:
             if len(active) == 2:
                 peer = next(u for r, u in active if r != rid)
 
+            stream = streams.get(rid)
+            if stream is not None and hasattr(executor.adapter, "stream"):
+                executor.adapter.stream = stream.handle
             more = executor.run_step(quota_units=units)
 
             # What the step actually cost. An adapter on hardware reports

@@ -96,6 +96,10 @@ class SdxlStepAdapter:
         # 0.1155 s step read as 0.256 s, and the scheduler then treated
         # every pairing as degraded and stopped pairing at all.
         self._pending_events: tuple | None = None
+        # Set by the runtime before each step to the masked stream this
+        # step should run on. None means the current stream, which is
+        # what a single-tenant run uses.
+        self.stream = None
 
         with torch.no_grad():
             (self.prompt_embeds, self.negative_prompt_embeds,
@@ -170,24 +174,33 @@ class SdxlStepAdapter:
                 self._pending_events = None
 
         latents = state.latent
+        # Run on the mask the scheduler assigned. Wrapping the whole step
+        # rather than the unet alone matters: the scheduler's own tensor
+        # work would otherwise land on the default stream, outside the
+        # mask, and the partition would cover only part of the step.
+        import contextlib
+        context = (torch.cuda.stream(torch.cuda.ExternalStream(self.stream))
+                   if self.stream is not None else contextlib.nullcontext())
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        with torch.no_grad():
-            model_input = torch.cat([latents] * 2)
-            model_input = scheduler.scale_model_input(model_input, timestep)
-            noise_pred = self.pipeline.unet(
-                model_input, timestep,
-                encoder_hidden_states=self.embeds,
-                added_cond_kwargs=self.added,
-                return_dict=False,
-            )[0]
-            uncond, cond = noise_pred.chunk(2)
-            noise_pred = uncond + self.guidance_scale * (cond - uncond)
-            latents = scheduler.step(noise_pred, timestep, latents,
-                                     generator=generator,
-                                     return_dict=False)[0]
-        end.record()
+        with context:
+            start.record()
+            with torch.no_grad():
+                model_input = torch.cat([latents] * 2)
+                model_input = scheduler.scale_model_input(model_input,
+                                                          timestep)
+                noise_pred = self.pipeline.unet(
+                    model_input, timestep,
+                    encoder_hidden_states=self.embeds,
+                    added_cond_kwargs=self.added,
+                    return_dict=False,
+                )[0]
+                uncond, cond = noise_pred.chunk(2)
+                noise_pred = uncond + self.guidance_scale * (cond - uncond)
+                latents = scheduler.step(noise_pred, timestep, latents,
+                                         generator=generator,
+                                         return_dict=False)[0]
+            end.record()
         self._pending_events = (start, end)
         if self.last_step_seconds is None:
             # The first step has no predecessor to hide the wait behind,

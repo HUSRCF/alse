@@ -248,6 +248,89 @@ class FinishedRequestsAreReleased(unittest.TestCase):
         self.assertEqual(runtime.completed, 1)
 
 
+class GrantedMasksArePartitions(unittest.TestCase):
+    """Week 9-10: the measured SM set must match the manifest exactly.
+
+    Laying the masks out together rather than per request is what makes
+    that true by construction. Two 16-unit grants assigned independently
+    would both take the low half, share every unit, and still be recorded
+    as a partition -- the ledger would show two tenants on half a die
+    each while they contended over the same sixteen.
+    """
+
+    def _pool(self):
+        from burstserve.masked_streams import MaskedStreamPool
+        return MaskedStreamPool(lambda mask: (f"s{hex(mask)}", mask))
+
+    def test_a_pair_is_given_disjoint_masks(self):
+        pool = self._pool()
+        runtime = Runtime(probing_partitioning, stream_pool=pool)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=4)
+            runtime.submit(request, StepExecutor(request, CountingAdapter(),
+                                                 total_steps=4))
+        drain(runtime)
+        paired = [a for a in runtime.mask_attestations if len(a["masks"]) == 2]
+        self.assertTrue(paired)
+        for attestation in paired:
+            with self.subTest(round=attestation["round"]):
+                self.assertTrue(attestation["disjoint"])
+                left, right = attestation["masks"].values()
+                self.assertEqual(int(left, 16) & int(right, 16), 0)
+
+    def test_the_masks_cover_exactly_the_granted_widths(self):
+        pool = self._pool()
+        runtime = Runtime(probing_partitioning, stream_pool=pool)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=4)
+            runtime.submit(request, StepExecutor(request, CountingAdapter(),
+                                                 total_steps=4))
+        drain(runtime)
+        for attestation in runtime.mask_attestations:
+            for rid, mask in attestation["masks"].items():
+                with self.subTest(round=attestation["round"], rid=rid):
+                    self.assertEqual(bin(int(mask, 16)).count("1"),
+                                     attestation["units"][rid])
+
+    def test_overlapping_masks_would_raise(self):
+        """The check has to be able to fire.
+
+        A pool that hands out the same mask regardless of offset is what
+        an independent per-request assignment amounts to.
+        """
+        from burstserve.masked_streams import MaskedStreamPool
+
+        class ColludingPool(MaskedStreamPool):
+            def for_quota(self, units, *, offset=0):
+                return super().for_quota(units, offset=0)
+
+        pool = ColludingPool(lambda mask: (f"s{hex(mask)}", mask))
+        runtime = Runtime(probing_partitioning, stream_pool=pool)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=4)
+            runtime.submit(request, StepExecutor(request, CountingAdapter(),
+                                                 total_steps=4))
+        with self.assertRaises(RuntimeError):
+            drain(runtime)
+
+    def test_streams_are_reused_across_rounds(self):
+        """Creating one per round would be the destroy-per-quota pattern
+        that hung a measurement process for 2.5 hours."""
+        pool = self._pool()
+        runtime = Runtime(probing_partitioning, stream_pool=pool)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=8)
+            runtime.submit(request, StepExecutor(request, CountingAdapter(),
+                                                 total_steps=8))
+        drain(runtime)
+        self.assertGreater(len(runtime.ledger), pool.creations)
+        self.assertLessEqual(pool.creations, 4)
+
+
 class VideoStallIsBounded(unittest.TestCase):
     """plan.md: stall within the configured budget plus one unpreemptable
     step.
