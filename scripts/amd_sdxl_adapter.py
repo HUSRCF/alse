@@ -100,6 +100,11 @@ class SdxlStepAdapter:
         # step should run on. None means the current stream, which is
         # what a single-tenant run uses.
         self.stream = None
+        # ExternalStream wrappers by pointer. Building one per step would
+        # allocate on every denoise; more to the point, torch takes an
+        # int here and the pool hands out a ctypes handle, so the
+        # conversion belongs in one place rather than at each call site.
+        self._external_streams: dict[int, object] = {}
 
         with torch.no_grad():
             (self.prompt_embeds, self.negative_prompt_embeds,
@@ -121,6 +126,15 @@ class SdxlStepAdapter:
             "text_embeds": torch.cat([self.negative_pooled, self.pooled]),
             "time_ids": torch.cat([add_time_ids, add_time_ids]),
         }
+
+    def _external(self, handle):
+        """Wrap a raw stream handle, once per distinct pointer."""
+        pointer = getattr(handle, "value", handle)
+        wrapper = self._external_streams.get(pointer)
+        if wrapper is None:
+            wrapper = self.torch.cuda.ExternalStream(pointer)
+            self._external_streams[pointer] = wrapper
+        return wrapper
 
     # -- ModelAdapter --------------------------------------------------
 
@@ -179,7 +193,7 @@ class SdxlStepAdapter:
         # work would otherwise land on the default stream, outside the
         # mask, and the partition would cover only part of the step.
         import contextlib
-        context = (torch.cuda.stream(torch.cuda.ExternalStream(self.stream))
+        context = (torch.cuda.stream(self._external(self.stream))
                    if self.stream is not None else contextlib.nullcontext())
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
