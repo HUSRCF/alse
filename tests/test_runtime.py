@@ -9,6 +9,7 @@ week 7-8 is accepted on.
 from __future__ import annotations
 
 import itertools
+import statistics
 import sys
 import unittest
 
@@ -199,6 +200,79 @@ class PreemptionKeepsThePlace(unittest.TestCase):
         for executor in runtime.executors.values():
             self.assertEqual(executor.steps_done, 4)
             self.assertIs(executor.phase, Phase.FINISHED)
+
+
+class VideoStallIsBounded(unittest.TestCase):
+    """plan.md: stall within the configured budget plus one unpreemptable
+    step.
+
+    The allowance is exactly one step because a decision to stop only
+    takes effect at a step boundary. Allowing more would excuse the
+    scheduler for something it does control.
+    """
+
+    def test_a_request_never_preempted_has_no_stalls(self):
+        """Not a stall of zero -- there was no gap to measure."""
+        runtime = build(steps=3, tenants=("a",))
+        drain(runtime)
+        stalls = runtime.stalls_by_request()
+        self.assertEqual(stalls.get(0, []), [0.25, 0.25])
+
+    def test_the_worst_stall_is_reported_not_the_mean(self):
+        """A stall budget is about the worst frame, not the average one."""
+        def alternate(states, units, now):
+            if not states:
+                return {}
+            index = int(now / 0.25) % len(states)
+            return {states[index].request.request_id: units}
+
+        runtime = build(alternate, steps=4, tenants=("a", "b"))
+        drain(runtime)
+        worst = runtime.worst_stall_seconds()
+        every = [s for gaps in runtime.stalls_by_request().values()
+                 for s in gaps]
+        self.assertEqual(worst, max(every))
+        self.assertGreater(worst, statistics.mean(every) * 0.5)
+
+    def test_the_bound_admits_one_step_of_slack(self):
+        runtime = build(steps=3, tenants=("a", "b"))
+        drain(runtime)
+        worst = runtime.worst_stall_seconds()
+        self.assertTrue(runtime.stall_within_budget(worst, 0.0))
+        self.assertFalse(runtime.stall_within_budget(worst - 0.1, 0.0))
+        self.assertTrue(runtime.stall_within_budget(worst - 0.1, 0.1))
+
+    def test_a_request_abandoned_mid_flight_breaks_the_bound(self):
+        """The check has to be able to fail, and the failure has a shape.
+
+        A stall is a gap between services of a request that has already
+        started -- the viewer sees a frozen frame, not a late one. A
+        request that has not begun is not stalling, it is queued, and
+        that is what the fairness bound and the lag bound are for.
+
+        So the failure this must catch is a request served once and then
+        abandoned while another runs to completion, which is exactly what
+        preemption without a bound looks like.
+        """
+        def start_both_then_abandon_one(states, units, now):
+            if not states:
+                return {}
+            by_id = {s.request.request_id: s for s in states}
+            # Round 0 starts request 1 so it has a first service to
+            # measure from; every round after that belongs to request 0.
+            if now < 0.125:
+                return {1: units} if 1 in by_id else {}
+            if 0 in by_id:
+                return {0: units}
+            return {min(by_id): units}
+
+        runtime = build(start_both_then_abandon_one, steps=6,
+                        tenants=("a", "b"))
+        drain(runtime)
+        # Request 1 is served at round 0 and not again until request 0
+        # has finished all six of its steps.
+        self.assertGreater(runtime.worst_stall_seconds(), 1.0)
+        self.assertFalse(runtime.stall_within_budget(0.25, 0.25))
 
 
 if __name__ == "__main__":

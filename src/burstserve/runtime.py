@@ -308,6 +308,55 @@ class Runtime:
     def all_finished(self) -> bool:
         return all(e.phase is Phase.FINISHED for e in self.executors.values())
 
+    def stalls_by_request(self) -> dict[int, list[float]]:
+        """Gaps between consecutive services of the same request.
+
+        A video request's stall is not "how long it waited to start" but
+        how long it went unserved once it had started -- the viewer sees
+        a frozen frame, not a late one. So the first gap counted is
+        between the first and second step, and a request that was never
+        preempted has no stalls rather than a stall of zero.
+
+        The consequence is worth stating because it looks like a gap in
+        the measure and is not: a request that never starts records no
+        stall at all. That is correct here and covered elsewhere --
+        never starting is what the fairness index and the service-lag
+        bound are for. Folding it into the stall metric would let a
+        scheduler trade a starved request against a smooth one and
+        still report a small worst stall.
+        """
+        served_at: dict[int, list[float]] = {}
+        for record in self.ledger:
+            for rid in record.granted:
+                served_at.setdefault(rid, []).append(record.now_s)
+        return {
+            rid: [later - earlier
+                  for earlier, later in zip(times, times[1:])]
+            for rid, times in served_at.items()
+            if len(times) > 1
+        }
+
+    def worst_stall_seconds(self, request_id: int | None = None) -> float:
+        stalls = self.stalls_by_request()
+        if request_id is not None:
+            return max(stalls.get(request_id, [0.0]), default=0.0)
+        return max((s for gaps in stalls.values() for s in gaps),
+                   default=0.0)
+
+    def stall_within_budget(self, budget_s: float,
+                            longest_step_s: float) -> bool:
+        """plan.md: stall no more than the budget plus one unpreemptable
+        step.
+
+        The allowance is one step because that is the unit the runtime
+        cannot break: a decision to stop can only take effect at a step
+        boundary, so a request unlucky enough to be preempted just after
+        one begins waits for it regardless of the budget. Allowing more
+        than one step would excuse the scheduler for something it does
+        control.
+        """
+        return self.worst_stall_seconds() <= budget_s + longest_step_s
+
     def charged_from_measurement(self) -> bool:
         """Whether every charge in this run came from a measured step.
 
