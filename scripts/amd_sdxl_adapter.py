@@ -89,6 +89,13 @@ class SdxlStepAdapter:
         # measures when work was queued, which under a co-run is not when
         # it ran.
         self.last_step_seconds: float | None = None
+        # Events from the step before last, read once the device has
+        # certainly passed them. Synchronising on the event a step
+        # records would drain the pipeline every step, and the cost of
+        # that drain lands in the number being measured: it made a
+        # 0.1155 s step read as 0.256 s, and the scheduler then treated
+        # every pairing as degraded and stopped pairing at all.
+        self._pending_events: tuple | None = None
 
         with torch.no_grad():
             (self.prompt_embeds, self.negative_prompt_embeds,
@@ -151,6 +158,17 @@ class SdxlStepAdapter:
         generator = torch.Generator(device=self.device)
         generator.set_state(state.rng_state)
 
+        # Read the previous step's events now. By the time another step
+        # has been issued the device has passed them, so this costs a
+        # query rather than a drain.
+        if self._pending_events is not None:
+            previous_start, previous_end = self._pending_events
+            if previous_end.query():
+                self.last_step_seconds = (
+                    previous_start.elapsed_time(previous_end) / 1000.0
+                )
+                self._pending_events = None
+
         latents = state.latent
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
@@ -170,8 +188,7 @@ class SdxlStepAdapter:
                                      generator=generator,
                                      return_dict=False)[0]
         end.record()
-        end.synchronize()
-        self.last_step_seconds = start.elapsed_time(end) / 1000.0
+        self._pending_events = (start, end)
 
         return StepState(
             step_index=state.step_index + 1,
@@ -182,6 +199,21 @@ class SdxlStepAdapter:
                 "scheduler_step_index": scheduler._step_index,
             },
         )
+
+    def drain_timing(self) -> float | None:
+        """Force the outstanding step time to be readable.
+
+        Used at the end of a run, where there is no following step to
+        hide the wait behind. Not used per step: that is the drain this
+        design exists to avoid.
+        """
+        if self._pending_events is None:
+            return self.last_step_seconds
+        start, end = self._pending_events
+        end.synchronize()
+        self.last_step_seconds = start.elapsed_time(end) / 1000.0
+        self._pending_events = None
+        return self.last_step_seconds
 
     def decode(self, state: StepState):
         """Return the latent, not an image.
