@@ -1167,3 +1167,33 @@ raises throughput over a full die -- is refuted at the workpoint it was
 measured at. Whether a defensible version survives is a question about
 where partitioning does pay, and that requires the measurements above
 rather than a reinterpretation of these.
+
+### 2026-08-08 (later) -- the co-run measurement process never exits
+
+The first co-run MAPE run wrote its JSON at 01:28:36 and was still alive at
+06:50, five hours later, holding 8.7 GB with 92 threads: 90 in
+``futex_do_wait`` and 2 in ``kfd_wait_on_events``. GPU use 3%, power 11 W --
+doing nothing, and impossible to distinguish from a slow run by looking at
+it. Its output and log were already on disk, so killing it lost nothing.
+
+Two consequences worth separating. The defect: a measurement script that
+completes and does not exit leaves a resident process on a shared card, and
+the previous failure of this shape (``hipStreamDestroy`` between quotas)
+cost 2.5 hours before it was recognised as a hang rather than slowness. The
+confound: that process was resident for the whole of the five-repeat
+campaign, so those repeats were not made on a clean die.
+
+Discovering it also exposed a flaw in how the repeats were run. The loop
+passed ``--seed $i`` for i in 1..5, so **seed and position were the same
+number**. The observed pattern -- externality 2.15, 2.10, 2.04, then 1.54,
+1.57 -- is equally well described as "the first three runs" or "seeds 1-3",
+and nothing in the data can separate them. Repeating a measurement five
+times establishes nothing if the repeats vary a parameter in lockstep with
+their order.
+
+The re-measurement uses a palindromic seed order (1,2,3,4,5,5,4,3,2,1) so
+each seed appears once early and once late, and samples clocks, junction
+temperature and package power at 1 Hz alongside, so a state change can be
+checked against the die rather than guessed at. Note the direction of the
+original anomaly: solo rose monotonically (156.0 to 161.9 ms) while co-run
+fell sharply, and a throttling story predicts both slowing together.
