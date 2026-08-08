@@ -1,0 +1,80 @@
+=== pos 1 seed 1 start 1786229728.062774924 ===
+  solo 16u: predicted  157.5 ms  observed  156.8 ms    +0.5%
+  solo 32u: predicted  115.5 ms  observed  106.6 ms    +8.4%
+  corun 16+16 a: predicted  194.8 ms  observed  238.1 ms   -18.2%
+  corun 16+16 b: predicted  194.8 ms  observed  242.9 ms   -19.8%
+solo MAPE   4.41%   (clause: under 10%)
+corun MAPE 18.99%   (clause: under 15%)
+=== pos 1 seed 1 end 1786229747.344131923 rc=0 ===
+=== pos 2 seed 2 start 1786229747.345614569 ===
+  solo 16u: predicted  157.5 ms  observed  157.9 ms    -0.3%
+  solo 32u: predicted  115.5 ms  observed  107.4 ms    +7.6%
+  corun 16+16 a: predicted  194.8 ms  observed  240.7 ms   -19.1%
+  corun 16+16 b: predicted  194.8 ms  observed  245.4 ms   -20.6%
+solo MAPE   3.92%   (clause: under 10%)
+corun MAPE 19.85%   (clause: under 15%)
+=== pos 2 seed 2 end 1786229766.652824090 rc=0 ===
+=== pos 3 seed 3 start 1786229766.654238046 ===
+  solo 16u: predicted  157.5 ms  observed  159.8 ms    -1.5%
+  solo 32u: predicted  115.5 ms  observed  108.4 ms    +6.6%
+  corun 16+16 a: predicted  194.8 ms  observed  242.4 ms   -19.6%
+  corun 16+16 b: predicted  194.8 ms  observed  256.8 ms   -24.2%
+solo MAPE   4.03%   (clause: under 10%)
+corun MAPE 21.90%   (clause: under 15%)
+=== pos 3 seed 3 end 1786229786.075292587 rc=0 ===
+=== pos 4 seed 4 start 1786229786.076850644 ===
+  solo 16u: predicted  157.5 ms  observed  160.8 ms    -2.1%
+  solo 32u: predicted  115.5 ms  observed  109.0 ms    +6.0%
+  corun 16+16 a: predicted  194.8 ms  observed  247.3 ms   -21.2%
+  corun 16+16 b: predicted  194.8 ms  observed  252.1 ms   -22.7%
+solo MAPE   4.05%   (clause: under 10%)
+corun MAPE 21.99%   (clause: under 15%)
+=== pos 4 seed 4 end 1786229805.489357419 rc=0 ===
+=== pos 5 seed 5 start 1786229805.490770604 ===
+  solo 16u: predicted  157.5 ms  observed  161.6 ms    -2.6%
+  solo 32u: predicted  115.5 ms  observed  107.8 ms    +7.2%
+  corun 16+16 a: predicted  194.8 ms  observed  229.3 ms   -15.1%
+  corun 16+16 b: predicted  194.8 ms  observed  259.8 ms   -25.0%
+solo MAPE   4.86%   (clause: under 10%)
+corun MAPE 20.04%   (clause: under 15%)
+=== pos 5 seed 5 end 1786229825.016501515 rc=0 ===
+=== pos 6 seed 5 start 1786229825.018010552 ===
+  solo 16u: predicted  157.5 ms  observed  164.4 ms    -4.2%
+  solo 32u: predicted  115.5 ms  observed  108.9 ms    +6.1%
+  corun 16+16 a: predicted  194.8 ms  observed  252.4 ms   -22.8%
+  corun 16+16 b: predicted  194.8 ms  observed  252.2 ms   -22.8%
+solo MAPE   5.14%   (clause: under 10%)
+corun MAPE 22.81%   (clause: under 15%)
+=== pos 6 seed 5 end 1786229844.568291290 rc=0 ===
+=== pos 7 seed 4 start 1786229844.569771916 ===
+  solo 16u: predicted  157.5 ms  observed  163.0 ms    -3.4%
+  solo 32u: predicted  115.5 ms  observed  109.4 ms    +5.6%
+  corun 16+16 a: predicted  194.8 ms  observed  249.1 ms   -21.8%
+  corun 16+16 b: predicted  194.8 ms  observed  244.1 ms   -20.2%
+solo MAPE   4.49%   (clause: under 10%)
+corun MAPE 21.01%   (clause: under 15%)
+=== pos 7 seed 4 end 1786229864.005323802 rc=0 ===
+=== pos 8 seed 3 start 1786229864.006774758 ===
+  solo 16u: predicted  157.5 ms  observed  162.2 ms    -2.9%
+  solo 32u: predicted  115.5 ms  observed  109.6 ms    +5.4%
+  corun 16+16 a: predicted  194.8 ms  observed  256.2 ms   -24.0%
+  corun 16+16 b: predicted  194.8 ms  observed  261.9 ms   -25.6%
+solo MAPE   4.17%   (clause: under 10%)
+corun MAPE 24.80%   (clause: under 15%)
+=== pos 8 seed 3 end 1786229883.644192200 rc=0 ===
+=== pos 9 seed 2 start 1786229883.645772827 ===
+  solo 16u: predicted  157.5 ms  observed  164.7 ms    -4.4%
+  solo 32u: predicted  115.5 ms  observed  110.3 ms    +4.8%
+  corun 16+16 a: predicted  194.8 ms  observed  252.9 ms   -23.0%
+  corun 16+16 b: predicted  194.8 ms  observed  257.8 ms   -24.5%
+solo MAPE   4.58%   (clause: under 10%)
+corun MAPE 23.72%   (clause: under 15%)
+=== pos 9 seed 2 end 1786229903.240053808 rc=0 ===
+=== pos 10 seed 1 start 1786229903.241381352 ===
+  solo 16u: predicted  157.5 ms  observed  164.7 ms    -4.4%
+  solo 32u: predicted  115.5 ms  observed  109.9 ms    +5.1%
+  corun 16+16 a: predicted  194.8 ms  observed  259.7 ms   -25.0%
+  corun 16+16 b: predicted  194.8 ms  observed  248.0 ms   -21.5%
+solo MAPE   4.75%   (clause: under 10%)
+corun MAPE 23.22%   (clause: under 15%)
+=== pos 10 seed 1 end 1786229922.963412649 rc=0 ===

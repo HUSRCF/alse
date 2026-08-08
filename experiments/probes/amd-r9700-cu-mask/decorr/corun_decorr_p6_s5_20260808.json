@@ -1,0 +1,62 @@
+{
+  "schema_version": "burstserve.amd-corun-mape/v1",
+  "clause": "co-run step prediction MAPE under 15%",
+  "measured_through": "the runtime's own adapter, so predicted and observed describe the same quantity",
+  "workpoint": "768x768",
+  "steps": 14,
+  "warmup_dropped": 4,
+  "solo": [
+    {
+      "units": 16,
+      "predicted_s": 0.1575,
+      "observed_p50_s": 0.16442660522460936,
+      "n": 11,
+      "relative_error": -0.04212581786960512
+    },
+    {
+      "units": 32,
+      "predicted_s": 0.11552,
+      "observed_p50_s": 0.10891690826416016,
+      "n": 11,
+      "relative_error": 0.06062503830741428
+    }
+  ],
+  "corun": [
+    {
+      "pair": "16+16",
+      "side": "a",
+      "units": 16,
+      "peer": 16,
+      "predicted_externality": 1.2367,
+      "observed_externality": 1.5353287746261044,
+      "solo_p50_s": 0.16442660522460936,
+      "predicted_s": 0.19478025,
+      "observed_p50_s": 0.2524488983154297,
+      "n": 10,
+      "relative_error": -0.22843691812579803,
+      "overlapped_p50_s": 0.2524488983154297,
+      "overlapped_n": 8,
+      "overlapped_externality": 1.5353287746261044
+    },
+    {
+      "pair": "16+16",
+      "side": "b",
+      "units": 16,
+      "peer": 16,
+      "predicted_externality": 1.2367,
+      "observed_externality": 1.533833859416537,
+      "solo_p50_s": 0.16442660522460936,
+      "predicted_s": 0.19478025,
+      "observed_p50_s": 0.2522030944824219,
+      "n": 10,
+      "relative_error": -0.22768493225773712,
+      "overlapped_p50_s": 0.2522030944824219,
+      "overlapped_n": 8,
+      "overlapped_externality": 1.533833859416537
+    }
+  ],
+  "solo_mape": 0.05137542808850973,
+  "corun_mape": 0.22806092519176757,
+  "corun_mape_under_15pct": false,
+  "solo_mape_under_10pct": true
+}

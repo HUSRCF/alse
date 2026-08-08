@@ -1197,3 +1197,49 @@ temperature and package power at 1 Hz alongside, so a state change can be
 checked against the die rather than guessed at. Note the direction of the
 original anomaly: solo rose monotonically (156.0 to 161.9 ms) while co-run
 fell sharply, and a throttling story predicts both slowing together.
+
+### 2026-08-08 (later still) -- decorrelated, the co-run measurement is unimodal
+
+Ten runs on a cleaned die, seeds ordered 1,2,3,4,5,5,4,3,2,1 so each seed
+appears once early and once late, clocks and temperatures sampled at 1 Hz
+alongside:
+
+| pos | seed | solo 16u | solo 32u | co-run/step | externality | junction |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1 | 156.8 ms | 106.6 ms | 240.5 ms | 1.534 | 43.0 C |
+| 2 | 2 | 157.9 | 107.4 | 243.1 | 1.539 | 50.3 |
+| 3 | 3 | 159.8 | 108.4 | 249.6 | 1.562 | 55.7 |
+| 4 | 4 | 160.8 | 109.0 | 249.7 | 1.552 | 60.8 |
+| 5 | 5 | 161.6 | 107.8 | 244.6 | 1.513 | 63.6 |
+| 6 | 5 | 164.4 | 108.9 | 252.3 | 1.535 | 66.1 |
+| 7 | 4 | 163.0 | 109.4 | 246.6 | 1.513 | 67.9 |
+| 8 | 3 | 162.2 | 109.6 | 259.1 | 1.597 | 69.7 |
+| 9 | 2 | 164.7 | 110.3 | 255.4 | 1.550 | 71.4 |
+| 10 | 1 | 164.7 | 109.9 | 253.8 | 1.541 | 72.8 |
+
+**No bimodality.** Externality 1.5436, sd 0.0439. Position moves it by
++0.007 across the two halves and seed by -0.025 between seeds 1-3 and 4-5:
+both null. Solo does drift, 156.8 to 164.7 ms, monotone and tracking a
+30 C junction rise -- so that is thermal, and the ratio is flat through it
+because numerator and denominator drift together.
+
+**What the earlier 2.03-2.15 readings were is not established, and this is
+deliberately left open.** The obvious candidate is the hung process that
+was resident on the card for that whole campaign -- but it was equally
+resident for that campaign's *low* readings, so it does not explain the
+split within it. This project has already produced four wrong explanations
+for a co-run bistability that turned out not to need one. A fifth guess
+would cost more than the open question does.
+
+**The verdict does not depend on resolving it**, because the clean,
+controlled, unimodal value is still far above the table:
+
+    per step, 16+16, 768x768, SDXL against itself
+      partitioned  both tenants advance one step in  249.5 ms
+      rotating     both tenants advance one step in  217.4 ms
+      -> partitioning -12.8%,  where the table's 1.2367 predicts +8.8%
+
+So the refutation of 2026-08-08 stands and is now on ten controlled runs
+rather than one. The open splits -- other widths, other workpoints, and
+the mismatched SDXL x CogVideoX pairing the scheduler was designed for --
+are the next measurements, and none of them is answered by this one.
