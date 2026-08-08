@@ -1,25 +1,31 @@
 """The scheduler action that survives not knowing why pairings degrade.
 
-Everything here runs with the bistability **explicitly enabled**, because
-it is a property of the two-process measurement harness and not of the
-arrangement the runtime uses -- two streams in one process took the fast
-state in 17 of 17 trials. The probe is kept and tested anyway: it costs
-nothing when every draw is fast (asserted below), and the two-process
-behaviour is what most of this project's co-run evidence was collected
-under.
-
-
 The same 16+16 pairing, measured 44 times, lands in one of two states:
 fast (+21.8 to +26.4% per-step penalty, cv 0.25%) or slow (+72.9 to
-+83.4%, cv 1-3%), drawn per pairing at roughly 30% fast. Four causes were
-proposed and retracted -- working set, power cap, uncontrollable
-bistability, launch stagger -- before ten runs at one fixed setting
-showed the state is simply drawn per run.
++83.4%, cv 1-3%), drawn at roughly 30% fast. Four causes were proposed
+and retracted -- working set, power cap, uncontrollable bistability,
+launch stagger -- before ten runs at one fixed setting showed the state
+is simply drawn per run.
 
 No hardware quantity measured so far predicts the draw. What the
 scheduler can do instead is notice: the states are 46% apart and each is
-internally tight, so one step distinguishes them, and re-forming the
-pairing draws again.
+internally tight, so one step distinguishes them.
+
+**What this file covers, and what it no longer claims.** The header here
+used to say the bistability belonged to the two-process measurement
+harness rather than to the die, on 17 in-process trials that all came out
+fast. Those were whole-``pipeline(...)`` calls. Measured per step, in the
+one-process two-mask arrangement the runtime uses, two of eight processes
+latched slow -- so the die has it, and the call-level harness was seeing
+the VAE decode dilute it.
+
+The unlatched model these tests run under is therefore not "the harness's
+artefact"; it is the model in which **re-forming a pairing draws again**,
+which is the assumption ``probing_partitioning`` is built on. Keeping it
+tested here is what makes the frozen policy a usable comparison. The
+measured alternative -- draw keyed by mask pair, no redraw -- lives in
+``test_latched_pairing``, together with the policy that does not assume
+the redraw.
 """
 
 from __future__ import annotations
