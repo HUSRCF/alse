@@ -1243,3 +1243,75 @@ So the refutation of 2026-08-08 stands and is now on ten controlled runs
 rather than one. The open splits -- other widths, other workpoints, and
 the mismatched SDXL x CogVideoX pairing the scheduler was designed for --
 are the next measurements, and none of them is answered by this one.
+
+### 2026-08-08 (evening) -- the co-run penalty is bistable, and it latches
+
+The stated criterion was: if queue pressure is the mechanism, co-run p50
+rises monotonically with the number of live masked streams while solo
+stays within noise. It was refuted -- and refuted in a way that says
+something much more useful than a confirmation would have.
+
+Two processes, identical script, identical stream counts at every point:
+
+    rep1  corun  240.9  192.2  192.5  193.5  194.3    ext 1.51 -> 1.13
+    rep2  corun  250.2  296.9  300.4  293.0  293.1    ext 1.51 -> 1.69
+
+They agree at the first co-run and then move in **opposite directions**
+to two different plateaus, and each stays on its plateau for every later
+episode. Stream count is not the variable: both had 3, 7, 11, 19, 31.
+
+Pooling every per-step 16+16 measurement in the project by episode index
+makes the structure plain:
+
+| | n | mean ext | range |
+| --- | --- | --- | --- |
+| first co-run in a process | 22 | **1.541** | 1.419-1.614 |
+| later, fast plateau | 4 | 1.149 | 1.127-1.170 |
+| later, slow plateau | 4 | 1.728 | 1.690-1.762 |
+| later, five-split harness | 6 | 1.808 | 1.760-1.856 |
+
+The first co-run in a process is the most reproducible number this
+project has: 1.541, sd 0.043, over twelve independent processes. What
+happens *after* it is drawn per process and then latched.
+
+**This changes the verdict from a number into a state.** Against
+rotation at 2 x 108.9 ms:
+
+    first co-run   ext 1.541   paired 251.0 ms   partitioning -13.2%
+    fast plateau   ext 1.149   paired 187.1 ms   partitioning +16.4%
+    slow plateau   ext 1.728   paired 281.5 ms   partitioning -22.6%
+    table (call)   ext 1.237   paired 201.5 ms   partitioning  +8.1%
+
+**So this morning's refutation is retracted in strength, not direction.**
+The -12.8% was real and reproducible, but it is the first-co-run state
+rather than *the* value; a process that latches fast gains 16.4% and one
+that latches slow loses 22.6%. Nor does this rescue the original +18.6%:
+1.2367 was measured at call granularity, and it happens to fall between
+the states rather than describe any of them.
+
+What is established, and it is a stronger statement than either:
+**spatial partitioning on this hardware does not have a throughput
+constant.** A cost model with one externality per width pair is
+calibrating against a latched coin flip, and which side it landed on is
+invisible to it.
+
+That is also, awkwardly for the original claim and well for the design,
+exactly what the dual ledger was built for. Charging from prediction
+would make the accounting exact by construction and blind to this; the
+runtime charges from measurement, and ``probing_partitioning`` already
+stops pairing when observed exceeds predicted by its tolerance. A
+scheduler that measures can ride either state. A scheduler calibrated
+against a constant cannot.
+
+**Next, and none of it is answered by what is above.** How often each
+state is drawn and whether it ever flips mid-process; how many steps are
+needed to tell which state the runtime is in, since the probe action
+needs that to be small; whether the latch survives across mask pairs, as
+the five-split harness measuring 1.808 while holding the same stream
+count as the 1.149 process suggests something the level sweep did not
+capture.
+
+Held over, unchanged and still unmeasured: the mismatched SDXL x
+CogVideoX pairing. The adapter and harness for it are written and
+synced; running them before the state question is settled would produce
+another number nobody can interpret.

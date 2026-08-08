@@ -1,0 +1,60 @@
+{
+  "schema_version": "burstserve.amd-queue-pressure/v1",
+  "question": "does holding live masked streams inflate a co-run while leaving solo alone",
+  "criterion_stated_before_running": "if queue pressure is the mechanism, corun p50 rises monotonically with live streams while solo16 and solo32 stay within noise; if corun is flat the mechanism is something else and the externality table cannot be rebuilt yet",
+  "workpoint": "768x768",
+  "steps": 14,
+  "warmup_dropped": 4,
+  "baseline_live_streams": 3,
+  "points": [
+    {
+      "extra_live_streams": 0,
+      "total_live_streams": 3,
+      "solo16_p50_s": 0.15948992919921876,
+      "solo32_p50_s": 0.10746192932128906,
+      "corun_p50_s": 0.2408955078125,
+      "externality": 1.5104120305401703,
+      "elapsed_s": 6.578952870797366
+    },
+    {
+      "extra_live_streams": 4,
+      "total_live_streams": 7,
+      "solo16_p50_s": 0.16422508239746095,
+      "solo32_p50_s": 0.1084577407836914,
+      "corun_p50_s": 0.19221404266357422,
+      "externality": 1.1704304839279898,
+      "elapsed_s": 6.589549679076299
+    },
+    {
+      "extra_live_streams": 8,
+      "total_live_streams": 11,
+      "solo16_p50_s": 0.1663605499267578,
+      "solo32_p50_s": 0.10895440673828125,
+      "corun_p50_s": 0.19253292846679687,
+      "externality": 1.1573232268801814,
+      "elapsed_s": 6.643534215167165
+    },
+    {
+      "extra_live_streams": 16,
+      "total_live_streams": 19,
+      "solo16_p50_s": 0.1697340545654297,
+      "solo32_p50_s": 0.10932038879394532,
+      "corun_p50_s": 0.19350902557373045,
+      "externality": 1.1400718969989365,
+      "elapsed_s": 6.693145885132253
+    },
+    {
+      "extra_live_streams": 28,
+      "total_live_streams": 31,
+      "solo16_p50_s": 0.17246524047851564,
+      "solo32_p50_s": 0.10981771850585938,
+      "corun_p50_s": 0.19432957458496092,
+      "externality": 1.1267753087276098,
+      "elapsed_s": 6.725430954946205
+    }
+  ],
+  "corun_change": -0.1933034519837683,
+  "solo16_change": 0.081355050719782,
+  "solo32_change": 0.021922081610195043,
+  "corun_monotone": false
+}
