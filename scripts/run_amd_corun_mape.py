@@ -115,13 +115,27 @@ def run_pair(pipeline, pool, units_a, units_b, args) -> tuple[list, list]:
     out: dict[str, list[float]] = {"a": [], "b": []}
     barrier = threading.Barrier(2)
 
-    def side(name, units, stream, seed_offset):
+    # Build both adapters on this thread. Their constructors call
+    # encode_prompt, and the Rust tokenizer is not reentrant -- two
+    # threads entering it concurrently raise "Already borrowed". The
+    # in-process co-run harness hit this two days ago and fixed it by
+    # encoding once; the knowledge was in the repository and not in this
+    # script, which is the same way the missing cross-stream ordering got
+    # in.
+    prepared = {}
+    for name, units, stream, seed_offset in (
+            ("a", units_a, left_stream, 0),
+            ("b", units_b, right_stream, 1)):
         adapter = SdxlStepAdapter(pipeline, height=args.height,
                                   width=args.width, steps=args.steps,
                                   seed=args.seed + seed_offset)
         adapter.stream = stream.handle
         executor = StepExecutor(object(), adapter, total_steps=args.steps)
         executor.prepare()
+        prepared[name] = (adapter, executor, units)
+
+    def side(name, units, stream, seed_offset):
+        adapter, executor, units = prepared[name]
         # Warm before the barrier so neither side measures the other's
         # start-up, then step in lockstep so every measured step overlaps
         # a step on the other side.
