@@ -105,6 +105,14 @@ class SdxlStepAdapter:
         # int here and the pool hands out a ctypes handle, so the
         # conversion belongs in one place rather than at each call site.
         self._external_streams: dict[int, object] = {}
+        # The stream the previous step ran on. A step reads tensors the
+        # previous step wrote, so switching masks without ordering the
+        # change is a race: the first attempt produced NaN, not a
+        # slightly different image. The new stream waits on an event
+        # recorded on the old one -- a full synchronize would work and
+        # would charge the transition for a barrier the scheduler never
+        # pays, which is the cost this design is measuring.
+        self._previous_stream = None
 
         with torch.no_grad():
             (self.prompt_embeds, self.negative_prompt_embeds,
@@ -193,8 +201,17 @@ class SdxlStepAdapter:
         # work would otherwise land on the default stream, outside the
         # mask, and the partition would cover only part of the step.
         import contextlib
-        context = (torch.cuda.stream(self._external(self.stream))
-                   if self.stream is not None else contextlib.nullcontext())
+        current = (self._external(self.stream)
+                   if self.stream is not None else None)
+        if (current is not None and self._previous_stream is not None
+                and current != self._previous_stream):
+            # Order the switch: this step's stream must not begin before
+            # the previous step's writes have landed.
+            handover = torch.cuda.Event()
+            handover.record(self._previous_stream)
+            current.wait_event(handover)
+        context = (torch.cuda.stream(current)
+                   if current is not None else contextlib.nullcontext())
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         with context:
@@ -216,6 +233,8 @@ class SdxlStepAdapter:
                                          return_dict=False)[0]
             end.record()
         self._pending_events = (start, end)
+        if current is not None:
+            self._previous_stream = current
         if self.last_step_seconds is None:
             # The first step has no predecessor to hide the wait behind,
             # and leaving it unmeasured would make the runtime charge it
