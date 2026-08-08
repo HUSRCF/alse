@@ -30,6 +30,7 @@ import argparse
 import json
 import statistics
 import sys
+import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -69,6 +70,26 @@ def main() -> int:
           flush=True)
 
     runtime = Runtime(probing_partitioning, discipline=Discipline.FCFS)
+
+    # Warm the model before anyone is charged for it. The first denoising
+    # step of a process compiles kernels -- 1.855 s against a 0.157 s
+    # steady step -- and charging that to whichever tenant arrived first
+    # made one ledger 10.8x the other for identical work. It is a
+    # residency cost, so it is recorded as one.
+    warm_adapter = SdxlStepAdapter(pipeline, height=args.height,
+                                   width=args.width, steps=args.steps,
+                                   seed=args.seed)
+    warm_state = warm_adapter.initial_state(None)
+    warm_started = time.perf_counter()
+    for _ in range(2):
+        warm_state = warm_adapter.denoise_one(warm_state, quota_units=32)
+    warm_adapter.drain_timing()
+    warm_seconds = time.perf_counter() - warm_started
+    runtime.warm("sdxl", warm_seconds)
+    print(f"  warmed in {warm_seconds:.2f} s "
+          f"(steady step {warm_adapter.last_step_seconds * 1000:.1f} ms)",
+          flush=True)
+
     rid = 0
     for tenant_index in range(args.tenants):
         for _ in range(args.requests_per_tenant):
@@ -126,7 +147,15 @@ def main() -> int:
         ),
         "resident_models": list(runtime.ledger[-1].resident_models)
         if runtime.ledger else [],
+        "startup_seconds_by_model": runtime.startup_seconds_by_model,
         "quota_seconds_by_tenant": runtime.quota_seconds_by_tenant,
+        "jain_index": (
+            sum(runtime.quota_seconds_by_tenant.values()) ** 2
+            / (len(runtime.quota_seconds_by_tenant)
+               * sum(v * v for v in
+                     runtime.quota_seconds_by_tenant.values()))
+            if runtime.quota_seconds_by_tenant else None
+        ),
         "service_seconds_by_tenant": runtime.service_seconds_by_tenant,
         "prediction_error": {
             "n": len(errors),

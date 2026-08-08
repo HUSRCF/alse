@@ -93,6 +93,15 @@ class Runtime:
         self.service_seconds_by_tenant: dict[str, float] = {}
         self.resident_models: set[str] = set()
         self.weight_bytes_moved = 0
+        # Time spent making a model usable -- weight transfer, kernel
+        # compilation, autotuning -- charged to residency rather than to
+        # whichever tenant happened to arrive first.
+        #
+        # Without this the first request pays for the whole process's
+        # warm-up: on the card a first step measured 1.855 s against a
+        # 0.157 s steady step, and charging it made one tenant's ledger
+        # 10.8x the other's for identical work.
+        self.startup_seconds_by_model: dict[str, float] = {}
         self._round = 0
         # Injectable so tests drive time rather than sleep through it.
         # Wall time in a test would make the p99 assertion measure the
@@ -100,6 +109,18 @@ class Runtime:
         self._clock = clock or time.perf_counter
 
     # -- admission -----------------------------------------------------
+
+    def warm(self, model: str, seconds: float) -> None:
+        """Record one-off cost for a model, outside any tenant's charge.
+
+        Called by a runner that warms a model before serving with it. A
+        runtime that skipped this would not be wrong about the total work
+        done, only about who owes for it -- which is the whole of what
+        the fairness claim is.
+        """
+        self.startup_seconds_by_model[model] = (
+            self.startup_seconds_by_model.get(model, 0.0) + seconds
+        )
 
     def submit(self, request: QueuedRequest, executor: StepExecutor) -> None:
         self.registry.admit(request)
