@@ -338,8 +338,46 @@ def main() -> int:
               f"n {row['left'].get('n_in_overlap')}/"
               f"{row['right'].get('n_in_overlap')}", flush=True)
 
+    # A top-level summary in the shape verify_gate_b_amd reads, so a
+    # stream-form co-run can be checked by the same clause as a
+    # process-form one. The per-trial detail stays below it: the summary
+    # is the median trial, not an average that could hide a bad one.
+    usable = [t for t in trials
+              if "externality" in t.get("left", {})
+              and "externality" in t.get("right", {})]
+    summary = {}
+    if usable:
+        by_left = sorted(usable, key=lambda t: t["left"]["externality"])
+        median = by_left[len(by_left) // 2]
+        left_mask = int(median["masks"][0], 16)
+        right_mask = int(median["masks"][1], 16)
+        overlap_seconds = median.get("overlap_seconds", 0.0)
+        summary = {
+            "status": "ok",
+            "masks": {"a": median["masks"][0], "b": median["masks"][1],
+                      "units_a": args.units_a, "units_b": args.units_b,
+                      "disjoint": (left_mask & right_mask) == 0},
+            "overlap": {
+                "overlap_seconds": overlap_seconds,
+                # Both workers run the whole window and only samples
+                # inside the peer's active period are counted, so the
+                # fraction is against the window that was asked for.
+                "overlap_fraction_of_longer_window": (
+                    overlap_seconds / args.seconds if args.seconds else 0.0),
+                "sufficient_overlap": overlap_seconds >= 0.5 * args.seconds,
+                "a": {"externality": median["left"]["externality"],
+                      "p50_s": median["left"].get("p50_s"),
+                      "cv": median["left"].get("cv")},
+                "b": {"externality": median["right"]["externality"],
+                      "p50_s": median["right"].get("p50_s"),
+                      "cv": median["right"].get("cv")},
+            },
+            "trials_used": len(usable),
+        }
+
     payload = {
-        "schema_version": "burstserve.amd-inproc-corun/v1",
+        "schema_version": "burstserve.amd-inproc-corun/v2",
+        **summary,
         "question": (
             "does the pairing bistability exist with two streams in one "
             "process, and does replacing the streams redraw it"

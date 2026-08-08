@@ -189,28 +189,82 @@ def check_metadata(rows) -> dict:
                   {"cells": len(ok)})
 
 
-def check_corun(report) -> dict:
+CLAUSE_CORUN = "corun_is_two_disjointly_masked_workers"
+
+
+def check_mask_penetration(report) -> dict | None:
+    """Whether a stream-form co-run may be counted at all.
+
+    plan.md required two processes because a per-stream mask binds only
+    the kernels that reach that stream: work the framework launches on
+    the default stream would be unconstrained and the partition nominal.
+    A process-wide ROC_GLOBAL_CU_MASK has no such gap.
+
+    The clause was amended on 2026-08-08 to allow streams, with this as
+    a precondition rather than a note. A leak pays most where the mask is
+    tightest, so the test is directional: agreement must not deteriorate
+    as quota falls. Requiring only "the curves agree" would be satisfied
+    by a leak that shifted both ends equally.
+    """
     if report is None:
-        return clause("corun_is_two_disjointly_masked_processes", NOT_MEASURED,
-                      "no co-run report")
+        return {"status": "absent"}
+    rows = [r for r in report.get("rows", [])
+            if r.get("ratio_to_two_process")]
+    if len(rows) < 2:
+        return {"status": "too_few_quotas", "rows": len(rows)}
+    rows.sort(key=lambda r: r["units"])
+    lowest, highest = rows[0], rows[-1]
+    # A leak makes the low-quota cell disproportionately fast, so its
+    # ratio would fall below the high-quota one.
+    directional = (lowest["ratio_to_two_process"]
+                   >= highest["ratio_to_two_process"])
+    worst = max(abs(r["ratio_to_two_process"] - 1.0) for r in rows)
+    return {
+        "status": "ok" if (directional and worst <= 0.10) else "failed",
+        "ratio_at_lowest_quota": lowest["ratio_to_two_process"],
+        "ratio_at_highest_quota": highest["ratio_to_two_process"],
+        "worst_deviation": worst,
+        "trend_excludes_a_leak": directional,
+        "quotas": [r["units"] for r in rows],
+    }
+
+
+def check_corun(report, penetration=None) -> dict:
+    if report is None:
+        return clause(CLAUSE_CORUN, NOT_MEASURED, "no co-run report")
     if report.get("status") != "ok":
-        return clause("corun_is_two_disjointly_masked_processes", FAIL,
+        return clause(CLAUSE_CORUN, FAIL,
                       {"status": report.get("status"),
                        "failed_cells": report.get("failed_cells")})
     overlap = report.get("overlap") or {}
     if not report.get("masks", {}).get("disjoint"):
-        return clause("corun_is_two_disjointly_masked_processes", FAIL,
-                      "the two masks overlap")
+        return clause(CLAUSE_CORUN, FAIL, "the two masks overlap")
     if not overlap.get("sufficient_overlap"):
-        return clause("corun_is_two_disjointly_masked_processes", FAIL,
-                      {"reason": "the two processes did not overlap enough to "
+        return clause(CLAUSE_CORUN, FAIL,
+                      {"reason": "the two workers did not overlap enough to "
                                  "have contended",
                        "overlap_fraction":
                            overlap.get("overlap_fraction_of_longer_window")})
-    return clause("corun_is_two_disjointly_masked_processes", PASS,
-                  {"overlap_seconds": overlap.get("overlap_seconds"),
-                   "externality": {k: overlap.get(k, {}).get("externality")
-                                   for k in ("a", "b")}})
+
+    # Stream-form co-runs need the mask to be shown to bind the whole
+    # pipeline. Process-form ones do not: the mask is process-wide.
+    stream_form = bool(report.get("shared_weights")) or (
+        "stream" in str(report.get("arrangement", "")).lower()
+    )
+    detail = {"overlap_seconds": overlap.get("overlap_seconds"),
+              "externality": {k: overlap.get(k, {}).get("externality")
+                              for k in ("a", "b")},
+              "form": "streams" if stream_form else "processes"}
+    if stream_form:
+        verdict = check_mask_penetration(penetration)
+        detail["mask_penetration"] = verdict
+        if verdict["status"] != "ok":
+            return clause(CLAUSE_CORUN, NOT_MEASURED,
+                          {**detail,
+                           "reason": "a stream-form co-run requires mask "
+                                     "penetration evidence for this card and "
+                                     "framework version"})
+    return clause(CLAUSE_CORUN, PASS, detail)
 
 
 def check_residency(report) -> dict:
@@ -318,6 +372,12 @@ def main() -> int:
     parser.add_argument("--table", required=True,
                         help="the quota table JSONL from run_amd_gate_b.py")
     parser.add_argument("--corun")
+    parser.add_argument("--mask-penetration",
+                        help="required when the co-run report is in stream "
+                             "form: a per-quota comparison of one masked "
+                             "stream against the process-mask curve. "
+                             "Without it a stream-form co-run is "
+                             "NOT_MEASURED, not PASS")
     parser.add_argument("--residency")
     parser.add_argument("--transition")
     parser.add_argument("--cold-model")
@@ -337,7 +397,7 @@ def main() -> int:
         check_residency(_maybe(args.residency)),
         check_cold_model(_maybe(args.cold_model)),
         check_metadata(rows),
-        check_corun(_maybe(args.corun)),
+        check_corun(_maybe(args.corun), _maybe(args.mask_penetration)),
     ]
 
     # A source tree that moved mid-sweep makes every row above describe a
