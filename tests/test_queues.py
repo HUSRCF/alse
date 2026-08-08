@@ -105,12 +105,23 @@ class PreemptionKeepsAPlace(unittest.TestCase):
         queue.suspend(1)
         self.assertEqual([r.request_id for r in queue.ready(now=5.0)], [1, 2])
 
-    def test_in_flight_requests_are_not_offered_again(self):
+    def test_in_flight_means_running_right_now(self):
+        """Not "started and unfinished".
+
+        A step-scheduled request is in flight only for the round it is
+        actually running in; the runtime returns it to waiting at the
+        round boundary so the next round can decide over it again. A
+        queue that kept it in flight across rounds would offer nothing
+        after the first round and the loop would stall -- which is
+        exactly what happened before the boundary was made explicit.
+        """
         queue = TenantQueue("t0")
         queue.admit(request(1, arrival=0.0))
         queue.start(1)
         self.assertEqual(queue.ready(now=5.0), [])
         self.assertEqual(len(queue.in_flight), 1)
+        queue.suspend(1)
+        self.assertEqual([r.request_id for r in queue.ready(now=5.0)], [1])
 
     def test_a_finished_request_leaves(self):
         queue = TenantQueue("t0")
