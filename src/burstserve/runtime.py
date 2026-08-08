@@ -160,6 +160,7 @@ class Runtime:
             granted.get(s.request.request_id, self.maskable_units))
             for s in states}
         observed: dict[int, float] = {}
+        charge_sources: set[str] = set()
 
         active = sorted(granted.items())
         for rid, units in active:
@@ -174,18 +175,35 @@ class Runtime:
             peer = None
             if len(active) == 2:
                 peer = next(u for r, u in active if r != rid)
-            factor = 1.0
-            if peer is not None:
-                try:
-                    factor = externality(units, peer, queued.model)
-                except Exception:
-                    factor = 1.0
-            cost = QuotaCostModel.for_model(queued.model).step_seconds(units)
-            spent = cost * factor
 
             more = executor.run_step(quota_units=units)
+
+            # What the step actually cost. An adapter on hardware reports
+            # its own device time; only a simulated adapter falls back to
+            # the cost model.
+            #
+            # The fallback must never be preferred. Charging from the
+            # model would make predicted and observed the same number, so
+            # prediction_error would read zero forever and the dual
+            # ledger would be one ledger written twice -- and admission
+            # control and the debt model both read the difference.
+            measured = getattr(executor.adapter, "last_step_seconds", None)
+            if measured is None:
+                factor = 1.0
+                if peer is not None:
+                    try:
+                        factor = externality(units, peer, queued.model)
+                    except Exception:
+                        factor = 1.0
+                measured = (QuotaCostModel.for_model(queued.model)
+                            .step_seconds(units) * factor)
+                charged_from = "model"
+            else:
+                charged_from = "measurement"
+            spent = measured
             executor.last_step_seconds = spent
             observed[rid] = spent
+            charge_sources.add(charged_from)
 
             self.quota_seconds_by_tenant[queued.tenant] = (
                 self.quota_seconds_by_tenant.get(queued.tenant, 0.0)
@@ -234,6 +252,7 @@ class Runtime:
             quota_seconds_by_tenant=dict(self.quota_seconds_by_tenant),
             resident_models=tuple(sorted(self.resident_models)),
             weight_bytes_moved=self.weight_bytes_moved,
+            notes={"charged_from": sorted(charge_sources)},
         )
         self.ledger.append(record)
         self._round += 1
@@ -265,6 +284,17 @@ class Runtime:
 
     def all_finished(self) -> bool:
         return all(e.phase is Phase.FINISHED for e in self.executors.values())
+
+    def charged_from_measurement(self) -> bool:
+        """Whether every charge in this run came from a measured step.
+
+        A run that fell back to the cost model anywhere is a simulation
+        of a runtime, not a runtime, and its accounting cannot be
+        offered as evidence about the hardware.
+        """
+        sources = {s for r in self.ledger for s in r.notes.get(
+            "charged_from", [])}
+        return sources == {"measurement"}
 
 
 # Weight footprints, from the in-process co-run measurements: one copy of

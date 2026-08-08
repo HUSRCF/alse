@@ -84,6 +84,11 @@ class SdxlStepAdapter:
         self.guidance_scale = guidance_scale
         self.device = pipeline._execution_device
         self.torch = torch
+        # Read by the runtime to charge from measurement rather than from
+        # the cost model. Device time, not wall time: the host clock
+        # measures when work was queued, which under a co-run is not when
+        # it ran.
+        self.last_step_seconds: float | None = None
 
         with torch.no_grad():
             (self.prompt_embeds, self.negative_prompt_embeds,
@@ -147,6 +152,9 @@ class SdxlStepAdapter:
         generator.set_state(state.rng_state)
 
         latents = state.latent
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
         with torch.no_grad():
             model_input = torch.cat([latents] * 2)
             model_input = scheduler.scale_model_input(model_input, timestep)
@@ -161,6 +169,9 @@ class SdxlStepAdapter:
             latents = scheduler.step(noise_pred, timestep, latents,
                                      generator=generator,
                                      return_dict=False)[0]
+        end.record()
+        end.synchronize()
+        self.last_step_seconds = start.elapsed_time(end) / 1000.0
 
         return StepState(
             step_index=state.step_index + 1,
