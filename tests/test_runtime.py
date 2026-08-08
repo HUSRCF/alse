@@ -406,3 +406,60 @@ class VideoStallIsBounded(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MeasurementsAreCheckedAgainstTheirQuota(unittest.TestCase):
+    """A step measured at one width must not be charged as another.
+
+    The adapters report their step time one step late, and the reading
+    only lands once the previous step's events have retired -- so on the
+    card a request re-granted 16 units after running at 32 reported 107
+    ms, the 32-unit cost, for its whole 16-unit run. The adapters drain on
+    a width change now. This is the ledger's own check, because a charge
+    that is quietly the wrong width is the one thing the dual ledger
+    exists to make impossible.
+    """
+
+    class StaleAdapter(CountingAdapter):
+        """Reports a time, and a width that never matches the grant."""
+
+        def __init__(self, reported_units):
+            super().__init__()
+            self.last_step_seconds = 0.999
+            self.last_step_units = reported_units
+
+    def _runtime_with(self, adapter_units):
+        runtime = Runtime(probing_partitioning)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=4)
+            runtime.submit(request, StepExecutor(
+                request, self.StaleAdapter(adapter_units), total_steps=4))
+        return runtime
+
+    def test_a_mismatched_width_is_not_charged_as_a_measurement(self):
+        runtime = self._runtime_with(adapter_units=31)   # never granted
+        record = runtime.tick(0.0)
+        self.assertNotIn("measurement", record.notes["charged_from"])
+        self.assertTrue(record.notes["stale_quota_measurements"],
+                        "the ledger says which requests it refused")
+
+    def test_the_refusal_is_visible_rather_than_silent(self):
+        """Falling back to the model is what the ledger must never hide."""
+        runtime = self._runtime_with(adapter_units=31)
+        record = runtime.tick(0.0)
+        self.assertEqual(sorted(record.notes["stale_quota_measurements"]),
+                         sorted(record.granted))
+
+    def test_a_matching_width_is_charged_from_measurement(self):
+        runtime = self._runtime_with(adapter_units=16)
+        record = runtime.tick(0.0)
+        if 16 in record.granted.values():
+            self.assertIn("measurement", record.notes["charged_from"])
+            self.assertEqual(record.notes["stale_quota_measurements"], [])
+
+    def test_an_adapter_without_a_width_is_unaffected(self):
+        """CountingAdapter reports no width; it must not be penalised."""
+        runtime = build(steps=4)
+        record = runtime.tick(0.0)
+        self.assertEqual(record.notes["stale_quota_measurements"], [])

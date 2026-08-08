@@ -220,6 +220,11 @@ class Runtime:
             for s in states}
         observed: dict[int, float] = {}
         charge_sources: set[str] = set()
+        # Requests whose only available measurement was taken at a
+        # different quota. Recorded rather than silently absorbed:
+        # a charge falling back to the model is exactly what the
+        # dual ledger is not supposed to do, so it must be visible.
+        stale_charges: set[int] = set()
 
         active = sorted(granted.items())
 
@@ -280,6 +285,22 @@ class Runtime:
             # ledger would be one ledger written twice -- and admission
             # control and the debt model both read the difference.
             measured = getattr(executor.adapter, "last_step_seconds", None)
+            # A measurement taken at a different quota is not a
+            # measurement of this step. Adapters that report the width
+            # alongside the time are checked against it here rather than
+            # trusted: the reading is deferred by one step and only lands
+            # when the previous step's events have retired, so on hardware
+            # a re-granted request read the old width's cost for a whole
+            # run -- 107 ms for a 16-unit step, which is the 32-unit cost.
+            # The adapters drain on a width change now; this is the second
+            # line, because the ledger is the thing that must not be
+            # quietly wrong. Adapters that report no width are unaffected.
+            measured_units = getattr(executor.adapter, "last_step_units",
+                                     None)
+            if (measured is not None and measured_units is not None
+                    and measured_units != units):
+                measured = None
+                stale_charges.add(rid)
             if measured is None:
                 factor = 1.0
                 if peer is not None:
@@ -346,7 +367,8 @@ class Runtime:
             quota_seconds_by_tenant=dict(self.quota_seconds_by_tenant),
             resident_models=tuple(sorted(self.resident_models)),
             weight_bytes_moved=self.weight_bytes_moved,
-            notes={"charged_from": sorted(charge_sources)},
+            notes={"charged_from": sorted(charge_sources),
+                   "stale_quota_measurements": sorted(stale_charges)},
         )
         self.ledger.append(record)
         self._round += 1
