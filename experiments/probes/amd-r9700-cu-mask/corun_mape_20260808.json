@@ -1,0 +1,110 @@
+{
+  "schema_version": "burstserve.amd-corun-mape/v1",
+  "clause": "co-run step prediction MAPE under 15%",
+  "measured_through": "the runtime's own adapter, so predicted and observed describe the same quantity",
+  "workpoint": "768x768",
+  "steps": 14,
+  "warmup_dropped": 4,
+  "solo": [
+    {
+      "units": 8,
+      "predicted_s": 0.26875,
+      "observed_p50_s": 1.77333154296875,
+      "n": 11,
+      "relative_error": -0.8484490951138876
+    },
+    {
+      "units": 16,
+      "predicted_s": 0.1575,
+      "observed_p50_s": 0.1615208740234375,
+      "n": 11,
+      "relative_error": -0.02489383522561961
+    },
+    {
+      "units": 24,
+      "predicted_s": 0.12493,
+      "observed_p50_s": 0.12471158599853516,
+      "n": 11,
+      "relative_error": 0.001751352929369343
+    },
+    {
+      "units": 32,
+      "predicted_s": 0.11552,
+      "observed_p50_s": 0.10825582885742188,
+      "n": 11,
+      "relative_error": 0.06710189390490351
+    }
+  ],
+  "corun": [
+    {
+      "pair": "16+16",
+      "side": "a",
+      "units": 16,
+      "peer": 16,
+      "externality": 1.2367,
+      "predicted_s": 0.19478025,
+      "observed_p50_s": 0.24985049438476561,
+      "n": 10,
+      "relative_error": -0.22041278933776443
+    },
+    {
+      "pair": "16+16",
+      "side": "b",
+      "units": 16,
+      "peer": 16,
+      "externality": 1.2367,
+      "predicted_s": 0.19478025,
+      "observed_p50_s": 0.24315620422363282,
+      "n": 10,
+      "relative_error": -0.19895011265738072
+    },
+    {
+      "pair": "8+24",
+      "side": "a",
+      "units": 8,
+      "peer": 24,
+      "externality": 1.307,
+      "predicted_s": 0.35125625,
+      "observed_p50_s": 0.378211669921875,
+      "n": 10,
+      "relative_error": -0.07127072500814957
+    },
+    {
+      "pair": "8+24",
+      "side": "b",
+      "units": 24,
+      "peer": 8,
+      "externality": 1.1259,
+      "predicted_s": 0.14065868699999998,
+      "observed_p50_s": 0.3355096740722656,
+      "n": 10,
+      "relative_error": -0.5807611587089336
+    },
+    {
+      "pair": "24+8",
+      "side": "a",
+      "units": 24,
+      "peer": 8,
+      "externality": 1.1259,
+      "predicted_s": 0.14065868699999998,
+      "observed_p50_s": 0.3275119323730469,
+      "n": 10,
+      "relative_error": -0.5705234738141232
+    },
+    {
+      "pair": "24+8",
+      "side": "b",
+      "units": 8,
+      "peer": 24,
+      "externality": 1.307,
+      "predicted_s": 0.35125625,
+      "observed_p50_s": 0.3782183837890625,
+      "n": 10,
+      "relative_error": -0.07128721115814307
+    }
+  ],
+  "solo_mape": 0.23554904429344503,
+  "corun_mape": 0.28553424511408243,
+  "corun_mape_under_15pct": false,
+  "solo_mape_under_10pct": false
+}
