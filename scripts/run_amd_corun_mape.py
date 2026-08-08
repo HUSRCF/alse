@@ -86,6 +86,29 @@ def mape(pairs: list[tuple[float, float]]) -> float:
     ) if pairs else float("nan")
 
 
+def warm_width(pipeline, pool, units, args, rounds: int = 3) -> None:
+    """Pay a width's compilation before anything is measured with it.
+
+    The first run of this test measured 8 units first and read 1773 ms
+    against a 268 ms table entry: kernel selection for a width happens
+    the first time that width is used, and dropping a fixed number of
+    warm-up samples does not cover it. Every width is warmed here, so
+    none of them inherits another's compilation and none pays its own
+    inside a measurement.
+    """
+    from amd_sdxl_adapter import SdxlStepAdapter
+
+    adapter = SdxlStepAdapter(pipeline, height=args.height,
+                              width=args.width, steps=rounds,
+                              seed=args.seed + 9000)
+    adapter.stream = pool.for_quota(units).handle
+    executor = StepExecutor(object(), adapter, total_steps=rounds)
+    executor.prepare()
+    for _ in range(rounds):
+        executor.run_step(quota_units=units)
+    adapter.drain_timing()
+
+
 def run_solo(pipeline, pool, units, args, seed_offset=0) -> list[float]:
     from amd_sdxl_adapter import SdxlStepAdapter
 
@@ -184,6 +207,14 @@ def main() -> int:
     pool = MaskedStreamPool(make_stream)
     cost = QuotaCostModel.for_model("sdxl")
 
+    # Warm every width that will be used, before any measurement.
+    widths = sorted({int(q) for q in args.solo_quotas.split(",")}
+                    | {int(x) for spec in args.pairs.split(",")
+                       for x in spec.split("+")})
+    print(f"  warming widths {widths} ...", flush=True)
+    for units in widths:
+        warm_width(pipeline, pool, units, args)
+
     solo_rows = []
     solo_pairs: list[tuple[float, float]] = []
     for units in [int(q) for q in args.solo_quotas.split(",")]:
@@ -212,9 +243,20 @@ def main() -> int:
             median = statistics.median(times)
             factor = externality(units, peer, "sdxl")
             predicted = cost.step_seconds(units) * factor
+            solo_here = next(
+                (r["observed_p50_s"] for r in solo_rows
+                 if r["units"] == units), None)
             corun_rows.append({
                 "pair": spec, "side": name, "units": units, "peer": peer,
-                "externality": factor, "predicted_s": predicted,
+                "predicted_externality": factor,
+                # Measured against this side's own solo cost, which is
+                # what externality means. Without it a co-run row says
+                # only that the prediction was wrong, not whether the
+                # table's externality or its solo term is the wrong one.
+                "observed_externality": (median / solo_here
+                                         if solo_here else None),
+                "solo_p50_s": solo_here,
+                "predicted_s": predicted,
                 "observed_p50_s": median, "n": len(times),
                 "relative_error": predicted / median - 1.0,
             })
