@@ -96,11 +96,19 @@ def asle_reference(pipeline, device, steps: int, seed: int,
     import torch
 
     semb, stxt, stim = conditioning
+    # set_timesteps FIRST, then read init_noise_sigma. ASLE does the
+    # reverse, and that ordering is state-dependent: on a freshly loaded
+    # scheduler init_noise_sigma is 14.6489, and after any
+    # set_timesteps(8) it is 7.4394 -- so ASLE's first urgent request
+    # starts from a latent scaled 1.97x differently from every request
+    # after it. Comparing against "whichever ASLE happened to run first"
+    # would make this test depend on call order rather than on the
+    # runtime, so both sides are pinned to the settled value.
+    pipeline.scheduler.set_timesteps(steps, device=device)
     generator = torch.Generator(device).manual_seed(seed)
     latent = torch.randn((1, 4, 128, 128), generator=generator,
                          device=device, dtype=pipeline.unet.dtype)
     latent = latent * pipeline.scheduler.init_noise_sigma
-    pipeline.scheduler.set_timesteps(steps, device=device)
     trail = [latent.clone()]
     with torch.no_grad():
         for tt in pipeline.scheduler.timesteps:
@@ -138,12 +146,13 @@ class AsleAdapter:
 
     def initial_state(self, request) -> StepState:
         torch = self.torch
+        # Same ordering as the reference above, for the same reason.
+        self.pipeline.scheduler.set_timesteps(self.steps, device=self.device)
         generator = torch.Generator(self.device).manual_seed(self.seed)
         latent = torch.randn((1, 4, 128, 128), generator=generator,
                              device=self.device,
                              dtype=self.pipeline.unet.dtype)
         latent = latent * self.pipeline.scheduler.init_noise_sigma
-        self.pipeline.scheduler.set_timesteps(self.steps, device=self.device)
         self.trail = [latent.clone()]
         return StepState(
             step_index=0, latent=latent,
@@ -252,6 +261,13 @@ def main() -> int:
         "steps": args.steps,
         "seed": args.seed,
         "scheduled_quotas": quotas,
+        "init_noise_sigma_note": (
+            "both sides call set_timesteps before reading "
+            "init_noise_sigma. ASLE reads it first, which is "
+            "state-dependent: 14.6489 on a freshly loaded scheduler "
+            "against 7.4394 after any set_timesteps, so its first urgent "
+            "request differs from every later one by a factor of 1.97"
+        ),
         "suspensions": executor.suspensions,
         "asle_digest": reference_digest,
         "scheduled_digest": scheduled_digest,
