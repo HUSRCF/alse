@@ -1114,3 +1114,56 @@ the disagreement is specific to the co-run term.
 each is what the first co-run campaign had when it produced a bimodal
 distribution that took four wrong explanations to sort out. Repeats
 come first. The numbers above are recorded as evidence, not adopted.
+
+### 2026-08-08 — measured per step, partitioning does not pay at this workpoint
+
+Five repeats of 16+16, the only entry Gate C's scheduler reads, measured
+through the runtime's own path:
+
+| repeat | co-run per step | solo 16u | externality |
+| --- | --- | --- | --- |
+| 1 | 334.7 / 335.9 ms | 156.0 ms | 2.145 / 2.153 |
+| 2 | 331.0 / 333.9 ms | 158.5 ms | 2.088 / 2.106 |
+| 3 | 328.3 / 323.9 ms | 159.7 ms | 2.056 / 2.028 |
+| 4 | 245.2 / 250.0 ms | 161.2 ms | 1.521 / 1.551 |
+| 5 | 243.8 / 265.6 ms | 161.9 ms | 1.505 / 1.640 |
+
+Bimodal again -- 1.554 over four sides, 2.096 over six -- but this time
+the two modes do not change the conclusion, because **both sit above the
+table's 1.2367**:
+
+    table  1.2367   paired 197.2 ms vs rotating 216.0 ms   +9.5%
+    low    1.554    paired 247.9 ms vs rotating 216.0 ms  -12.8%
+    high   2.096    paired 334.3 ms vs rotating 216.0 ms  -35.4%
+
+**At 768x768 with SDXL against itself, partitioning loses.** The +18.6%
+this project has reported throughout came from a call-level externality
+applied to a per-step decision, and the two differ by the VAE decode --
+the same confusion corrected in the quota table on 08-06 and left
+uncorrected here.
+
+**What this does not touch.** Gate A's mask mechanism, Gate B's quota
+curves, and every week 7-8 clause -- bit-exact latents against ASLE,
+scheduler p99 of 11 us, zero weight bytes after residency, an hour
+without leak or deadlock, Jain 0.99915 -- are measurements in their own
+right and stand. Gate C's seven criteria are statements about a
+scheduler given a cost model, and they still hold of that scheduler.
+What fails is the cost model's co-run term, and with it the claim the
+scheduler was built to support.
+
+**What is not yet established.** That partitioning loses *in general*.
+This is one workpoint (768), one model paired with itself, one split
+(16+16), on one card. The measurements that would bound the claim
+properly:
+
+- other splits per step, both directions -- 8+24 already measures 1.40
+  and 2.68, so the asymmetry may matter more than the symmetric case
+- other workpoints, since the solo curve's shape varies with resolution
+- SDXL against CogVideoX-2b, the mismatched case the scheduler is
+  actually designed for, which no per-step measurement covers yet
+
+**Status.** The utilisation claim as stated -- spatial partitioning
+raises throughput over a full die -- is refuted at the workpoint it was
+measured at. Whether a defensible version survives is a question about
+where partitioning does pay, and that requires the measurements above
+rather than a reinterpretation of these.

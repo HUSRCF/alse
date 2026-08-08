@@ -457,6 +457,34 @@ $$
 | predictor error ±5/10/20% 安全降级 | 记账仍 0%、lag ≤ 2、利用率在精确预测的 5% 以内 |
 | 算法冻结 + decision log | `gate_c_algorithm_freeze.json`（14 函数 AST + 3 测量表 + 4 行为 digest）与 `docs/gate-c-decision-log.md` |
 
+> **2026-08-08 重大更正：下述 +18.6% 已被真机 per-step 测量推翻。**
+> externality 表（`(16,16)=1.2367`）测的是**整个 `pipeline(**call)`**，含
+> VAE decode；而调度器按 **per-step** 决策与记账。用 runtime 自身路径重测
+> 16+16 五次：per-step externality 呈双峰 **1.554（n=4）/ 2.096（n=6）**，
+> **两峰均高于表值**。据此重算（solo16=159.5 ms、solo32=108.0 ms）：
+>
+> | externality 口径 | 配对/步 | 轮转/步 | 分区收益 |
+> | --- | --- | --- | --- |
+> | 表值 1.2367（call 级） | 197.2 ms | 216.0 ms | **+9.5%** |
+> | per-step 低态 1.554 | 247.9 ms | 216.0 ms | **−12.8%** |
+> | per-step 高态 2.096 | 334.3 ms | 216.0 ms | **−35.4%** |
+>
+> **即：在 768×768、SDXL 自配对这一工作点上，空间分区不划算。** 这与
+> 2026-08-06 在 quota 表上修正过的是同一类错误（call 级被当作 per-step
+> 使用），当时未一并修正 externality 表。
+>
+> **未被推翻的部分**：Gate A 的 mask 机制、Gate B 的 quota 曲线、第 7–8 周
+> 全部验收（与 ASLE 逐位一致、scheduler p99 11 µs、residency 后 0 bytes、
+> 一小时压测、Jain 0.99915）均为独立测量，仍然成立；Gate C 七条作为"给定
+> 成本模型下调度器是否正确"的陈述亦仍成立。失效的是成本模型的 co-run 项，
+> 以及建立其上的利用率主张。
+>
+> **尚未确立**："分区在一般情况下不划算"。当前证据只覆盖一个工作点、一种
+> 模型自配对、一个 split、一张卡。待测：其余 split 的 per-step 值（8+24 已
+> 测到 1.40 与 2.68，非对称可能比对称更关键）、其他分辨率、以及
+> **SDXL × CogVideoX-2b 这一调度器真正为之设计的失配场景**——目前尚无任何
+> per-step 测量覆盖它。
+
 调度器 `probing_partitioning` 的 action 顺序已冻结：deadline override →
 步长匹配配对（1.6×）→ 亏欠轮转 → 慢态 deadline 预算 → 探测重组。匹配租户
 利用率 **1.1862**（较全 die 独占 **+18.6%**），失配租户 1.0000（不劣于独占）。
