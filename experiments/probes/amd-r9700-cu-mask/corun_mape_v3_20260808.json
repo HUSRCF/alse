@@ -1,0 +1,140 @@
+{
+  "schema_version": "burstserve.amd-corun-mape/v1",
+  "clause": "co-run step prediction MAPE under 15%",
+  "measured_through": "the runtime's own adapter, so predicted and observed describe the same quantity",
+  "workpoint": "768x768",
+  "steps": 14,
+  "warmup_dropped": 4,
+  "solo": [
+    {
+      "units": 8,
+      "predicted_s": 0.26875,
+      "observed_p50_s": 0.2713990478515625,
+      "n": 11,
+      "relative_error": -0.009760711662523458
+    },
+    {
+      "units": 16,
+      "predicted_s": 0.1575,
+      "observed_p50_s": 0.15766505432128905,
+      "n": 11,
+      "relative_error": -0.001046866865962004
+    },
+    {
+      "units": 24,
+      "predicted_s": 0.12493,
+      "observed_p50_s": 0.12233990478515624,
+      "n": 11,
+      "relative_error": 0.02117130317693383
+    },
+    {
+      "units": 32,
+      "predicted_s": 0.11552,
+      "observed_p50_s": 0.10749034118652344,
+      "n": 11,
+      "relative_error": 0.07470121245166617
+    }
+  ],
+  "corun": [
+    {
+      "pair": "16+16",
+      "side": "a",
+      "units": 16,
+      "peer": 16,
+      "predicted_externality": 1.2367,
+      "observed_externality": 1.5886186786714884,
+      "solo_p50_s": 0.15766505432128905,
+      "predicted_s": 0.19478025,
+      "observed_p50_s": 0.25046965026855467,
+      "n": 10,
+      "relative_error": -0.22233991307467493,
+      "overlapped_p50_s": 0.25046965026855467,
+      "overlapped_n": 8,
+      "overlapped_externality": 1.5886186786714884
+    },
+    {
+      "pair": "16+16",
+      "side": "b",
+      "units": 16,
+      "peer": 16,
+      "predicted_externality": 1.2367,
+      "observed_externality": 1.5384725266887178,
+      "solo_p50_s": 0.15766505432128905,
+      "predicted_s": 0.19478025,
+      "observed_p50_s": 0.2425633544921875,
+      "n": 10,
+      "relative_error": -0.19699226452496355,
+      "overlapped_p50_s": 0.2425633544921875,
+      "overlapped_n": 8,
+      "overlapped_externality": 1.5384725266887178
+    },
+    {
+      "pair": "8+24",
+      "side": "a",
+      "units": 8,
+      "peer": 24,
+      "predicted_externality": 1.307,
+      "observed_externality": 1.4092096616697425,
+      "solo_p50_s": 0.2713990478515625,
+      "predicted_s": 0.35125625,
+      "observed_p50_s": 0.3824581604003906,
+      "n": 10,
+      "relative_error": -0.08158254583383895,
+      "overlapped_p50_s": 0.3824581604003906,
+      "overlapped_n": 6,
+      "overlapped_externality": 1.4092096616697425
+    },
+    {
+      "pair": "8+24",
+      "side": "b",
+      "units": 24,
+      "peer": 8,
+      "predicted_externality": 1.1259,
+      "observed_externality": 2.842402803408672,
+      "solo_p50_s": 0.12233990478515624,
+      "predicted_s": 0.14065868699999998,
+      "observed_p50_s": 0.3477392883300781,
+      "n": 10,
+      "relative_error": -0.5955053348286456,
+      "overlapped_p50_s": 0.3477392883300781,
+      "overlapped_n": 9,
+      "overlapped_externality": 2.842402803408672
+    },
+    {
+      "pair": "24+8",
+      "side": "a",
+      "units": 24,
+      "peer": 8,
+      "predicted_externality": 1.1259,
+      "observed_externality": 2.678523231443357,
+      "solo_p50_s": 0.12233990478515624,
+      "predicted_s": 0.14065868699999998,
+      "observed_p50_s": 0.32769027709960935,
+      "n": 10,
+      "relative_error": -0.5707572154872225,
+      "overlapped_p50_s": 0.32769027709960935,
+      "overlapped_n": 9,
+      "overlapped_externality": 2.678523231443357
+    },
+    {
+      "pair": "24+8",
+      "side": "b",
+      "units": 8,
+      "peer": 24,
+      "predicted_externality": 1.307,
+      "observed_externality": 1.3959075941584158,
+      "solo_p50_s": 0.2713990478515625,
+      "predicted_s": 0.35125625,
+      "observed_p50_s": 0.3788479919433594,
+      "n": 10,
+      "relative_error": -0.07283064060026634,
+      "overlapped_p50_s": 0.3788479919433594,
+      "overlapped_n": 6,
+      "overlapped_externality": 1.3959075941584158
+    }
+  ],
+  "solo_mape": 0.02667002353927131,
+  "corun_mape": 0.29000131905826865,
+  "corun_mape_under_15pct": false,
+  "solo_mape_under_10pct": true
+}

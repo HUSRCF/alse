@@ -1077,3 +1077,40 @@ call-level figure was measured honestly and the per-step figure is not
 yet established -- and not asserted. Gate C's criteria are unaffected as
 statements about the scheduler given a cost model; what is in question
 is the cost model, for the second time.
+
+### 2026-08-08 — the lockstep hypothesis is refuted; the penalty is the die's
+
+The previous entry offered an alternative to the per-step externality
+being real: the 24-unit side finishes its step long before the 8-unit
+side finishes its own, so a lockstep harness might be recording its wait
+as contention. That was also the convenient explanation, so it was
+measured.
+
+Every step now carries its wall-clock window, and each row reports a
+second figure computed only from steps that overlapped the peer:
+
+| pair | side | units | table | all steps | overlapped only |
+| --- | --- | --- | --- | --- | --- |
+| 16+16 | a | 16 | 1.237 | 1.589 | **1.589** |
+| 16+16 | b | 16 | 1.237 | 1.538 | **1.538** |
+| 8+24 | a | 8 | 1.307 | 1.409 | **1.409** |
+| 8+24 | b | 24 | 1.126 | 2.842 | **2.842** |
+| 24+8 | a | 24 | 1.126 | 2.679 | **2.679** |
+| 24+8 | b | 8 | 1.307 | 1.396 | **1.396** |
+
+Identical to three decimal places in every row. The filter removes one
+to four samples per side and moves no median, so the wide side was not
+waiting -- it was contending.
+
+**The hypothesis could only ever have covered one row anyway.** The
+16+16 pair is symmetric: neither side waits for the other, and it
+disagrees with the table by 24-28%. And 16+16 is the only entry Gate C's
+scheduler reads.
+
+solo MAPE is 2.67% in the same run, so the measurement path is sound and
+the disagreement is specific to the co-run term.
+
+**What remains before the table is rebuilt.** Three splits measured once
+each is what the first co-run campaign had when it produced a bimodal
+distribution that took four wrong explanations to sort out. Repeats
+come first. The numbers above are recorded as evidence, not adopted.
