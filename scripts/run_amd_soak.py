@@ -146,6 +146,23 @@ def main() -> int:
                 rid += 1
                 arrival_index += 1
 
+            # With nothing to run, wait for the next arrival instead of
+            # spinning. The first soak turned 386 requests into 124
+            # million rounds and 124 million ledger records, and the
+            # round that finally exceeded the watchdog was slow because
+            # of the ledger, not the GPU.
+            if not runtime.executors and arrival_index < len(arrivals):
+                sleep_until = arrivals[arrival_index][0]
+                gap = sleep_until - (time.perf_counter() - started)
+                if gap > 0:
+                    time.sleep(min(gap, args.sample_every))
+                    continue
+            if not runtime.executors and arrival_index >= len(arrivals):
+                if time.perf_counter() - started >= args.seconds:
+                    break
+                time.sleep(0.5)
+                continue
+
             round_started = time.perf_counter()
             record = runtime.tick(elapsed)
             round_seconds = time.perf_counter() - round_started
@@ -156,11 +173,9 @@ def main() -> int:
                            f"over the {args.round_timeout:.0f}s watchdog")
                 break
 
-            pending = sum(1 for e in runtime.executors.values()
-                          if e.phase is not Phase.FINISHED)
+            pending = len(runtime.executors)
             peak_backlog = max(peak_backlog, pending)
-            done = sum(1 for e in runtime.executors.values()
-                       if e.phase is Phase.FINISHED)
+            done = runtime.completed
             if not record.granted and pending:
                 # No progress with work outstanding. One such round is
                 # possible between an arrival and its first grant; a run
@@ -216,6 +231,15 @@ def main() -> int:
         # A leak shows as a positive slope sustained over the window. The
         # threshold is deliberately generous: what matters is whether the
         # curve rises, not whether it rises by a particular amount.
+        # Per completed request, not per second: the first soak leaked
+        # 1.284 MB per request, which tracked completions rather than the
+        # clock. A per-second threshold generous enough to pass noise
+        # would have passed that too.
+        "allocated_bytes_per_completed_request": (
+            (samples[-1]["allocated_bytes"] - samples[2]["allocated_bytes"])
+            / max(1, samples[-1]["completed"] - samples[2]["completed"])
+            if len(samples) > 3 else 0.0
+        ),
         "no_leak": abs(slope) < 1e6,
         "samples": samples,
         "scheduler_decision_seconds": {

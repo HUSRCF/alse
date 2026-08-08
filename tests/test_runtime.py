@@ -202,6 +202,52 @@ class PreemptionKeepsThePlace(unittest.TestCase):
             self.assertIs(executor.phase, Phase.FINISHED)
 
 
+class FinishedRequestsAreReleased(unittest.TestCase):
+    """An hour of serving found this and nothing shorter would have.
+
+    Each request holds an executor, each executor an adapter, and on the
+    card an adapter holds conditioning tensors. Keeping them after
+    completion leaked 1.284 MB per request -- 478 MB over 372 requests --
+    and it tracked the completion count rather than the clock, which is
+    what distinguishes a leak from an allocator settling.
+    """
+
+    def test_a_finished_request_leaves_the_executor_map(self):
+        runtime = build(steps=3, tenants=("a",))
+        drain(runtime)
+        self.assertEqual(runtime.executors, {})
+        self.assertEqual(runtime.completed, 1)
+
+    def test_its_numbers_are_kept(self):
+        """Releasing the object must not lose the accounting; the ledger
+        is what every acceptance clause reads."""
+        runtime = build(steps=4, tenants=("a", "b"))
+        drain(runtime)
+        self.assertEqual(len(runtime.retired), 2)
+        for summary in runtime.retired.values():
+            self.assertEqual(summary["steps_done"], 4)
+            self.assertEqual(summary["phase"], "FINISHED")
+        self.assertTrue(runtime.quota_seconds_by_tenant)
+
+    def test_the_adapter_is_dropped(self):
+        """Explicitly, rather than by hoping the executor goes out of
+        scope -- the caller may still hold a reference."""
+        runtime = build(steps=3, tenants=("a",))
+        executor = runtime.executors[0]
+        drain(runtime)
+        self.assertIsNone(executor.adapter)
+        self.assertIsNone(executor.state)
+
+    def test_all_finished_still_means_finished(self):
+        """Retirement empties the map, so "no executors" must not be
+        confused with "never started"."""
+        runtime = build(steps=3, tenants=("a",))
+        self.assertFalse(runtime.all_finished())
+        drain(runtime)
+        self.assertTrue(runtime.all_finished())
+        self.assertEqual(runtime.completed, 1)
+
+
 class VideoStallIsBounded(unittest.TestCase):
     """plan.md: stall within the configured budget plus one unpreemptable
     step.

@@ -102,6 +102,14 @@ class Runtime:
         # 0.157 s steady step, and charging it made one tenant's ledger
         # 10.8x the other's for identical work.
         self.startup_seconds_by_model: dict[str, float] = {}
+        # Summaries of finished requests. The executors themselves are
+        # released: each one holds its adapter, and an adapter holds
+        # conditioning tensors on the device. A soak measured 1.284 MB
+        # leaked per completed request, tracking the completion count
+        # rather than the clock -- 478 MB over 372 requests. Keeping the
+        # numbers and dropping the objects is what a serving process has
+        # to do; keeping the objects is a leak with a ledger attached.
+        self.retired: dict[int, dict] = {}
         self._round = 0
         # Injectable so tests drive time rather than sleep through it.
         # Wall time in a test would make the p99 assertion measure the
@@ -109,6 +117,28 @@ class Runtime:
         self._clock = clock or time.perf_counter
 
     # -- admission -----------------------------------------------------
+
+    def retire(self, request_id: int) -> None:
+        """Release a finished request's executor, keeping its numbers.
+
+        Called on completion. The ledger and the per-tenant charges are
+        unaffected; what goes is the executor, its adapter and whatever
+        device memory they hold.
+        """
+        executor = self.executors.pop(request_id, None)
+        if executor is None:
+            return
+        self.retired[request_id] = {
+            "steps_done": executor.steps_done,
+            "suspensions": executor.suspensions,
+            "resumptions": executor.resumptions,
+            "phase": executor.phase.name,
+        }
+        # Drop the adapter's references explicitly rather than relying on
+        # the executor going out of scope: the caller may still hold one.
+        executor.adapter = None
+        executor.state = None
+        executor.output = None
 
     def warm(self, model: str, seconds: float) -> None:
         """Record one-off cost for a model, outside any tenant's charge.
@@ -246,6 +276,7 @@ class Runtime:
             if not more:
                 executor.finalize()
                 queue.finish(rid)
+                self.retire(rid)
 
         # Every unfinished request returns to waiting at the round
         # boundary, whether it ran or not, so the next round decides
@@ -306,7 +337,18 @@ class Runtime:
                 - self.ledger[0].weight_bytes_moved)
 
     def all_finished(self) -> bool:
-        return all(e.phase is Phase.FINISHED for e in self.executors.values())
+        """True when nothing is outstanding.
+
+        Finished requests are retired out of ``executors``, so an empty
+        map means done rather than never started -- ``retired`` is what
+        says which it was.
+        """
+        return all(e.phase is Phase.FINISHED
+                   for e in self.executors.values())
+
+    @property
+    def completed(self) -> int:
+        return len(self.retired)
 
     def stalls_by_request(self) -> dict[int, list[float]]:
         """Gaps between consecutive services of the same request.
