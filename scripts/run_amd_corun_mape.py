@@ -157,17 +157,22 @@ def run_pair(pipeline, pool, units_a, units_b, args) -> tuple[list, list]:
         executor.prepare()
         prepared[name] = (adapter, executor, units)
 
+    windows: dict[str, list[tuple[float, float, float]]] = {"a": [], "b": []}
+
     def side(name, units, stream, seed_offset):
         adapter, executor, units = prepared[name]
         # Warm before the barrier so neither side measures the other's
-        # start-up, then step in lockstep so every measured step overlaps
-        # a step on the other side.
+        # start-up.
         executor.run_step(quota_units=units)
         barrier.wait()
         for _ in range(args.steps - 1):
+            began = time.perf_counter()
             executor.run_step(quota_units=units)
+            ended = time.perf_counter()
             if adapter.last_step_seconds:
                 out[name].append(adapter.last_step_seconds)
+                windows[name].append((began, ended,
+                                      adapter.last_step_seconds))
         adapter.drain_timing()
         if adapter.last_step_seconds:
             out[name].append(adapter.last_step_seconds)
@@ -180,7 +185,28 @@ def run_pair(pipeline, pool, units_a, units_b, args) -> tuple[list, list]:
         thread.start()
     for thread in threads:
         thread.join()
-    return out["a"][args.warmup:], out["b"][args.warmup:]
+
+    # Keep only steps that ran while the peer was also stepping. Neither
+    # side is held back -- there is no per-step barrier -- so a wide side
+    # that finishes early simply stops contributing samples rather than
+    # waiting and recording the wait as contention.
+    #
+    # This is the alternative explanation for the 24-unit side's 2.68x:
+    # if the number falls towards the table's 1.126 once free-running
+    # steps are filtered this way, the lockstep harness was inflating it.
+    # If it does not, the penalty is the die's.
+    def overlapped(name, peer):
+        mine, theirs = windows[name], windows[peer]
+        if not mine or not theirs:
+            return []
+        peer_start = theirs[0][0]
+        peer_end = theirs[-1][1]
+        return [seconds for began, ended, seconds in mine
+                if began >= peer_start and ended <= peer_end]
+
+    return (out["a"][args.warmup:], out["b"][args.warmup:],
+            overlapped("a", "b")[args.warmup:],
+            overlapped("b", "a")[args.warmup:])
 
 
 def main() -> int:
@@ -235,7 +261,9 @@ def main() -> int:
     corun_pairs: list[tuple[float, float]] = []
     for spec in args.pairs.split(","):
         left, right = (int(x) for x in spec.split("+"))
-        a_times, b_times = run_pair(pipeline, pool, left, right, args)
+        a_times, b_times, a_overlap, b_overlap = run_pair(
+            pipeline, pool, left, right, args)
+        overlaps = {"a": a_overlap, "b": b_overlap}
         for name, units, peer, times in (("a", left, right, a_times),
                                          ("b", right, left, b_times)):
             if not times:
@@ -259,6 +287,15 @@ def main() -> int:
                 "predicted_s": predicted,
                 "observed_p50_s": median, "n": len(times),
                 "relative_error": predicted / median - 1.0,
+                # Same steps, filtered to those that overlapped the peer.
+                # Reported next to the unfiltered figure so the lockstep
+                # hypothesis is answered by the data rather than argued.
+                "overlapped_p50_s": (statistics.median(overlaps[name])
+                                     if overlaps[name] else None),
+                "overlapped_n": len(overlaps[name]),
+                "overlapped_externality": (
+                    statistics.median(overlaps[name]) / solo_here
+                    if overlaps[name] and solo_here else None),
             })
             corun_pairs.append((predicted, median))
             print(f"  corun {spec} {name}: predicted {predicted*1000:6.1f} ms"
