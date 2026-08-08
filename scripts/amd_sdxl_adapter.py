@@ -77,6 +77,17 @@ class SdxlStepAdapter:
         import torch
 
         self.pipeline = pipeline
+        # A scheduler of this adapter's own. Two adapters stepping
+        # concurrently write _step_index and timesteps on every call, so
+        # sharing the pipeline's scheduler makes each one clobber the
+        # other -- a data race whose observed symptom was a hang at 3%
+        # GPU with both threads alive, not an exception.
+        #
+        # from_config rather than deepcopy: the scheduler holds device
+        # tensors, and copying them per request would allocate a set of
+        # sigmas for every request in flight.
+        self.scheduler = type(pipeline.scheduler).from_config(
+            pipeline.scheduler.config)
         self.height = height
         self.width = width
         self.steps = steps
@@ -148,7 +159,7 @@ class SdxlStepAdapter:
 
     def initial_state(self, request) -> StepState:
         torch = self.torch
-        scheduler = self.pipeline.scheduler
+        scheduler = self.scheduler
         scheduler.set_timesteps(self.steps, device=self.device)
         generator = torch.Generator(device=self.device).manual_seed(self.seed)
         channels = self.pipeline.unet.config.in_channels
@@ -172,7 +183,7 @@ class SdxlStepAdapter:
 
     def denoise_one(self, state: StepState, *, quota_units: int) -> StepState:
         torch = self.torch
-        scheduler = self.pipeline.scheduler
+        scheduler = self.scheduler
         timesteps = state.extra["timesteps"]
         timestep = timesteps[state.step_index]
 
