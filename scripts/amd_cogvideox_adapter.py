@@ -73,6 +73,12 @@ class CogVideoXStepAdapter:
         self.torch = torch
 
         self.last_step_seconds: float | None = None
+        # The quota that reading was taken at. Without it, an
+        # adapter re-granted a different width reports the old
+        # width's cost -- the deferred read usually finds the
+        # previous step still in flight, so nothing overwrites the
+        # stale value. See the SDXL adapter for the measurement.
+        self.last_step_units: int | None = None
         self._pending_events: tuple | None = None
         self.stream = None
         self._external_streams: dict[int, object] = {}
@@ -166,10 +172,11 @@ class CogVideoXStepAdapter:
         # step just issued would drain the pipeline and charge the drain
         # to the measurement.
         if self._pending_events is not None:
-            previous_start, previous_end = self._pending_events
+            previous_start, previous_end, previous_units = self._pending_events
             if previous_end.query():
                 self.last_step_seconds = (
                     previous_start.elapsed_time(previous_end) / 1000.0)
+                self.last_step_units = previous_units
                 self._pending_events = None
 
         latents = state.latent
@@ -212,11 +219,21 @@ class CogVideoXStepAdapter:
                 latents = scheduler.step(noise_pred, timestep, latents,
                                          eta=0.0, generator=generator,
                                          return_dict=False)[0]
+                # The pipeline's own ``latents = latents.to(
+                # prompt_embeds.dtype)``. Without it the latent comes back
+                # fp32 -- the scheduler mixes an fp16 sample with the
+                # fp32 model output and does not cast -- and the next
+                # step's first Linear fails on fp32 activations against
+                # fp16 weights. Copied rather than reasoned about, because
+                # any other choice here silently changes the arithmetic
+                # relative to the reference implementation.
+                latents = latents.to(self.embeds.dtype)
             end.record()
-        self._pending_events = (start, end)
+        self._pending_events = (start, end, quota_units)
         if current is not None:
             self._previous_stream = current
-        if self.last_step_seconds is None:
+        if (self.last_step_seconds is None
+                or self.last_step_units != quota_units):
             # The first step has nothing in front of it to hide the wait
             # behind, and an unmeasured step would be charged from the
             # cost model -- the one thing the ledger must never do.
@@ -237,9 +254,10 @@ class CogVideoXStepAdapter:
     def drain_timing(self) -> float | None:
         if self._pending_events is None:
             return self.last_step_seconds
-        start, end = self._pending_events
+        start, end, units = self._pending_events
         end.synchronize()
         self.last_step_seconds = start.elapsed_time(end) / 1000.0
+        self.last_step_units = units
         self._pending_events = None
         return self.last_step_seconds
 

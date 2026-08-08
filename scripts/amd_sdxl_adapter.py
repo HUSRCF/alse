@@ -44,15 +44,27 @@ sys.path.insert(0, str(REPO / "src"))
 from burstserve.executor import StepExecutor, StepState  # noqa: E402
 
 WORDS = 4
-hip = ctypes.CDLL("libamdhip64.so")
-hip.hipExtStreamCreateWithCUMask.restype = ctypes.c_int
-hip.hipExtStreamCreateWithCUMask.argtypes = [
-    ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint32,
-    ctypes.POINTER(ctypes.c_uint32),
-]
+
+
+def _hip():
+    """Load HIP on first use, not on import.
+
+    The adapter class needs no HIP at all -- the runtime hands it a stream
+    -- and loading the library at import time made the module unimportable
+    anywhere without ROCm, which meant its timing logic could not be unit
+    tested at all. The one function that does need HIP asks for it here.
+    """
+    library = ctypes.CDLL("libamdhip64.so")
+    library.hipExtStreamCreateWithCUMask.restype = ctypes.c_int
+    library.hipExtStreamCreateWithCUMask.argtypes = [
+        ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint32,
+        ctypes.POINTER(ctypes.c_uint32),
+    ]
+    return library
 
 
 def masked_stream(units: int):
+    hip = _hip()
     mask = (1 << units) - 1
     handle = ctypes.c_void_p()
     words = (ctypes.c_uint32 * WORDS)(
@@ -100,6 +112,13 @@ class SdxlStepAdapter:
         # measures when work was queued, which under a co-run is not when
         # it ran.
         self.last_step_seconds: float | None = None
+        # The quota that reading was taken at. A step measured at one
+        # width is not evidence about another, and the runtime charges
+        # from this field while changing quotas between rounds -- so
+        # without the width, a re-granted request can be charged at the
+        # cost of the quota it used to hold. It is the same defect the
+        # policy's ``observed_at_units`` exists for, one layer down.
+        self.last_step_units: int | None = None
         # Events from the step before last, read once the device has
         # certainly passed them. Synchronising on the event a step
         # records would drain the pipeline every step, and the cost of
@@ -199,11 +218,12 @@ class SdxlStepAdapter:
         # has been issued the device has passed them, so this costs a
         # query rather than a drain.
         if self._pending_events is not None:
-            previous_start, previous_end = self._pending_events
+            previous_start, previous_end, previous_units = self._pending_events
             if previous_end.query():
                 self.last_step_seconds = (
                     previous_start.elapsed_time(previous_end) / 1000.0
                 )
+                self.last_step_units = previous_units
                 self._pending_events = None
 
         latents = state.latent
@@ -243,15 +263,27 @@ class SdxlStepAdapter:
                                          generator=generator,
                                          return_dict=False)[0]
             end.record()
-        self._pending_events = (start, end)
+        self._pending_events = (start, end, quota_units)
         if current is not None:
             self._previous_stream = current
-        if self.last_step_seconds is None:
+        if (self.last_step_seconds is None
+                or self.last_step_units != quota_units):
             # The first step has no predecessor to hide the wait behind,
             # and leaving it unmeasured would make the runtime charge it
             # from the cost model -- which is the one thing the ledger
             # must not do. One drain per request is a bounded cost; a
             # charge that did not come from measurement is not.
+            #
+            # The same applies on the first step at a *new* quota, and
+            # that case is not hypothetical. The deferred read only
+            # succeeds when the previous step's events have already
+            # retired, which in a tight loop they usually have not -- so
+            # without this an adapter re-granted a different width goes on
+            # reporting the old width's cost for the whole run. Measured:
+            # a 16-unit run reported 107 ms, which is the 32-unit cost,
+            # and the 32-unit run that followed reported 152 ms, which was
+            # the 16-unit one. Fresh-adapter harnesses never saw it
+            # because their first step always drained.
             self.drain_timing()
 
         return StepState(
@@ -273,9 +305,10 @@ class SdxlStepAdapter:
         """
         if self._pending_events is None:
             return self.last_step_seconds
-        start, end = self._pending_events
+        start, end, units = self._pending_events
         end.synchronize()
         self.last_step_seconds = start.elapsed_time(end) / 1000.0
+        self.last_step_units = units
         self._pending_events = None
         return self.last_step_seconds
 
