@@ -1,0 +1,101 @@
+{
+  "schema_version": "burstserve.amd-overlap-events/v1",
+  "question": "does the device timeline show the first two co-run episodes running without overlap",
+  "prediction_stated_before_reading": "first two episodes overlap near zero, later ones do not; if both overlap, the sum-of-solo-steps fit is right about the arithmetic and wrong about the cause",
+  "instrument": "the sides' own CUDA events against a common origin, one synchronise per episode and it is after the episode",
+  "sync_before_episode": true,
+  "full_die_solo_before_episodes": false,
+  "models": [
+    "sdxl",
+    "cogvideox-2b"
+  ],
+  "split": "16+16",
+  "steps": 12,
+  "warmup_dropped": 3,
+  "solo_p50_s": {
+    "sdxl": 0.1532472229003906,
+    "cogvideox-2b": 0.7912276000976562
+  },
+  "episodes": [
+    {
+      "episode": 1,
+      "busy_ms": 7516.940673828125,
+      "overlapped_ms": 4113.3291015625,
+      "overlap_fraction": 0.5472078708674603,
+      "steps_kept": {
+        "a": 8,
+        "b": 8
+      },
+      "elapsed_s": 10.957698780111969,
+      "sdxl": {
+        "step_ms": 155.38037109375,
+        "externality": 1.0139196531786152
+      },
+      "cogvideox-2b": {
+        "step_ms": 827.013427734375,
+        "externality": 1.0452282347485122
+      }
+    },
+    {
+      "episode": 2,
+      "busy_ms": 7577.4228515625,
+      "overlapped_ms": 4146.93408203125,
+      "overlap_fraction": 0.5472749988046572,
+      "steps_kept": {
+        "a": 8,
+        "b": 8
+      },
+      "elapsed_s": 11.024731404846534,
+      "sdxl": {
+        "step_ms": 156.18994140625,
+        "externality": 1.0192024263158892
+      },
+      "cogvideox-2b": {
+        "step_ms": 834.5576171875,
+        "externality": 1.0547630253096527
+      }
+    },
+    {
+      "episode": 3,
+      "busy_ms": 7585.87255859375,
+      "overlapped_ms": 4130.36669921875,
+      "overlap_fraction": 0.5444814248216723,
+      "steps_kept": {
+        "a": 8,
+        "b": 8
+      },
+      "elapsed_s": 10.975646971026435,
+      "sdxl": {
+        "step_ms": 156.07177734375,
+        "externality": 1.0184313581016429
+      },
+      "cogvideox-2b": {
+        "step_ms": 833.57568359375,
+        "externality": 1.0535219998529715
+      }
+    },
+    {
+      "episode": 4,
+      "busy_ms": 7590.331787109375,
+      "overlapped_ms": 4109.953125,
+      "overlap_fraction": 0.5414721306359643,
+      "steps_kept": {
+        "a": 8,
+        "b": 8
+      },
+      "elapsed_s": 10.970607426017523,
+      "sdxl": {
+        "step_ms": 156.18603515625,
+        "externality": 1.0191769364575671
+      },
+      "cogvideox-2b": {
+        "step_ms": 834.414794921875,
+        "externality": 1.0545825181261226
+      }
+    }
+  ],
+  "early_overlap": 0.5472414348360588,
+  "late_overlap": 0.5429767777288184,
+  "serialised_then_overlapping": false,
+  "transient_reproduced": false
+}

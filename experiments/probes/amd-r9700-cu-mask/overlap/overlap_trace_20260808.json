@@ -1,0 +1,85 @@
+{
+  "schema_version": "burstserve.amd-overlap-trace/v1",
+  "question": "does the kernel timeline show no overlap for the first two episodes and overlap afterwards",
+  "models": [
+    "sdxl",
+    "cogvideox-2b"
+  ],
+  "split": "16+16",
+  "steps": 8,
+  "gap_s": 1.5,
+  "solo_p50_s": {
+    "sdxl@16": 0.15798126220703124,
+    "sdxl@32": 0.1337991943359375,
+    "cogvideox-2b@16": 0.7954029541015625,
+    "cogvideox-2b@32": 0.504955810546875
+  },
+  "episodes": [
+    {
+      "episode": 1,
+      "monotonic_start": 1098704.44412654,
+      "monotonic_end": 1098711.790832051,
+      "sdxl": {
+        "corun_p50_s": 2.383751220703125,
+        "externality": 15.088822480600689
+      },
+      "cogvideox-2b": {
+        "corun_p50_s": 0.826712646484375,
+        "externality": 1.0393633091521242
+      }
+    },
+    {
+      "episode": 2,
+      "monotonic_start": 1098713.290978741,
+      "monotonic_end": 1098720.957348121,
+      "sdxl": {
+        "corun_p50_s": 1.6597332763671875,
+        "externality": 10.50588692089408
+      },
+      "cogvideox-2b": {
+        "corun_p50_s": 0.8163665161132811,
+        "externality": 1.0263559016264878
+      }
+    },
+    {
+      "episode": 3,
+      "monotonic_start": 1098722.457492812,
+      "monotonic_end": 1098730.143799394,
+      "sdxl": {
+        "corun_p50_s": 0.15843022155761718,
+        "externality": 1.002841851902649
+      },
+      "cogvideox-2b": {
+        "corun_p50_s": 0.8110161743164062,
+        "externality": 1.019629321382744
+      }
+    },
+    {
+      "episode": 4,
+      "monotonic_start": 1098731.643947996,
+      "monotonic_end": 1098739.313026032,
+      "sdxl": {
+        "corun_p50_s": 0.1587772674560547,
+        "externality": 1.0050386054517042
+      },
+      "cogvideox-2b": {
+        "corun_p50_s": 0.8103433837890625,
+        "externality": 1.018783472717141
+      }
+    },
+    {
+      "episode": 5,
+      "monotonic_start": 1098740.813126174,
+      "monotonic_end": 1098748.364279473,
+      "sdxl": {
+        "corun_p50_s": 0.9352249145507813,
+        "externality": 5.919847084935858
+      },
+      "cogvideox-2b": {
+        "corun_p50_s": 0.8271308288574218,
+        "externality": 1.0398890582342597
+      }
+    }
+  ],
+  "transient_reproduced": false
+}

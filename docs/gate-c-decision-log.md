@@ -1802,3 +1802,74 @@ It carries the same validity check the profiler failed, and the same
 prediction, unchanged: the first two episodes overlap near zero and the
 later ones do not. If both overlap, the sum-of-solo-steps fit is right
 about the arithmetic and wrong about the cause.
+
+### 2026-08-08 -- the instrument every per-step co-run number came from is unreliable
+
+The overlap harness measures a step by bracketing it with two events on
+that side's stream. The adapters measure it with their own start/end
+events, recorded *inside* the same region on the same stream, and read
+one step late. So the adapter's interval is contained in the harness's,
+and its reading can never legitimately exceed it.
+
+Running both in one process, over the same steps:
+
+| episode | SDXL span | SDXL adapter |
+| --- | --- | --- |
+| 1 | 1.022 | **10.888** |
+| 2 | 1.022 | **6.234** |
+| 3 | 1.022 | 1.022 |
+| 4 | 1.020 | 1.023 |
+
+The containment is violated by a factor of ten. Whatever the adapter is
+reporting in episodes 1 and 2, it is not the duration of the step it is
+attributed to. The deferred read only updates when the previous step's
+events have retired; when it does not update, the previous value stands
+and is counted again, so a single slow reading can be re-counted until it
+owns the median.
+
+**Every per-step co-run number in this project comes from that reading.**
+The bistability and its latch, the two-episode transient, the
+sum-of-solo-steps fit across five splits, the per-split table, the 3:1
+quantised outlier -- all of them are medians of
+``adapter.last_step_seconds``.
+
+What the span instrument says instead, provisionally, over three
+processes and five episodes each:
+
+    mismatched 16+16   SDXL 1.02, CogVideoX 1.05, every episode, no transient
+    self-paired 16+16  1.23 to 1.35, every episode, no bimodality,
+                       overlap fraction 0.90 to 0.92
+
+Both are single-instrument numbers in their turn and neither is adopted
+here. The span brackets more than the kernels -- it includes whatever
+host time passes between the two records -- so it is an upper bound, and
+an upper bound of 1.02 does mean the mismatched pairing is very nearly
+free. But three processes is three processes.
+
+**What has to happen before any of today's per-step conclusions stand
+again.** The disagreement has to be explained rather than arbitrated: the
+adapter did measure ~946 ms at some point, which is suspiciously exactly
+solo_a + solo_b, so the slow steps may be real and rare while the
+adapter's staleness makes them look continuous. Medians cannot tell those
+apart, which is why the harness now keeps both instruments' full per-step
+series instead of their medians.
+
+**Recorded plainly: this is the ninth time today's pattern has repeated.**
+A property of the measurement presented itself as a property of the
+thing measured, and it did so with a beautiful quantitative fit --
+solo_a + solo_b, five splits, within 3-9%, over a 3x range. The fit was
+real and it was fitting an artifact. Nothing about a good fit makes an
+instrument trustworthy.
+
+The conclusions suspended by this, pending re-measurement: the co-run
+bistability and its per-mask-pair latch; the two-episode transient and
+the serialisation account of it; ``MEASURED_STEP_PAIR_EXTERNALITY`` and
+``MEASURED_STEP_PAIRING_FAST``/``_SLOW``; the +41.7% and +13.0%/-25.9%
+figures. The code built around them -- the sticky policy, the latched
+model, the serial fallback -- is not thereby wrong, but its calibration
+is unfounded until the numbers are re-established.
+
+Not suspended: everything measured by byte comparison or by counting
+(Gate A's masks, the ASLE bit-exactness, residency, the leak, the churn,
+Jain), and the solo quota curves, which were measured with fresh adapters
+whose first step always drained.

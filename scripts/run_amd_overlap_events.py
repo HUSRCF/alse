@@ -77,17 +77,18 @@ def coverage(intervals_a, intervals_b):
     return busy, both
 
 
-def episode(models, adapters, pool, units, args, torch):
+def episode(models, adapters, pool, units, args, torch, *, sync=True):
     """One co-run, keeping every step's start and end event."""
     left, right = pool.disjoint_pair(units[0], units[1])
     streams = {"a": left, "b": right}
     marks: dict[str, list] = {"a": [], "b": []}
+    reported: dict[str, list] = {"a": [], "b": []}
     barrier = threading.Barrier(2)
 
     prepared = {}
     wrappers = {}
-    for name, model in (("a", models[0]), ("b", models[1])):
-        adapter = adapters[model]
+    for name, index in (("a", 0), ("b", 1)):
+        adapter = adapters[index]
         adapter.stream = streams[name].handle
         wrappers[name] = torch.cuda.ExternalStream(streams[name].handle.value)
         executor = StepExecutor(object(), adapter, total_steps=args.steps)
@@ -96,7 +97,15 @@ def episode(models, adapters, pool, units, args, torch):
 
     # The common origin, recorded on the default stream once both sides
     # are prepared and before either starts stepping.
-    torch.cuda.synchronize()
+    #
+    # ``sync`` is a variable, not a detail. This harness synchronised here
+    # and saw no transient at all, where the mismatched harness -- which
+    # does not -- sees 6.3x for two episodes in four processes of four.
+    # Two things differ between them and this is one; the other is whether
+    # a full-die solo ran beforehand. Leaving the synchronise hard-coded
+    # would have made the difference unattributable.
+    if sync:
+        torch.cuda.synchronize()
     origin = torch.cuda.Event(enable_timing=True)
     origin.record()
 
@@ -113,6 +122,14 @@ def episode(models, adapters, pool, units, args, torch):
             executor.run_step(quota_units=quota)
             after.record(wrappers[name])
             marks[name].append((before, after))
+            # The adapter's own deferred reading, collected alongside.
+            # The two harnesses disagree -- the mismatched one sees 6.3x
+            # for two episodes in twelve processes and this one sees
+            # nothing under any of four configurations -- and they differ
+            # in which instrument they read. Reading both in one run says
+            # whether the transient is in the die or in the reading.
+            if adapter.last_step_seconds:
+                reported[name].append(adapter.last_step_seconds)
 
     threads = [threading.Thread(target=side, args=(n, u))
                for n, u in (("a", units[0]), ("b", units[1]))]
@@ -132,7 +149,7 @@ def episode(models, adapters, pool, units, args, torch):
     }
     for name in ("a", "b"):
         prepared[name][0].drain_timing()
-    return intervals
+    return intervals, reported
 
 
 def main() -> int:
@@ -147,6 +164,15 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--split", default="16+16")
     parser.add_argument("--episodes", type=int, default=5)
+    parser.add_argument("--models", default="sdxl,cogvideox-2b",
+                        help="the two tenants; sdxl,sdxl measures the "
+                             "self-paired case the latch campaign used")
+    parser.add_argument("--no-sync-before-episode", action="store_true",
+                        help="skip the device synchronise before each "
+                             "episode, as the mismatched harness does")
+    parser.add_argument("--also-solo-32", action="store_true",
+                        help="run a full-die solo before the episodes, as "
+                             "the mismatched harness does")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     args.keep_text_encoders = False
@@ -154,32 +180,41 @@ def main() -> int:
     import torch
 
     units = [int(u) for u in args.split.split("+")]
-    models = ["sdxl", "cogvideox-2b"]
+    models = [m.strip() for m in args.models.split(",")]
     pool = MaskedStreamPool(harness.make_stream)
 
+    # Keyed by side, not by model: a self-paired run needs two adapters
+    # of the same model, and one adapter cannot hold two requests'
+    # streams at once.
     pipelines, adapters = {}, {}
     for index, model in enumerate(models):
-        print(f"loading {model} ...", flush=True)
-        pipelines[model] = harness.build_pipeline(model,
-                                                  drop_text_encoders=False)
-        adapters[model] = harness.make_adapter(model, pipelines[model], args,
+        if model not in pipelines:
+            print(f"loading {model} ...", flush=True)
+            pipelines[model] = harness.build_pipeline(
+                model, drop_text_encoders=False)
+        adapters[index] = harness.make_adapter(model, pipelines[model], args,
                                                seed=args.seed + index)
+    for model in pipelines:
         harness.free_text_encoders(pipelines[model])
-    for model in models:
+    for index in range(2):
         for width in sorted({units[0], units[1], 32}):
-            harness.warm(adapters[model], pool, width, args)
+            harness.warm(adapters[index], pool, width, args)
 
     solo = {}
     for index, model in enumerate(models):
-        samples = harness.run_solo(adapters[model], pool, units[index], args)
-        solo[model] = statistics.median(samples)
+        samples = harness.run_solo(adapters[index], pool, units[index], args)
+        solo[index] = statistics.median(samples)
+        if args.also_solo_32:
+            harness.run_solo(adapters[index], pool, 32, args)
         print(f"  solo {model:13s} {units[index]:2d}u: "
-              f"{solo[model] * 1000:8.1f} ms", flush=True)
+              f"{solo[index] * 1000:8.1f} ms", flush=True)
 
     rows = []
     for index in range(1, args.episodes + 1):
         began = time.perf_counter()
-        intervals = episode(models, adapters, pool, units, args, torch)
+        intervals, reported = episode(
+            models, adapters, pool, units, args, torch,
+            sync=not args.no_sync_before_episode)
         kept = {name: values[args.warmup:]
                 for name, values in intervals.items()}
         busy, both = coverage(kept["a"], kept["b"])
@@ -193,14 +228,29 @@ def main() -> int:
             "steps_kept": {n: len(kept[n]) for n in ("a", "b")},
             "elapsed_s": time.perf_counter() - began,
         }
-        for name, model in (("a", models[0]), ("b", models[1])):
+        for name, side in (("a", 0), ("b", 1)):
+            model = f"{models[side]}#{side}"
             step_ms = statistics.median(durations[name])
-            row[model] = {"step_ms": step_ms,
-                          "externality": step_ms / 1000.0 / solo[model]}
+            said = reported[name][args.warmup:]
+            row[model] = {
+                "step_ms": step_ms,
+                # The series, not just its median. The two instruments
+                # disagree by 10x on the same steps, and a median cannot
+                # show whether that is a few very slow steps or all of
+                # them -- which is the whole question.
+                "span_series_ms": durations[name],
+                "adapter_series_s": said,
+                "externality": step_ms / 1000.0 / solo[side],
+                "adapter_step_s": statistics.median(said) if said else None,
+                "adapter_externality": (statistics.median(said) / solo[side]
+                                        if said else None),
+            }
         rows.append(row)
         print(f"  ep {index}  overlap {row['overlap_fraction']:6.3f}   "
-              + "  ".join(f"{m} {row[m]['externality']:6.3f}"
-                          for m in models), flush=True)
+              + "  ".join(
+                  f"{m} span {row[m]['externality']:6.3f} / adapter "
+                  f"{row[m]['adapter_externality'] or float('nan'):6.3f}"
+                  for m in (f"{models[0]}#0", f"{models[1]}#1")), flush=True)
 
     early = [r for r in rows if r["episode"] <= 2]
     late = [r for r in rows if r["episode"] > 2]
@@ -215,11 +265,13 @@ def main() -> int:
         "instrument": ("the sides' own CUDA events against a common "
                        "origin, one synchronise per episode and it is "
                        "after the episode"),
+        "sync_before_episode": not args.no_sync_before_episode,
+        "full_die_solo_before_episodes": bool(args.also_solo_32),
         "models": models,
         "split": args.split,
         "steps": args.steps,
         "warmup_dropped": args.warmup,
-        "solo_p50_s": solo,
+        "solo_p50_s": {str(k): v for k, v in solo.items()},
         "episodes": rows,
     }
     if early and late:
@@ -232,8 +284,9 @@ def main() -> int:
             and payload["late_overlap"] > 0.30)
         # The same validity check the profiler run failed.
         payload["transient_reproduced"] = (
-            statistics.mean(r[models[0]]["externality"] for r in early) > 3.0
-            and statistics.mean(r[models[0]]["externality"]
+            statistics.mean(r[f"{models[0]}#0"]["adapter_externality"]
+                            for r in early) > 3.0
+            and statistics.mean(r[f"{models[0]}#0"]["adapter_externality"]
                                 for r in late) < 1.5)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=2) + "\n")
