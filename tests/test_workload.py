@@ -88,14 +88,59 @@ class BurstSizeHoldsTheMeanRate(unittest.TestCase):
 
 
 class DeadlinesAreRelativeToTheIsolatedP99(unittest.TestCase):
-    def test_slack_multiplies_the_p99_not_the_request(self):
+    def test_against_a_request_the_slack_multiplies_one_request(self):
         for slack in (1.25, 1.5, 2.0):
             with self.subTest(slack=slack):
-                _, trace = trace_for(deadline_slack=slack)
+                _, trace = trace_for(deadline_slack=slack,
+                                     deadline_base="request")
                 for request in urgent(trace):
                     self.assertAlmostEqual(
                         request.deadline_s - request.arrival_s,
                         slack * URGENT_LATENCY_P99, places=9)
+
+    def test_against_a_burst_the_slack_multiplies_the_whole_burst(self):
+        """Which is what made the metric able to discriminate at all.
+
+        A per-request deadline at burst 4 puts three of every four
+        requests past their deadline on an idle die, and five policies
+        came within one request in forty of each other.
+        """
+        for burst in (2, 4, 8):
+            with self.subTest(burst=burst):
+                _, trace = trace_for(burst=burst, deadline_slack=1.5,
+                                     deadline_base="burst")
+                for request in urgent(trace):
+                    self.assertAlmostEqual(
+                        request.deadline_s - request.arrival_s,
+                        1.5 * URGENT_LATENCY_P99 * burst, places=9)
+
+    def test_a_burst_deadline_is_reachable_on_an_idle_die(self):
+        """The property the sweep identified: feasible, then contended."""
+        for burst in (2, 4, 8):
+            with self.subTest(burst=burst):
+                spec, trace = trace_for(burst=burst, deadline_slack=1.5,
+                                        deadline_base="burst")
+                window = min(r.deadline_s - r.arrival_s for r in urgent(trace))
+                self.assertGreater(window, burst * URGENT_S,
+                                   "a whole burst must fit alone on the die")
+
+    def test_a_per_request_deadline_is_not_reachable_past_burst_two(self):
+        """Recorded as a property of the design, not left as a surprise."""
+        spec, trace = trace_for(burst=4, deadline_slack=1.5,
+                                deadline_base="request")
+        window = min(r.deadline_s - r.arrival_s for r in urgent(trace))
+        self.assertLess(window, 4 * URGENT_S)
+
+    def test_the_base_is_named_in_the_cell_id(self):
+        """Two cells that differ only in it are different cells."""
+        by_burst, _ = trace_for(deadline_base="burst")
+        by_request, _ = trace_for(deadline_base="request")
+        self.assertNotEqual(by_burst.cell_id, by_request.cell_id)
+
+    def test_an_unknown_base_is_refused(self):
+        with self.assertRaises(ValueError):
+            CellSpec(load=0.6, burst=4, deadline_slack=1.5, seed=0,
+                     horizon_s=10.0, deadline_base="whatever")
 
     def test_video_carries_no_deadline(self):
         """Its SLO is stall, a property of the schedule not the request."""

@@ -99,6 +99,11 @@ def main() -> int:
     parser.add_argument("--load", type=float, default=0.6)
     parser.add_argument("--burst", type=int, default=4)
     parser.add_argument("--deadline-slack", type=float, default=1.5)
+    parser.add_argument("--deadline-base", default="burst",
+                        choices=("burst", "request"),
+                        help="what the slack multiplies; measured on "
+                             "2026-08-09, 'request' saturates the miss "
+                             "rate at burst 4 and no policy can move it")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--urgent-steps", type=int, default=8)
     parser.add_argument("--video-steps", type=int, default=30)
@@ -150,14 +155,16 @@ def main() -> int:
     sizing = CellSpec(load=args.load, burst=args.burst,
                       deadline_slack=args.deadline_slack, seed=args.seed,
                       horizon_s=1.0, urgent_steps=args.urgent_steps,
-                      video_steps=args.video_steps)
+                      video_steps=args.video_steps,
+                      deadline_base=args.deadline_base)
     horizon = horizon_for_urgent_count(sizing,
                                        urgent_service_s=service["urgent"],
                                        wanted=args.urgent_count)
     spec = CellSpec(load=args.load, burst=args.burst,
                     deadline_slack=args.deadline_slack, seed=args.seed,
                     horizon_s=horizon, urgent_steps=args.urgent_steps,
-                    video_steps=args.video_steps)
+                    video_steps=args.video_steps,
+                    deadline_base=args.deadline_base)
     trace = build_trace(spec, urgent_service_s=service["urgent"],
                         video_service_s=service["video"],
                         # The request's isolated latency, not its step
@@ -253,7 +260,8 @@ def main() -> int:
         "cell": spec.cell_id,
         "policy": args.policy,
         "spec": {"load": spec.load, "burst": spec.burst,
-                 "deadline_slack": spec.deadline_slack, "seed": spec.seed,
+                 "deadline_slack": spec.deadline_slack,
+                 "deadline_base": spec.deadline_base, "seed": spec.seed,
                  "horizon_s": horizon, "urgent_steps": args.urgent_steps,
                  "video_steps": args.video_steps},
         "one_adapter_per_tenant": True,
@@ -274,8 +282,9 @@ def main() -> int:
             # keeps a pre-registration honest about where the metric can
             # discriminate at all.
             "latencies_s": sorted(latencies),
-            "deadline_s_from_arrival": (spec.deadline_slack
-                                        * service["urgent"]),
+            "deadline_s_from_arrival": (
+                spec.deadline_slack * service["urgent"]
+                * (spec.burst if spec.deadline_base == "burst" else 1)),
             "steps_done": urgent_steps_done,
             "completed": len(latencies),
             "miss_rate": len(misses) / len(urgent) if urgent else None,
