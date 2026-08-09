@@ -1724,3 +1724,44 @@ round in seven.
 What produces a 3:1 quantisation is unmeasured, and this project has
 written four wrong explanations for a co-run effect. It is recorded as a
 shape and a rate.
+
+### 2026-08-08 -- the per-step pair table, and why it is not wired in yet
+
+``MEASURED_STEP_PAIR_EXTERNALITY``, keyed by (model, units, peer_model,
+peer_units) and giving that side's factor. Eleven entries: five
+mismatched pairings from both sides, and the self-paired 16+16.
+
+Keyed by both models because a mismatched pairing does not penalise its
+tenants equally -- at 24+8 SDXL reads 0.998 and CogVideoX 1.007, at 16+16
+they read 1.010 and 1.051 -- and per side because averaging them would
+hide who pays.
+
+**Three things it cannot hold, all recorded beside it rather than left
+for a reader to discover.**
+
+The transient. A mismatched pairing runs serialised for two episodes at
+1.89x to 26.3x depending on the split, which is the largest effect in the
+data. A table keyed on widths has nowhere to put "and for the first two
+rounds it is 26x", so ``MEASURED_MISMATCHED_SETTLE_EPISODES`` sits next
+to it and a test asserts the settled factor does not describe it.
+
+The draw. The self-paired entry carries the fast state, which the die
+takes six times in eight; the slow one is 51% worse and no lookup can say
+which this process got. The entry exists so a lookup does not fail, not
+because a number is the right answer.
+
+The width-only fallback. ``step_pair_externality`` returns None for a
+pairing it has not measured rather than reaching for
+``MEASURED_EXTERNALITY``. That table is call-level and describes a
+different quantity; substituting it is exactly the granularity error this
+project has now made twice.
+
+**Not wired into ``externality()``.** That function is on the path the
+behavioural lock covers, and repointing it changes what every mixed-model
+trace costs. The change is worth making, and worth making on its own,
+with the lock re-examined and the simulator's mixed-model traces looked
+at -- not as a side effect of recording measurements. Until then the
+table is data with provenance and eight tests, and the frozen path is
+untouched.
+
+954 tests pass; freeze verifies.

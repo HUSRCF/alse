@@ -176,6 +176,72 @@ MEASURED_STEP_PAIRING_FAST_RATE = 0.75   # 6 of 8 processes; see below
 # probability 0.056. What a scheduler needs is that the state is
 # detectable, which it is; not that it is rare, which is unestablished.
 
+# Per-step, per-side, per model pair. Keyed by (model, units,
+# peer_model, peer_units) and giving *that side's* factor, because a
+# mismatched pairing does not penalise its two tenants equally: at 24+8
+# SDXL reads 0.998 while CogVideoX reads 1.007, and at 16+16 they read
+# 1.010 and 1.051.
+#
+# Measured 2026-08-08 on gfx1201 with each model's own step adapter, SDXL
+# at 768x768 and CogVideoX-2b at 480x720x9f, taking the settled episodes
+# only. Every mismatched pairing measured settles to both tenants running
+# at very nearly solo speed, which is why these are all near 1.0 -- the
+# self-paired entries are the ones that are not.
+#
+# **The first two co-run episodes of a mismatched pairing are not
+# described by this table and cannot be.** They run serialised: each
+# side's step costs about the sum of the two solo steps, which is a
+# factor of 1.89 to 26.3 depending on the split. A cost model keyed on
+# widths has nowhere to put "and for the first two rounds it is 26x", and
+# a scheduler meets that through measurement -- the runtime's drift
+# envelope and the policy's probe -- rather than through a lookup.
+#
+# Deliberately **not** wired into ``externality()`` yet. That function is
+# on the path the behavioural lock covers, and repointing it would change
+# what every mixed-model trace costs; the change is worth making
+# separately, with the lock re-examined, rather than as a side effect of
+# recording measurements. See docs/gate-c-decision-log.md.
+MEASURED_STEP_PAIR_EXTERNALITY: dict[tuple[str, int, str, int], float] = {
+    # SDXL beside CogVideoX-2b, settled.
+    ("sdxl", 4, "cogvideox-2b", 28): 0.981,
+    ("sdxl", 8, "cogvideox-2b", 24): 0.991,
+    ("sdxl", 16, "cogvideox-2b", 16): 1.010,
+    ("sdxl", 24, "cogvideox-2b", 8): 0.998,
+    ("sdxl", 28, "cogvideox-2b", 4): 1.006,
+    # CogVideoX-2b beside SDXL, settled. Same pairings, the other side.
+    ("cogvideox-2b", 28, "sdxl", 4): 1.055,
+    ("cogvideox-2b", 24, "sdxl", 8): 1.062,
+    ("cogvideox-2b", 16, "sdxl", 16): 1.051,
+    ("cogvideox-2b", 8, "sdxl", 24): 1.007,
+    ("cogvideox-2b", 4, "sdxl", 28): 1.015,
+    # SDXL against itself. The only pairing measured that is bistable,
+    # and the entry a table cannot honestly hold on its own: the die draws
+    # one of these per mask pair and latches it, 6 of 8 processes fast.
+    # MEASURED_STEP_PAIRING_FAST / _SLOW carry the same two numbers for
+    # the simulator's draw.
+    ("sdxl", 16, "sdxl", 16): MEASURED_STEP_PAIRING_FAST,
+}
+
+# The transient, kept because it is the largest effect in the data and
+# leaving it out of the module would make the table above read as the
+# whole story. Value is the number of co-run episodes a mismatched
+# pairing spends serialised before it settles.
+MEASURED_MISMATCHED_SETTLE_EPISODES = 2
+
+
+def step_pair_externality(model: str, units: int, peer_model: str,
+                          peer_units: int) -> float | None:
+    """That side's settled per-step factor, or None if unmeasured.
+
+    Returns None rather than raising, and rather than falling back to the
+    width-only table: the width-only table is call-level and describes a
+    different quantity, so substituting it would be the granularity error
+    this project has now made twice.
+    """
+    return MEASURED_STEP_PAIR_EXTERNALITY.get(
+        (model, units, peer_model, peer_units))
+
+
 MEASURED_EXTERNALITY: dict[tuple[int, int], float] = {
     (4, 28): 1.3383,
     (8, 24): 1.3070,
