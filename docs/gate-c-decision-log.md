@@ -1930,3 +1930,63 @@ The suspension stays until the span measurement stands on its own count
 of processes. The point of yesterday's retraction was not that the
 numbers were too high or too low; it was that they came from an
 instrument that had not been checked, and checking it is what this is.
+
+### 2026-08-09 -- the bistability re-established on a checked instrument
+
+Eight processes, four episodes each, self-paired SDXL 16+16, measured by
+device span rather than by the adapter's deferred read.
+
+| | processes | side-episodes | mean | range | overlap |
+| --- | --- | --- | --- | --- | --- |
+| fast | 7 of 8 | 56 | **1.274** | 1.238-1.328 | 0.91-0.96 |
+| slow | 1 of 8 | 8 | **1.871** | 1.843-1.920 | 0.994 |
+
+Ratio 1.468. Latched per process, as the adapter campaign said: p6 is
+slow in all four of its episodes and the other seven are fast in all of
+theirs. No process straddles.
+
+**So the shape of yesterday's finding survives and its numbers do not.**
+
+| | adapter reading | span |
+| --- | --- | --- |
+| fast state | 1.176 | 1.274 |
+| slow state | 1.776 | 1.871 |
+| ratio | 1.51 | 1.47 |
+| fast draws | 6 of 8 | 7 of 8 |
+
+Recomputed against rotation, with solo 16u at 157.6 ms and 32u at 108.9:
+
+    fast   paired 200.8 ms vs rotating 217.8 ms   partitioning  +8.5%
+    slow   paired 294.9 ms vs rotating 217.8 ms   partitioning -26.1%
+
+Against yesterday's +13.0% and -25.9%. The claim is the same claim and it
+is 4.5 points smaller on the side that mattered.
+
+An aside worth keeping: the slow state has the *higher* overlap fraction,
+0.994 against 0.91-0.96. Whatever the two states are, the slow one is not
+"they stopped running concurrently".
+
+**What is now established, and by what.**
+
+  * The self-paired co-run penalty is bistable and latches per process:
+    1.274 or 1.871, seven of eight fast, no process straddling. Span
+    instrument, eight processes.
+  * The mismatched pairing is very nearly free -- 1.02 and 1.05 -- with
+    no cross-episode transient. Span instrument.
+  * There is a real slow phase at the start of every co-run episode:
+    1684, 1683, 888 ms then 156 ms, the same shape in all four episodes
+    of a run. It repeats per episode; it does not decay across them.
+
+**What remains retracted.** The two-episode transient, the
+sum-of-solo-steps account of it across five splits, the per-split settled
+table, the 3:1 quantised outlier, and the absolute values in
+``MEASURED_STEP_PAIR_EXTERNALITY`` and the two pairing constants. Those
+were medians of a variable that held one number for a whole episode.
+
+**One caveat on the solo baselines, stated rather than assumed.** They
+come from the same adapter reading. They survive it for a specific
+reason: ``run_solo`` changes width from the previous run, so the adapter
+drains on its first step and latches a correct value for that width, and
+the resulting numbers agree with Gate B's quota curves, which were
+measured with a fresh adapter per point. That is an argument, and it
+would be better as a measurement; the span instrument can produce one.
