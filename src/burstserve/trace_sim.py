@@ -496,7 +496,8 @@ class PairingStates:
 
     def __init__(self, *, seed: int = 0, rate: float = PAIRING_STATE_RATE,
                  enabled: bool = False, latched: bool = False,
-                 fast: float | None = None, slow: float | None = None):
+                 fast: float | None = None, slow: float | None = None,
+                 settle_after: int = 0):
         self._rng = random.Random(seed)
         self.rate = rate
         self.enabled = enabled
@@ -515,11 +516,21 @@ class PairingStates:
         self.slow = (MEASURED_STEP_PAIRING_SLOW if slow is None
                      else slow) if latched else (
             SLOW_PAIRING_EXTERNALITY if slow is None else slow)
+        # Rounds of real co-run a pairing spends slow before it settles.
+        # Measured on the mismatched pair: SDXL against CogVideoX-2b ran
+        # at 6.29x and 6.15x for its first two episodes and then 1.01x for
+        # every episode after, identically in four processes. A model
+        # without this cannot represent the case where giving up early
+        # forfeits the gain, which is the case that decides whether a
+        # sticky verdict may be permanent.
+        self.settle_after = settle_after
         self._state: dict[frozenset[int], bool] = {}
         self._latched: dict[tuple[int, ...], bool] = {}
+        self._rounds_seen: dict[tuple[int, ...], set] = {}
 
     def factor_for(self, members: frozenset[int],
-                   quotas: Sequence[int] | None = None) -> float:
+                   quotas: Sequence[int] | None = None,
+                   at: float | None = None) -> float:
         """Externality multiplier for the pairing.
 
         Without ``latched`` the draw is per member set and a re-formed
@@ -532,6 +543,16 @@ class PairingStates:
             return self.fast
         if self.latched:
             key = tuple(sorted(quotas)) if quotas else tuple(sorted(members))
+            if self.settle_after:
+                # Counted in distinct rounds rather than calls, because a
+                # round asks once per member and a pairing that settles
+                # after two rounds is not one that settles after four
+                # calls.
+                seen = self._rounds_seen.setdefault(key, set())
+                seen.add(at)
+                if len(seen) <= self.settle_after:
+                    return self.slow
+                return self.fast
             if key not in self._latched:
                 self._latched[key] = self._rng.random() < self.rate
             return self.fast if self._latched[key] else self.slow
@@ -888,7 +909,7 @@ def simulate(
                     # granted widths are passed rather than only the
                     # members.
                     factor = pairing_states.factor_for(
-                        members, quotas=[u for _, u in active])
+                        members, quotas=[u for _, u in active], at=now)
             except UnmeasuredPairing:
                 unmeasured.append((units, peer if peer is not None else -1))
                 factor = 1.0

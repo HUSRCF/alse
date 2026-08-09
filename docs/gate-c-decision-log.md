@@ -1532,3 +1532,60 @@ disturbing something SDXL then recovers from -- are guesses, and this
 project has already written four wrong explanations for a co-run effect.
 What is measured is that it takes two episodes, it is the same in four
 processes, and it holds afterwards.
+
+### Post-freeze change 11 -- pass the round to the pairing state
+
+``trace_sim.simulate`` now passes ``at=now`` to
+``PairingStates.factor_for``. One structural hash moves; no behavioural
+digest and no table does, because the argument is ignored unless
+``settle_after`` is set.
+
+It exists so the simulator can represent the mismatched pairing's
+transient: two rounds of real co-run at the slow figure, then the fast
+one, which is what four processes measured to within 0.02. Counted in
+distinct rounds rather than calls, since a round asks once per member and
+"settles after two rounds" is not "settles after four calls".
+
+Without it the simulator cannot express the case that decides whether a
+sticky verdict may be permanent -- a pairing that is genuinely bad when
+first probed and genuinely good three rounds later. Asserting that the
+backoff handles it, which the previous entry did, is reasoning; this is
+what makes it testable.
+
+#### Measured, not reasoned: what each policy does in each regime
+
+Twelve seeds, utilisation against a whole die of 1.0. The left column is
+the self-paired die -- a state drawn per mask pair and latched. The right
+is the mismatched one -- two rounds slow, then fast for good.
+
+| policy | latched bistable | settles after 2 |
+| --- | --- | --- |
+| exclusive, whole die | 1.0000 | 1.0000 |
+| blind pairing | 0.9664 | **1.2369** |
+| probing_partitioning (frozen) | 1.0367 | 1.2268 |
+| sticky, backoff 1 s to 60 s | **1.0767** | 1.2025 |
+| sticky, verdict permanent | 1.0813 | 0.9982 |
+
+Three of the four claims in the previous entry hold. A permanent verdict
+does forfeit the settled pairing, and by more than "forfeit" suggests:
+0.9982, worse than never partitioning at all. The frozen policy's
+re-forming does find it. The backoff does rescue the sticky variant,
+1.2025 against 0.9982.
+
+**The fourth was wrong, and in a direction worth keeping.** Blind pairing
+is the best policy in the settling regime -- 1.2369, ahead of every
+probing variant. Of course it is: probing buys the ability to refuse a
+bad pairing, and where every pairing becomes good there is nothing to
+refuse and the probe is pure overhead. The probe earns its keep in the
+other column, where blind pairing scores 0.9664 and loses to doing
+nothing.
+
+So no policy here dominates, and the die shows **both** regimes: identical
+tenants latch into a drawn state, mismatched ones settle into a good one.
+Any single-regime tuning is tuned against half the hardware.
+
+The backoff's trade is now a measurement rather than an argument. It
+costs 0.4% in the latched regime -- 1.0767 against a permanent verdict's
+1.0813 -- and it is worth 20% in the settling one. That is the shape of
+trade a design should take, and this morning it was justified only by
+"nothing rules it out".

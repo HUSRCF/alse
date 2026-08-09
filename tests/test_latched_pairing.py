@@ -270,3 +270,71 @@ class StickyProbeDoesNotPayTwiceForTheSameAnswer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class APairingThatIsBadBeforeItIsGood(unittest.TestCase):
+    """The mismatched pairing settles, and giving up permanently forfeits it.
+
+    SDXL against CogVideoX-2b ran at 6.29x and 6.15x for its first two
+    co-run episodes and 1.01x for every one after, identically in four
+    processes. The probe's threshold is 1.608x, so the first measurement
+    condemns a pairing that pays +41.7% three episodes later.
+
+    The previous entry in the decision log asserted that the frozen
+    policy's re-forming finds it while a permanent sticky verdict would
+    not, and that the backoff is what makes the sticky variant safe. That
+    was reasoning. These are the measurements of it.
+    """
+
+    @staticmethod
+    def settling_utilisations(policy_or_factory, *, calls_factory=False,
+                              settle_after=2):
+        out = []
+        for seed in SEEDS:
+            policy = (policy_or_factory() if calls_factory
+                      else policy_or_factory)
+            out.append(simulate(
+                backlogged(), policy, horizon_s=1200.0,
+                pairing_states=PairingStates(seed=seed, enabled=True,
+                                             latched=True,
+                                             settle_after=settle_after),
+            ).utilisation())
+        return out
+
+    def test_the_settling_is_modelled_at_all(self):
+        """Otherwise everything below is vacuous."""
+        states = PairingStates(seed=0, enabled=True, latched=True,
+                               settle_after=2)
+        members, quotas = frozenset({1, 2}), [16, 16]
+        seen = [states.factor_for(members, quotas=quotas, at=t)
+                for t in (0.0, 0.25, 0.50, 0.75)]
+        self.assertEqual(seen[:2], [states.slow, states.slow])
+        self.assertEqual(seen[2:], [states.fast, states.fast])
+
+    def test_a_permanent_verdict_forfeits_the_settled_pairing(self):
+        """Which is why the backoff is not decoration."""
+        forever = statistics.mean(self.settling_utilisations(
+            lambda: make_sticky_probing_partitioning(base_backoff_s=1e9,
+                                                     max_backoff_s=1e9),
+            calls_factory=True))
+        backing_off = statistics.mean(self.settling_utilisations(
+            make_sticky_probing_partitioning, calls_factory=True))
+        self.assertGreater(backing_off, forever)
+
+    def test_the_frozen_policy_finds_it_too(self):
+        """It re-forms every round, so it pays the transient and keeps it."""
+        frozen = statistics.mean(
+            self.settling_utilisations(probing_partitioning))
+        forever = statistics.mean(self.settling_utilisations(
+            lambda: make_sticky_probing_partitioning(base_backoff_s=1e9,
+                                                     max_backoff_s=1e9),
+            calls_factory=True))
+        self.assertGreater(frozen, forever)
+
+    def test_backing_off_still_beats_the_whole_die_here(self):
+        """A policy that survives the transient should still be worth it."""
+        exclusive = statistics.mean(
+            self.settling_utilisations(exclusive_fcfs))
+        backing_off = statistics.mean(self.settling_utilisations(
+            make_sticky_probing_partitioning, calls_factory=True))
+        self.assertGreater(backing_off, exclusive)
