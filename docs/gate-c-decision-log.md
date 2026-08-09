@@ -2180,3 +2180,42 @@ experiment can produce the claim, which is what was in doubt this morning
 when every policy sat at the ceiling. Five seeds and the frozen load and
 burst set are what turns it into a result, and the wall clock for that is
 measured: 159 s a cell, about 7 hours for the 160-cell primary subset.
+
+### 2026-08-09 -- checking the null before believing the first group
+
+The first complete group -- nine policies, load 0.6, burst 4, seed 0 --
+came out ordered almost exactly as the policies were run:
+
+    exclusive_fcfs 0.700, static_even 0.575, deadline_aware 0.425,
+    step_matched 0.375, measured_pairs 0.450, slo_aware 0.375,
+    probing 0.350, sticky 0.375, oracle 0.075
+
+Position and quality coincided, and the order happened to run the
+policies I expected to win last. That is the shape of a confound, so it
+was checked rather than reported and rather than discarded.
+
+**The check.** Isolated service and the deadline derived from it, by
+position: 882 ms and 5.29 s at position 1, then 900-905 ms and 5.40-5.43
+s for positions 2 through 9. So the first arm does face a 2.4% tighter
+deadline -- a real bias -- but positions 2 to 9 face the same one to
+within 0.6%, and their miss rates are not monotone in position: position
+5 reads 0.450 against position 4's 0.375, and position 8 reads 0.375
+against position 7's 0.350. The spread is policy, not position.
+
+**Two faults fixed anyway, because both were mine and both are the same
+kind.**
+
+Isolated service is now measured once per group and shared by every arm.
+The deadline comes from it, so measuring per arm hands whichever policy
+runs first a colder card and a tighter window. Arms being compared must
+face the same deadline or they are not the same experiment.
+
+Policy order now rotates by group. A fixed order across twenty groups
+confounds position with policy completely -- and this is precisely the
+defect that cost a day when a repeat campaign varied seed with position
+and no result in it could separate the two. Rotating makes the residual
+average out and, more usefully, makes it measurable.
+
+The two groups already run are kept as ``matrix_20260809_v1`` rather
+than deleted. They are valid measurements of a design with a known bias,
+and the bias is documented here.

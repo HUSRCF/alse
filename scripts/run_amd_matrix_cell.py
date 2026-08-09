@@ -97,6 +97,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", default="probing_partitioning",
                         help="one policy, or use --policies for a group")
+    parser.add_argument("--per-policy-isolated", action="store_true",
+                        help="re-measure isolated service for every policy "
+                             "instead of once per group. Off by default: "
+                             "the deadline comes from that measurement, so "
+                             "per-policy measurement hands the first arm a "
+                             "colder card and a 2.4% tighter deadline.")
     parser.add_argument("--policies", default="",
                         help="comma-separated policies run back to back in "
                              "one process. This is how a group is run, not "
@@ -157,24 +163,45 @@ def main() -> int:
     policies = ([p.strip() for p in args.policies.split(",") if p.strip()]
                 or [args.policy])
     out_template = str(args.out)
+
+    # Isolated service once per group, shared by every arm in it. The
+    # deadline is derived from it, so measuring per arm gives the arm that
+    # runs first a colder card and a shorter deadline: measured, the first
+    # position read 882 ms against 900-905 for the rest, a 2.4% tighter
+    # window for whichever policy happens to go first. Arms being compared
+    # must face the same deadline or they are not the same experiment.
+    shared = None
+    if not args.per_policy_isolated and len(policies) > 1:
+        shared = measure_isolated(args, torch, models, pool, warm_adapters,
+                                  label="group")
     for policy_name in policies:
         run_one(policy_name, args, torch, models, pool, pipelines,
                 warm_adapters, loaded_s, began_all, out_template,
-                len(policies) > 1)
+                len(policies) > 1, shared)
     return 0
 
 
-def run_one(policy_name, args, torch, models, pool, pipelines,
-            warm_adapters, loaded_s, began_all, out_template, many):
-    began_all = time.perf_counter() - loaded_s
-    print(f"measuring isolated service [{policy_name}] ...", flush=True)
+def measure_isolated(args, torch, models, pool, warm_adapters, *, label):
     service, p99 = {}, {}
+    print(f"measuring isolated service [{label}] ...", flush=True)
     for tenant in models:
         steps = (args.urgent_steps if tenant == "urgent" else args.video_steps)
         service[tenant], p99[tenant] = isolated_service(
             warm_adapters[tenant], pool, steps, args, torch)
         print(f"  {tenant:6s} service {service[tenant]:7.2f} s   "
               f"step p99 {p99[tenant] * 1000:7.1f} ms", flush=True)
+    return service, p99
+
+
+def run_one(policy_name, args, torch, models, pool, pipelines,
+            warm_adapters, loaded_s, began_all, out_template, many,
+            shared=None):
+    began_all = time.perf_counter() - loaded_s
+    if shared is not None:
+        service, p99 = shared
+    else:
+        service, p99 = measure_isolated(args, torch, models, pool,
+                                        warm_adapters, label=policy_name)
     warmed_s = time.perf_counter() - began_all
 
     sizing = CellSpec(load=args.load, burst=args.burst,
@@ -293,6 +320,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "identical_seeds_within_tenant": True,
         "isolated_service_s": service,
         "isolated_step_p99_s": p99,
+        "isolated_shared_across_group": shared is not None,
         "deadline_base_s": service["urgent"],
         "deadline_base": "isolated request latency, not step p99",
         "requests": {"total": len(trace.requests),
