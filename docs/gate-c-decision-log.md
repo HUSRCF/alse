@@ -1873,3 +1873,60 @@ Not suspended: everything measured by byte comparison or by counting
 (Gate A's masks, the ASLE bit-exactness, residency, the leak, the churn,
 Jain), and the solo quota curves, which were measured with fresh adapters
 whose first step always drained.
+
+### 2026-08-09 -- the two instruments separated: what was artifact and what was not
+
+Keeping both instruments' full per-step series instead of their medians
+answers it in one run.
+
+**The adapter's reading is a single value repeated.** Over eight
+SDXL-side episodes it has `distinct values = 1` every time -- nine
+appends, one number. The CogVideoX side, whose steps run ~830 ms, has 8
+or 9 distinct values out of 9. The deferred read succeeds when the
+previous step's events have had time to retire and fails when they have
+not, so a side with short steps reports whichever reading it happened to
+be holding, for the whole episode:
+
+    episode 1   adapter 963 ms     episode 3   adapter 156 ms
+    episode 2   adapter 949 ms     episode 4   adapter 1666 ms
+
+That is the "two-episode transient" and the "latch". Not a state of the
+die -- a state of the variable.
+
+**But the span series shows real structure, and it is inside every
+episode rather than across the first two:**
+
+    sdxl span series, episodes 1-4, identical in shape
+      1684  1683  888  156  156  156  156  156  156
+
+Three slow steps then six at solo speed, in all four episodes. So the
+slow steps are real; what was wrong was believing they stopped after two
+episodes, which is what a stale variable would show and a repeating
+within-episode phase would not.
+
+**The self-paired bistability appears to survive, with different
+numbers.** Two span measurements of the same configuration:
+
+    three processes, no full-die solo   span ~195 ms   1.25 x solo
+    one process, with full-die solo     span ~300 ms   1.93 x solo
+
+The ratio between them is 1.54. The ratio between the states the adapter
+reported, 1.776 and 1.176, is 1.51. Two instruments disagreeing on the
+absolute value and agreeing on the ratio is what a real two-state system
+plus a biased reading looks like -- but this is one process against
+three, with another variable (the full-die solo) changing at the same
+time, and that is exactly the confound that made the seed-and-position
+campaign worthless this morning. Eight processes are running with the
+span instrument and the configuration fixed.
+
+**So the retraction narrows.** What was artifact: the two-episode
+transient, the per-episode latch, the sum-of-solo-steps fit, and the
+absolute values in ``MEASURED_STEP_PAIR_EXTERNALITY`` and
+``MEASURED_STEP_PAIRING_FAST``/``_SLOW``. What survives so far: a real
+slow phase at the start of every co-run episode, and -- pending the eight
+processes -- a two-state co-run penalty whose states differ by about 1.5x.
+
+The suspension stays until the span measurement stands on its own count
+of processes. The point of yesterday's retraction was not that the
+numbers were too high or too low; it was that they came from an
+instrument that had not been checked, and checking it is what this is.
