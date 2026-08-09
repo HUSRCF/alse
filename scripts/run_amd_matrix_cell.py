@@ -160,7 +160,12 @@ def main() -> int:
                     video_steps=args.video_steps)
     trace = build_trace(spec, urgent_service_s=service["urgent"],
                         video_service_s=service["video"],
-                        urgent_isolated_p99_s=p99["urgent"])
+                        # The request's isolated latency, not its step
+                        # p99. A deadline of 1.5 x 0.110 s on a request
+                        # needing 0.87 s alone is unmeetable by
+                        # construction, and the first run reported miss
+                        # rate 1.0 because of exactly that.
+                        urgent_isolated_latency_p99_s=service["urgent"])
     print(f"cell {spec.cell_id}: horizon {horizon:.0f} s, "
           f"{len(trace.requests)} requests", flush=True)
 
@@ -183,9 +188,16 @@ def main() -> int:
         while pending and pending[0].arrival_s <= now:
             request = pending.pop(0)
             tenant = request.tenant
-            args.steps = request.steps
-            adapter = harness.make_adapter(models[tenant], pipelines[
-                models[tenant]], args, seed=request.request_id)
+            # One resident adapter per tenant, reused for every request of
+            # that tenant. That is the runtime's own shape -- weights and
+            # conditioning are resident and a request is a state passed
+            # through them -- and TenantRegistry offers one request per
+            # tenant at a time, so two requests never need one adapter at
+            # once. It also means every request of a tenant denoises the
+            # same seed and produces the same latent: a nuisance variable
+            # removed deliberately, and harmless here because the
+            # scheduler's cost does not depend on the latent's content.
+            adapter = warm_adapters[tenant]
             queued = QueuedRequest(request_id=request.request_id,
                                    tenant=tenant, model=models[tenant],
                                    arrival_s=request.arrival_s,
@@ -200,12 +212,25 @@ def main() -> int:
             print("  drain grace exceeded; stopping with work outstanding",
                   flush=True)
             break
-        runtime.tick(now)
+        record = runtime.tick(now)
         rounds += 1
-        for rid, executor in list(runtime.executors.items()):
-            if executor.complete and rid not in finished:
+        # Completions are read from the runtime's own retirement, not
+        # from its executors: tick() retires a finished request itself,
+        # so an executor is gone by the time a caller could see it
+        # complete. Watching the executors instead reported 0 of 40
+        # urgent requests done while the ledger showed 1360 quota-seconds
+        # charged to that tenant -- a metric wrong in the direction that
+        # looks like a scheduling failure.
+        for rid in runtime.retired:
+            if rid not in finished:
                 finished[rid] = time.perf_counter() - began
-                runtime.retire(rid)
+        # Idle rounds are not free. Without this the loop spun 4.9 million
+        # times in 106 seconds, which is the same defect the hour soak
+        # found: a watchdog measuring rounds rather than work.
+        if not record.granted:
+            following = (pending[0].arrival_s - (time.perf_counter() - began)
+                         if pending else 0.05)
+            time.sleep(max(0.0, min(0.05, following)))
     ran_s = time.perf_counter() - began
 
     urgent = [(r, finished.get(r.request_id))
@@ -219,6 +244,9 @@ def main() -> int:
     video_steps_done = sum(
         runtime.retired.get(r.request_id, {}).get("steps_done", 0)
         for r, _ in video)
+    urgent_steps_done = sum(
+        runtime.retired.get(r.request_id, {}).get("steps_done", 0)
+        for r, _ in urgent)
 
     payload = {
         "schema_version": "burstserve.amd-matrix-cell/v1",
@@ -228,13 +256,18 @@ def main() -> int:
                  "deadline_slack": spec.deadline_slack, "seed": spec.seed,
                  "horizon_s": horizon, "urgent_steps": args.urgent_steps,
                  "video_steps": args.video_steps},
+        "one_adapter_per_tenant": True,
+        "identical_seeds_within_tenant": True,
         "isolated_service_s": service,
         "isolated_step_p99_s": p99,
+        "deadline_base_s": service["urgent"],
+        "deadline_base": "isolated request latency, not step p99",
         "requests": {"total": len(trace.requests),
                      "urgent": len(urgent), "video": len(video),
                      "admitted": len(admitted), "finished": len(finished),
                      "outstanding": len(trace.requests) - len(finished)},
         "urgent": {
+            "steps_done": urgent_steps_done,
             "completed": len(latencies),
             "miss_rate": len(misses) / len(urgent) if urgent else None,
             "latency_p50_s": statistics.median(latencies) if latencies else None,

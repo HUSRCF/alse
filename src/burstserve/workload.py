@@ -67,7 +67,7 @@ class CellSpec:
 
 
 def build_trace(spec: CellSpec, *, urgent_service_s: float,
-                video_service_s: float, urgent_isolated_p99_s: float,
+                video_service_s: float, urgent_isolated_latency_p99_s: float,
                 video_share: float = 0.5) -> Trace:
     """The arrival trace for one cell.
 
@@ -110,7 +110,7 @@ def build_trace(spec: CellSpec, *, urgent_service_s: float,
                 # Relative to arrival, and to the isolated p99 rather than
                 # to this request's own service: a deadline derived from
                 # the request would make every request equally easy.
-                deadline_s=now + spec.deadline_slack * urgent_isolated_p99_s,
+                deadline_s=now + spec.deadline_slack * urgent_isolated_latency_p99_s,
             ))
             next_id += 1
 

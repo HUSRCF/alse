@@ -23,7 +23,7 @@ from burstserve.workload import (
 
 URGENT_S = 0.9        # 8 SDXL steps on the whole die
 VIDEO_S = 15.3        # 30 CogVideoX steps on the whole die
-URGENT_P99 = 1.2
+URGENT_LATENCY_P99 = 1.2   # a request alone on the die, not a step
 
 
 def trace_for(**kwargs):
@@ -31,7 +31,7 @@ def trace_for(**kwargs):
                        "seed": 0, "horizon_s": 600.0, **kwargs})
     return spec, build_trace(spec, urgent_service_s=URGENT_S,
                              video_service_s=VIDEO_S,
-                             urgent_isolated_p99_s=URGENT_P99)
+                             urgent_isolated_latency_p99_s=URGENT_LATENCY_P99)
 
 
 def urgent(trace):
@@ -95,7 +95,7 @@ class DeadlinesAreRelativeToTheIsolatedP99(unittest.TestCase):
                 for request in urgent(trace):
                     self.assertAlmostEqual(
                         request.deadline_s - request.arrival_s,
-                        slack * URGENT_P99, places=9)
+                        slack * URGENT_LATENCY_P99, places=9)
 
     def test_video_carries_no_deadline(self):
         """Its SLO is stall, a property of the schedule not the request."""
@@ -154,7 +154,7 @@ class SizingTheHorizon(unittest.TestCase):
                                  seed=0, horizon_s=horizon)
                 trace = build_trace(sized, urgent_service_s=URGENT_S,
                                     video_service_s=VIDEO_S,
-                                    urgent_isolated_p99_s=URGENT_P99)
+                                    urgent_isolated_latency_p99_s=URGENT_LATENCY_P99)
                 self.assertGreater(len(urgent(trace)), 40 * 0.6)
                 self.assertLess(len(urgent(trace)), 40 * 1.6)
 
@@ -187,7 +187,7 @@ class BadSpecsAreRefused(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     build_trace(spec, urgent_service_s=URGENT_S,
                                 video_service_s=VIDEO_S,
-                                urgent_isolated_p99_s=URGENT_P99,
+                                urgent_isolated_latency_p99_s=URGENT_LATENCY_P99,
                                 video_share=share)
 
     def test_a_non_positive_service_time_is_refused(self):
@@ -195,7 +195,7 @@ class BadSpecsAreRefused(unittest.TestCase):
                         horizon_s=10.0)
         with self.assertRaises(ValueError):
             build_trace(spec, urgent_service_s=0.0, video_service_s=VIDEO_S,
-                        urgent_isolated_p99_s=URGENT_P99)
+                        urgent_isolated_latency_p99_s=URGENT_LATENCY_P99)
 
 
 if __name__ == "__main__":
