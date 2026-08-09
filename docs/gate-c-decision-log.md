@@ -1765,3 +1765,40 @@ table is data with provenance and eight tests, and the frozen path is
 untouched.
 
 954 tests pass; freeze verifies.
+
+### 2026-08-08 -- the profiler could not answer the profiler clause
+
+plan.md's week 9-10 acceptance includes a timeline confirming the
+expected overlap. rocprofv3 is the instrument on this card, and it failed
+twice over in one run.
+
+**It changed what it observed.** The traced episodes read 10.51, 1.00,
+1.01, 5.92 for SDXL where the untraced harness gives 6.3, 6.2, 1.01, 1.01
+in four processes out of four. The run's own validity check -- transient
+above 3x for two episodes, below 1.5 after -- reported False. That check
+existed because a profiler manufacturing the finding under test is the
+obvious way this measurement goes wrong, and it is the reason the trace
+was not read and interpreted anyway.
+
+**Then it crashed without writing one.** SIGSEGV in
+``hsa_signal_wait_relaxed`` at teardown; no ``kernel_trace.csv`` was
+produced. So there was nothing to read even had it been valid.
+
+Both are kept in the raw runs. The JSON was written before the crash, so
+the externalities above are on disk.
+
+**The clause does not need it.** Overlap is a question about when each
+side's kernels were on the device, and both sides already bracket every
+step with CUDA events on their own stream. The only thing missing was a
+common origin: record one event before the episode, and afterwards every
+event's offset from it puts both sides' intervals on one device timeline,
+where busy and both-live are arithmetic. ``run_amd_overlap_events.py``
+does that -- one synchronise per episode and it is after the episode, so
+nothing is perturbed inside the measured region, and it reads the same
+events the externality is computed from rather than a parallel account of
+them.
+
+It carries the same validity check the profiler failed, and the same
+prediction, unchanged: the first two episodes overlap near zero and the
+later ones do not. If both overlap, the sum-of-solo-steps fit is right
+about the arithmetic and wrong about the cause.
