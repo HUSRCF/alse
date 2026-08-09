@@ -97,6 +97,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", default="probing_partitioning",
                         help="one policy, or use --policies for a group")
+    parser.add_argument("--drift-tolerance", type=float, default=0.15,
+                        help="the runtime's serial-fallback threshold. The "
+                             "campaign found it firing for static_even, "
+                             "deadline_aware and measured_pairs_only and "
+                             "never for the pairing family, so it has to "
+                             "be switchable: an envelope that fires on "
+                             "three baselines and no method arm could be "
+                             "manufacturing the comparison.")
     parser.add_argument("--per-policy-isolated", action="store_true",
                         help="re-measure isolated service for every policy "
                              "instead of once per group. Off by default: "
@@ -230,7 +238,8 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
 
     policy = (POLICY_FACTORIES[policy_name]() if policy_name
               in POLICY_FACTORIES else BASELINES[policy_name])
-    runtime = Runtime(policy, stream_pool=pool)
+    runtime = Runtime(policy, stream_pool=pool,
+                      drift_tolerance=args.drift_tolerance)
     # Warm-up is residency, not a tenant's debt: on the card a first step
     # measured 1.855 s against a 0.157 s steady step, and charging it made
     # one tenant's ledger 10.8x the other's for identical work.
@@ -311,6 +320,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "schema_version": "burstserve.amd-matrix-cell/v1",
         "cell": spec.cell_id,
         "policy": policy_name,
+        "drift_tolerance": args.drift_tolerance,
         "spec": {"load": spec.load, "burst": spec.burst,
                  "deadline_slack": spec.deadline_slack,
                  "deadline_base": spec.deadline_base, "seed": spec.seed,

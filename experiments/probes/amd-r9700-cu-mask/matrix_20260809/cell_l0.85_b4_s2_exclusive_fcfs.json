@@ -1,0 +1,92 @@
+{
+  "schema_version": "burstserve.amd-matrix-cell/v1",
+  "cell": "load0.85-burst4-slack1.5perburst-seed2",
+  "policy": "exclusive_fcfs",
+  "spec": {
+    "load": 0.85,
+    "burst": 4,
+    "deadline_slack": 1.5,
+    "deadline_base": "burst",
+    "seed": 2,
+    "horizon_s": 84.336361008006,
+    "urgent_steps": 8,
+    "video_steps": 30
+  },
+  "one_adapter_per_tenant": true,
+  "identical_seeds_within_tenant": true,
+  "isolated_service_s": {
+    "urgent": 0.8960738357100636,
+    "video": 15.645922770738602
+  },
+  "isolated_step_p99_s": {
+    "urgent": 0.1122530517578125,
+    "video": 0.5227080078125
+  },
+  "isolated_shared_across_group": true,
+  "deadline_base_s": 0.8960738357100636,
+  "deadline_base": "isolated request latency, not step p99",
+  "requests": {
+    "total": 27,
+    "urgent": 24,
+    "video": 3,
+    "admitted": 27,
+    "finished": 27,
+    "outstanding": 0
+  },
+  "urgent": {
+    "latencies_s": [
+      1.1249197836175142,
+      2.162203358546975,
+      3.222540181423682,
+      3.3189478494398976,
+      4.073037397226759,
+      4.61941668508414,
+      5.106994907249206,
+      6.1436140482485975,
+      7.7668959985628305,
+      8.189767004955797,
+      9.227028063765033,
+      9.652454197181648,
+      10.287593335878341,
+      11.30765419480042,
+      14.712703625213614,
+      15.242989066064617,
+      15.798961443149096,
+      16.833695868284053,
+      17.87856402832324,
+      18.917028618299014,
+      19.232539174026094,
+      20.267059720000468,
+      21.312589033851616,
+      22.350184565987654
+    ],
+    "deadline_s_from_arrival": 5.376443014260381,
+    "steps_done": 192,
+    "completed": 24,
+    "miss_rate": 0.7083333333333334,
+    "latency_p50_s": 9.970023766529994,
+    "latency_p99_s": 22.350184565987654
+  },
+  "video": {
+    "requests": 3,
+    "steps_done": 90,
+    "goodput_steps_per_s": 0.9071747364191645
+  },
+  "ledger": {
+    "rounds": 860,
+    "decision_p99_s": 1.0901130735874176e-06,
+    "quota_seconds_by_tenant": {
+      "video": 1483.8918310546874,
+      "urgent": 854.0436596679684
+    },
+    "charged_from_measurement": true,
+    "serial_fallbacks": 0,
+    "stale_quota_measurements": 0
+  },
+  "wall_clock_s": {
+    "model_load": 17.558061792049557,
+    "isolated_measurement": 2.7008354663848877e-07,
+    "cell_run": 99.20911196805537,
+    "total": 116.7680902320426
+  }
+}

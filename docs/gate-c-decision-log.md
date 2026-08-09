@@ -2219,3 +2219,90 @@ average out and, more usefully, makes it measurable.
 The two groups already run are kept as ``matrix_20260809_v1`` rather
 than deleted. They are valid measurements of a design with a known bias,
 and the bias is documented here.
+
+### 2026-08-09 -- the frozen primary subset, and what it does not show
+
+180 cells: 9 policies x 2 loads x 2 bursts x 5 seeds, 100% complete, 7344
+urgent requests. Deadline 1.5x the burst's isolated latency, isolated
+service measured once per group and shared by every arm, policy order
+rotated per group.
+
+| policy | kind | miss | video | urgent p99 |
+| --- | --- | --- | --- | --- |
+| oracle_shortest_remaining | oracle | 0.1911 | 0.5669 | 12.84 s |
+| slo_aware_partitioning | method | 0.4559 | 0.5692 | 25.39 |
+| probing_partitioning | method | 0.4568 | 0.5694 | 25.39 |
+| step_matched_pairing | baseline | 0.4568 | 0.5693 | 25.44 |
+| sticky_probing_partitioning | method | 0.4568 | 0.5695 | 25.40 |
+| deadline_aware | baseline | 0.4768 | 0.5645 | 26.72 |
+| measured_pairs_only | baseline | 0.4768 | 0.5645 | 26.75 |
+| static_even | baseline | 0.4789 | 0.5645 | 26.74 |
+| exclusive_fcfs | baseline | 0.4849 | 0.5696 | 26.43 |
+
+**plan.md's first Pareto branch is not met.** Paired-seed bootstrap, 20
+pairs, against each baseline:
+
+    step_matched_pairing   +0.0000  [ 0.0000, 0.0000]    0.00%
+    deadline_aware         -0.0200  [-0.0357,-0.0061]   -4.19%
+    measured_pairs_only    -0.0200  [-0.0357,-0.0061]   -4.19%
+    static_even            -0.0221  [-0.0401,-0.0064]   -4.61%
+    exclusive_fcfs         -0.0281  [-0.0849,+0.0129]   -5.80%
+
+The bar is 20%. The strongest baseline is beaten by nothing at all, and
+the FCFS interval crosses zero. Video goodput moves +0.02%, so the second
+half of the branch is satisfied and the first is not.
+
+**The probe never fired.** ``probing_partitioning`` and
+``step_matched_pairing`` agree to four decimals in every one of the
+twenty configurations, at every seed -- a difference of exactly zero.
+That is not a bug: ``Runtime._state_for`` does supply
+``observed_step_seconds`` and ``observed_at_units``, and the probe
+declines to fire because the pairings stayed under its threshold. Solo at
+16 units predicts 0.1575 s, the threshold is 1.608x that at 0.253 s, and
+a fast-state co-run measures about 0.20 s. Every pairing in the campaign
+was in the fast state.
+
+So in this workload the dual-ledger probe contributes nothing measurable,
+and what separates the pairing family from the rest is step-matched
+pairing itself. That is worth saying plainly: the mechanism this project
+is named for did not do any work here.
+
+**The serial fallback did, and it worked for the other side.** The drift
+envelope fired about 10% of rounds for ``static_even``,
+``deadline_aware`` and ``measured_pairs_only`` and never for the pairing
+family, which looked like my own runtime manufacturing the comparison. It
+is the opposite. With the envelope disabled, over three seeds at load 0.6
+burst 4:
+
+    static_even          0.5169 -> 0.6447   (+0.128)
+    deadline_aware       0.5030 -> 0.6447   (+0.142)
+    measured_pairs_only  0.5030 -> 0.6447   (+0.142)
+    step_matched_pairing 0.4419 -> 0.4447   (+0.003)
+    probing              0.4419 -> 0.4586   (+0.017)
+
+The envelope rescues the baselines by a large margin and leaves the
+pairing family alone, because the baselines form pairings whose cost the
+model predicts badly. So the 4.5% reported above is what remains **after
+this project's own safety mechanism has helped its opponents**; without
+it the gap would be about 31%. Running it for every arm is the right
+choice -- it is part of the runtime, not part of the policy -- and the
+consequence belongs in the paper rather than in a footnote.
+
+**What this changes about the claim.** As it stands the primary claim
+fails at the frozen parameterisation. Three honest directions, none of
+them "pick a different opponent":
+
+  * the effect may live at parameterisations not in the frozen subset --
+    the slack sweep already showed separation growing with slack, and
+    load 1.05 and burst 2 are unmeasured here;
+  * the probe needs a workload where pairings actually enter the slow
+    state, which the latch measurements say happens in roughly one
+    process in seven -- twenty groups drew fast in all twenty, which at
+    that rate has probability 0.05;
+  * the contribution may genuinely be the fallback and the step-matched
+    pairing rather than the probe, in which case the paper should say so
+    and the probe becomes an ablation that costs nothing and earns
+    nothing here.
+
+None of those is decided by data yet, and the frozen subset is what it
+is. It is recorded as a negative result at this parameterisation.
