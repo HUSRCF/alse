@@ -2032,3 +2032,55 @@ yesterday evening, arrived at through an instrument that has now been
 checked against another, with the numbers it actually produces.
 
 954 tests pass; freeze verifies.
+
+### 2026-08-09 -- single SKU, by the user's decision
+
+The blocking question was plan.md's main matrix: 4x RTX 4090 plus a
+second SKU, with the NVIDIA line paused and plan.md stating explicitly
+that the R9700 does not substitute for the second-SKU requirement. The
+options put to the user were to migrate the matrix to AMD and rewrite the
+cross-SKU clause, to restore NVIDIA only for the reduced 12-cell matrix,
+or to accept a single SKU and state it in threat-to-validity. **The user
+chose the single SKU and to continue on the AMD line.**
+
+Applied to plan.md, not paraphrased into it. The second-SKU Phase 0 gate,
+the "at least 9 of 12 cells agree in direction" acceptance criterion, the
+week 11-12 smoke test, the week 13-14 reduced matrix, and the
+4090-versus-second-SKU coverage item are all struck, each marked with the
+date and the reason rather than deleted.
+
+**What is given up, written the way it goes in the paper.** The
+mechanism claim -- CU/SM mask partitioning plus a dual ledger -- will
+have been verified on exactly one mask implementation, AMD's
+``hipExtStreamCreateWithCUMask`` on gfx1201. Nothing in the results rules
+out that they depend on that implementation's queueing and arbitration.
+That is not a formality here: yesterday's measurements found two co-run
+states drawn per process **on a single card**, so "does another vendor's
+scheduler behave like this" is a live question, not a box to tick. The
+threat-to-validity entry says that, in those words. No acceptance clause
+replaces it, because cross-SKU agreement is a piece of evidence and more
+cells on the same card is not a substitute for it.
+
+**Two consequences that are engineering rather than wording, and both are
+now blocking items before week 13.**
+
+The schedule assumed four cards running the matrix in parallel. One card
+serially is about four times the wall clock, and the two-week window very
+likely does not hold the cell count as written. A measured single-cell
+duration is required before week 13 starts, and the stated tie-break is
+to cut cells rather than seeds -- seeds carry the confidence interval,
+cells carry coverage, and they are not interchangeable.
+
+The paired-comparison rule was "compare arms on the same card", against a
+measured 3.49% inter-card bias. With one card that rule is vacuous and
+the real confound moves to time: junction temperature rose 43 to 72.8 C
+in three and a half minutes on 2026-08-08 and solo step time rose 5% with
+it. So arms must be interleaved and paired in time, not run one arm to
+completion and then the other. That is a stricter requirement than the
+one it replaces, and it is written into the week 13-14 implementation
+notes.
+
+Memory budgets are restated rather than renumbered: 24/20/16 GB was the
+4090's regime and the R9700 has 34.2 GB. The requirement stays "three
+budgets spanning weights-resident, weights-barely-resident and
+must-evict", with values to be justified.

@@ -48,10 +48,17 @@
      32 个 SM 互不重复**。此前 blocker 文本对应的是旧的 4-bit 聚合
      `amd_r9700_cu_mask_20260802.json`（`tpc_bits: 4`、24 cells），该文件
      保留为历史证据但**不得再引用为当前映射依据**
-  3. 第二 GPU SKU 预约仍未关闭（Phase 0 硬门）。**已决定：R9700 不顶替该
-     要求。** AMD 线是 NVIDIA 线的补充而非替代，因此 NVIDIA 侧的第二 SKU
-     （H100 优先，A100/A800 备选）仍须独立覆盖，该硬门不因 AMD 线的进展
-     而关闭
+  3. ~~第二 GPU SKU 预约仍未关闭（Phase 0 硬门）。已决定：R9700 不顶替该
+     要求。~~ **2026-08-09 由用户决定改为单 SKU：论文按单 SKU 成文，AMD
+     单线继续推进，第二 SKU 硬门与"至少 9/12 cell 方向一致"的跨 SKU 验收
+     一并撤除，改写入 threat-to-validity。**
+     该决定放弃的是一项具体的外部效度证据：本文的机制主张（CU/SM 掩码分区
+     + 双账本调度）此后只在一种 SM 掩码实现（AMD `hipExtStreamCreateWithCUMask`
+     / gfx1201）上被验证过，无法排除结论依赖于该实现的排队与仲裁行为。
+     2026-08-08 的测量恰好说明这不是空谈——同一张卡上 co-run 惩罚就有两个
+     按进程抽取的状态——而"另一种硬件是否也如此"现在是一个开放问题而非
+     一项证据。此项须在 threat-to-validity 中按上述措辞明写，不得弱化为
+     "受限于设备条件"。
   4. ~~offline wheelhouse 从零重建仍未完成（Phase 0 硬门）~~ **已关闭
      2026-08-06**：全程离线重建 `burstserve-phase0-offline` 并通过
      `runtime_lock verify`（`matches=true`、`mismatches=[]`）。conda 25/25
@@ -60,14 +67,15 @@
      dd——dd 直连 pypi 仅 20.9 KB/s、hpc2 为 6.58 MB/s，此前中止是链路问题
      而非方法问题。证据
      `experiments/aggregates/phase0_offline_rebuild_20260806.json`
-  5. **已决定：AMD 线补充而非替代 NVIDIA 线。** 原 Gate A 条文（编队 5 张
-     4090、TPC、native 更新）继续对 NVIDIA 侧完整有效且仍欠五条；AMD 侧
-     另立平行的 Gate A-AMD 条文，两条线各自独立通过，互不顶替
+  5. ~~**已决定：AMD 线补充而非替代 NVIDIA 线。**~~ **2026-08-09 由用户
+     决定改为单 SKU（AMD）。** 原 Gate A 条文（编队 5 张 4090、TPC、native
+     更新）不再是本文的交付前置；其已取得的证据保留在库中，作为 NVIDIA 侧
+     的历史记录，但不再计入未完成项。Gate A-AMD 成为唯一的 Gate A。
 - Next three actions:
   1. AMD 侧扫满 32 个 mask bit，取得全 die 映射的正式证据
   2. AMD 侧补齐 Gate A-AMD 剩余五条：并发互斥分区、10,000 次重配置、
      mask 更新延迟分布、masked/unmasked 确定性一致、可观测 overlap
-  3. NVIDIA 侧第二 SKU 预约（H100 优先）——不因 AMD 线进展而放松
+  3. ~~NVIDIA 侧第二 SKU 预约（H100 优先）~~ **2026-08-09 撤除（单 SKU 决定）**
 - Latest run IDs / commit: HEAD 见 git log；AMD baseline
   `bs1-5c2669b73ffd90727f08`，AMD 聚合
   `experiments/aggregates/amd_r9700_cu_mask_20260802.json`
@@ -125,7 +133,10 @@ action、masked action 或性能/SLO claim。
 - 在预注册的至少两个 burst 场景中，相对最强非 oracle 基线达到以下任一 Pareto 改进：
   - urgent SLO miss rate 相对下降至少 20%，video goodput 下降不超过 5%；或
   - 相同 SLO miss rate 下 video goodput 提升至少 10%。
-- 第二 GPU SKU 的 12 个关键实验中，至少 9 个与 4090 呈现相同优化方向。
+- ~~第二 GPU SKU 的 12 个关键实验中，至少 9 个与 4090 呈现相同优化方向。~~
+  **2026-08-09 撤除（用户决定单 SKU）。** 无替代验收条款——跨 SKU 一致性
+  是一项证据，不能由同一张卡上的更多 cell 补足；它现在是 threat-to-validity
+  的一条，而不是一条被换了写法的验收。
 - 所有论文图表均能从带哈希的 raw logs 一键重建。
 
 ## 二、系统设计与实现接口
@@ -279,7 +290,7 @@ $$
 - 三次 baseline 均生成完整 raw log、summary 和环境信息。
 - 同 seed 的 latent hash 或确定性容差一致。
 - 原始 ASLE baseline 未被修改。
-- 第二 SKU 按“H100 优先，A100/A800 备选”的顺序完成预约。
+- ~~第二 SKU 按“H100 优先，A100/A800 备选”的顺序完成预约。~~ **2026-08-09 撤除（单 SKU 决定）。** Phase 0 不再因此项未闭合而阻塞。
 
 ### 第 2 周：2026-08-06 至 08-12——libsmctrl 高风险可行性闸门
 
@@ -307,9 +318,9 @@ $$
 
 单卡 `gfx1201`（Radeon AI PRO R9700，32 个可掩码单元），机制为
 `hipExtStreamCreateWithCUMask` 与 `ROC_GLOBAL_CU_MASK`。上面的 Gate A 条文
-以 NVIDIA 措辞写成，继续对 NVIDIA 侧完整有效；AMD 侧按下列平行条文验收，
-两者各自独立通过，**任何一侧的通过都不顶替另一侧**，NVIDIA 的第二 GPU SKU
-覆盖要求亦不因本条文而关闭。
+以 NVIDIA 措辞写成。**2026-08-09 用户决定单 SKU 之后，下列 AMD 条文即
+唯一的 Gate A**；NVIDIA 措辞的原条文与其已取得的证据保留为历史记录，不再
+计入未完成项，第二 SKU 覆盖要求一并撤除（见 threat-to-validity）。
 
 - 全部 32 个 mask bit 均建立实测 `mask bit -> 单元` 映射，且跨两种机制一致。
   不得由抽样若干 bit 外推全 die——NVIDIA 侧曾以 4/64 抽样过度外推，已记录。
@@ -867,7 +878,7 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 - 增加 video stall guard、urgent borrowing/repayment 和 sleeper-credit cap。
 - 资源不可行时记录 offered/admitted SLO，不允许静默丢请求。
 - 在 4090 上完成内部参数冻结。
-- 第 12 周结束前在第二 SKU 上完成环境、模型和 SM mask smoke test。
+- ~~第 12 周结束前在第二 SKU 上完成环境、模型和 SM mask smoke test。~~ 撤除（单 SKU）。
 
 验收 Gate D：
 
@@ -875,7 +886,7 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 - 所有选中动作满足显存约束，并保留 `max(1 GiB, 5% VRAM)` 安全余量。
 - Jain index 不低于 0.98，service lag 满足冻结界限。
 - 至少两个内部 burst cell 达到全局 Pareto 改进门槛。
-- 第二 SKU 能完成相同 run manifest；否则跨 SKU 主张判定失败。
+- ~~第二 SKU 能完成相同 run manifest；否则跨 SKU 主张判定失败。~~ 撤除（单 SKU）；本文不作跨 SKU 主张。
 - 若 Gate D 未通过，停止增加模型或基线，优先修正模型/算法；不得通过挑选 workload 进入论文评测。
 
 ### 第 13–14 周：2026-10-22 至 11-04——论文主实验与跨 SKU 验证
@@ -883,21 +894,33 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 实现：
 
 - 冻结代码、manifest 和 primary metrics。
-- 在 4 张 4090（GPU 1/2/3/4）上运行矩阵；漂移参照为 GPU 4 上周期重跑的
-  固定 reference cell；GPU 7 为纯备用。2026-07-31 由 6+1+1 缩为 4+1，
-  2026-08-01 按实测调整角色（见 Decision Log）。
-- 任何 arm 之间的比较必须在同一张卡上配对：实测卡间系统偏差最大 3.49%。
-- 在第二 SKU 运行预注册的 12-cell 精简矩阵。
+- **2026-08-09 单 SKU 决定后改为：在单张 R9700（gfx1201, X570）上运行矩阵。**
+  漂移参照为周期重跑的固定 reference cell。原 4×4090 编队与 GPU 7 备用的
+  安排作废，其已取得的证据保留为历史记录。
+- 卡间配对要求随之消失（只有一张卡），原"实测卡间系统偏差最大 3.49%"不再
+  适用；**取而代之的是同卡内的时间漂移**——2026-08-08 实测 3.5 分钟内 junction
+  由 43 °C 升到 72.8 °C、solo 步时随之上升 5%。因此任何 arm 之间的比较必须
+  **交错执行并配对**，不得先跑完一个 arm 再跑另一个；reference cell 的重跑
+  频率按此设定。
+- ~~在第二 SKU 运行预注册的 12-cell 精简矩阵。~~ 撤除（单 SKU 决定）。
+- **新增前置：矩阵墙钟可行性核算。** 原排期假设 4 卡并行；单卡串行意味着
+  约 4 倍墙钟。第 13 周开始前必须给出主矩阵（冻结子集 0.6/0.85 load、
+  burst 4/8、1.5× deadline、8 个基线、≥5 seeds）的实测单 cell 时长与总时长，
+  若不可行则**削减 cell 而非削减 seeds**——seeds 支撑 CI，cell 支撑覆盖面，
+  两者不等价。
+- **新增前置：显存预算重述。** 原文"24 GB 原生、20/16 GB emulated"是 4090
+  的规格；R9700 为 34.2 GB。须显式声明单 SKU 下的三档预算取值及其理由，
+  不得机械沿用 4090 的数字，也不得只换数字而不说明 regime 是否等价。
 - 对失败、OOM、拒绝和超时全部保留，不删除异常点。
 - 汇总 paired-seed bootstrap 95% CI。
 
 验收：
 
 - 主矩阵完成率至少 95%，缺失 cell 全部重跑或注明确定性失败。
-- 每个主 cell 至少 5 seeds；第二 SKU 和昂贵扩展至少 3 seeds。
+- 每个主 cell 至少 5 seeds；昂贵扩展至少 3 seeds。（原"第二 SKU 至少 3 seeds"
+  随单 SKU 决定撤除。）
 - 每个 tail latency 点跨 seeds 累计至少 200 个 urgent 请求。
 - 所有方法使用完全相同的 arrival trace、模型输入和显存预算。
-- 第二 SKU 至少 9/12 cell 与 4090 方向一致。
 - 所有主张均能追溯到 run ID 和原始日志。
 
 ### 第 15 周：2026-11-05 至 11-11——鲁棒性、消融与 Artifact
@@ -945,7 +968,9 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 - Scale：CogVideoX-5B + SDXL。
 - Generality：FLUX.1-dev 512×512 + SDXL。
 - 扩展 shape：CogVideoX 81/129 frames，仅在 profile 和显存 Gate 通过后运行。
-- 显存：24 GB 原生、20 GB 和 16 GB emulated budget；第二 SKU 使用等价 residency regime，而非机械使用相同 GB。
+- 显存：**单 SKU 决定后须按 R9700 的 34.2 GB 重述三档预算**（原 24 GB 原生、
+  20/16 GB emulated 是 4090 规格）。要求不变：三档应覆盖"权重全驻留""权重
+  勉强驻留""必须换出"三种 residency regime，取值须给出依据而非机械换算。
 
 ### 到达与 SLO
 
@@ -989,7 +1014,7 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 - OOM 前 admission、workspace 峰值和 suspended-state 上限。
 - 多 urgent EDF、burst 长于视频 stall budget、不可行 overload。
 - 无 burst、轻载、饱和和过载四种状态。
-- 4090 与第二 SKU 的行为一致性。
+- ~~4090 与第二 SKU 的行为一致性。~~ 撤除（2026-08-09 单 SKU 决定）。
 
 ## 五、`plan.md` 与 Compaction 恢复协议
 
@@ -1045,9 +1070,14 @@ Gate A、Gate D 和最终 artifact gate 只能在硬要求均为 `exact` 时通�
 
 ## 六、固定假设与边界
 
-- 排期按一名主力研究者、5 张 RTX 4090（4 张矩阵 + 1 张备用/clean control）
-  和自动化实验队列制定；2026-07-31 由 8 张缩为 5 张。
-- 第二 SKU 必须在第 12 周前可重复使用，优先 H100，其次 A100/A800。
+- ~~排期按一名主力研究者、5 张 RTX 4090（4 张矩阵 + 1 张备用/clean control）
+  和自动化实验队列制定；2026-07-31 由 8 张缩为 5 张。~~
+  **2026-08-09 改为：一名主力研究者、单张 R9700（gfx1201, X570）。**
+  这项改动直接影响排期而非只影响措辞：原排期假设 4 卡并行跑矩阵，单卡串行
+  约为 4 倍墙钟，第 13–14 周的两周窗口按原 cell 数很可能装不下。第 13 周
+  开始前须以实测单 cell 时长核算，并按"削减 cell 而非削减 seeds"取舍。
+- ~~第二 SKU 必须在第 12 周前可重复使用，优先 H100，其次 A100/A800。~~
+  撤除（单 SKU 决定）。
 - 核心系统是单节点、单 GPU serving；不实现分布式集群调度。
 - libsmctrl 是核心贡献依赖，因此有独立的早期硬 Gate。
 - 模型和输入均离线，使用当前本地模型 revision。
