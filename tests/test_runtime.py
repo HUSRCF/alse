@@ -463,3 +463,97 @@ class MeasurementsAreCheckedAgainstTheirQuota(unittest.TestCase):
         runtime = build(steps=4)
         record = runtime.tick(0.0)
         self.assertEqual(record.notes["stale_quota_measurements"], [])
+
+
+class ConservativeSerialFallback(unittest.TestCase):
+    """plan.md: serial when the profile is missing or drift exceeds 15%.
+
+    The runtime enforces it, not the policy: the policy is frozen, and
+    this is a safety envelope that can only narrow a grant to one request
+    on the whole die.
+
+    The refusal expires, and that is the clause being met rather than
+    softened. SDXL against CogVideoX-2b runs at 6.29x predicted for two
+    rounds -- 529% drift, five times any threshold -- and then at 1.01x
+    for the rest of the process, where it beats rotation by 41.7%, in
+    four processes out of four. A permanent refusal there scores 0.9982
+    against a whole die's 1.0000.
+    """
+
+    class DriftingAdapter(CountingAdapter):
+        """Drifts past the runtime's envelope but under the probe's.
+
+        The two thresholds are deliberately different and the gap is
+        where this envelope does its work: the policy's probe fires at
+        1.608x the solo prediction, the runtime's at 1.15x the *paired*
+        expectation. An adapter drifting past both would be caught by the
+        probe first and would test nothing here. At 16+16 the paired
+        expectation is 0.1575 x 1.2367 = 0.1948 s, so 0.23 s is 18%
+        drift -- over the envelope, under the probe's 0.2533 s.
+        """
+
+        def __init__(self, seconds=0.23):
+            super().__init__()
+            self.last_step_seconds = seconds
+
+    def _runtime(self, adapter_factory, **kwargs):
+        runtime = Runtime(probing_partitioning, **kwargs)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=40)
+            runtime.submit(request, StepExecutor(request, adapter_factory(),
+                                                 total_steps=40))
+        return runtime
+
+    def test_drift_past_the_tolerance_holds_the_pairing(self):
+        runtime = self._runtime(self.DriftingAdapter)
+        first = runtime.tick(0.0)
+        self.assertEqual(len(first.granted), 2, "the pairing formed once")
+        self.assertIsNotNone(first.notes["drift_hold"])
+        second = runtime.tick(0.25)
+        self.assertEqual(len(second.granted), 1, "serial after the drift")
+        self.assertIn("drift", second.notes["serial_fallback"])
+
+    def test_the_whole_die_goes_to_one_request(self):
+        """Conservative means serial, not smaller."""
+        runtime = self._runtime(self.DriftingAdapter)
+        runtime.tick(0.0)
+        second = runtime.tick(0.25)
+        self.assertEqual(list(second.granted.values()),
+                         [runtime.maskable_units])
+
+    def test_the_hold_expires_so_the_pairing_is_retried(self):
+        """A pairing that drifts is not a pairing that will keep drifting."""
+        runtime = self._runtime(self.DriftingAdapter,
+                                fallback_backoff_s=1.0)
+        runtime.tick(0.0)
+        self.assertEqual(len(runtime.tick(0.5).granted), 1, "held")
+        self.assertEqual(len(runtime.tick(1.5).granted), 2, "retried")
+
+    def test_the_backoff_doubles_while_the_drift_persists(self):
+        runtime = self._runtime(self.DriftingAdapter,
+                                fallback_backoff_s=1.0,
+                                max_fallback_backoff_s=8.0)
+        seen, now = [], 0.0
+        for _ in range(4):
+            runtime.tick(now)
+            key = next(iter(runtime._fallbacks))
+            seen.append(runtime._fallbacks[key]["backoff"])
+            now = runtime._fallbacks[key]["until"] + 0.01
+        self.assertEqual(seen, [1.0, 2.0, 4.0, 8.0])
+
+    def test_a_faithful_pairing_is_never_held(self):
+        """The envelope must not fire on a runtime that is behaving."""
+        runtime = build(steps=40)
+        record = runtime.tick(0.0)
+        self.assertIsNone(record.notes["drift_hold"])
+        self.assertIsNone(record.notes["serial_fallback"])
+        self.assertEqual(len(runtime.tick(0.25).granted), 2)
+
+    def test_a_reason_is_always_recorded_with_a_refusal(self):
+        """'Explicitly record the reason' is part of the clause."""
+        runtime = self._runtime(self.DriftingAdapter)
+        runtime.tick(0.0)
+        second = runtime.tick(0.25)
+        self.assertTrue(second.notes["serial_fallback"])
+        self.assertIn("%", second.notes["serial_fallback"])

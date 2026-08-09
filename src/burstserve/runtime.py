@@ -83,13 +83,19 @@ class Runtime:
     def __init__(self, policy: Callable, *, maskable_units: int = 32,
                  discipline: Discipline = Discipline.FCFS,
                  clock: Callable[[], float] | None = None,
-                 stream_pool=None):
+                 stream_pool=None, drift_tolerance: float = 0.15,
+                 fallback_backoff_s: float = 1.0,
+                 max_fallback_backoff_s: float = 60.0):
         self.policy = policy
         # Optional so the loop stays testable without a GPU. When present,
         # each granted request runs on a stream carrying its own CU mask,
         # and the masks of a co-running pair are constructed disjoint
         # rather than assumed to be.
         self.stream_pool = stream_pool
+        # plan.md: fall back to a serial action past 15% drift.
+        self.drift_tolerance = drift_tolerance
+        self.fallback_backoff_s = fallback_backoff_s
+        self.max_fallback_backoff_s = max_fallback_backoff_s
         self.mask_attestations: list[dict] = []
         self.maskable_units = maskable_units
         self.registry = TenantRegistry(discipline=discipline)
@@ -117,6 +123,9 @@ class Runtime:
         # numbers and dropping the objects is what a serving process has
         # to do; keeping the objects is a leak with a ledger attached.
         self.retired: dict[int, dict] = {}
+        # Pairings the runtime has refused, by the pair of granted
+        # widths, with the backoff after which each is retried.
+        self._fallbacks: dict[tuple[int, ...], dict] = {}
         self._round = 0
         # Injectable so tests drive time rather than sleep through it.
         # Wall time in a test would make the p99 assertion measure the
@@ -166,6 +175,79 @@ class Runtime:
 
     # -- the loop ------------------------------------------------------
 
+    def _serial_fallback(self, granted: dict[int, int],
+                         now_s: float) -> tuple[dict[int, int], str | None]:
+        """Refuse a co-run the runtime cannot vouch for, and say why.
+
+        plan.md's week 9-10 clause: fall back to a conservative serial
+        action when the profile is missing or drift exceeds 15%, recording
+        the reason. This sits in the runtime rather than the policy
+        because the policy is frozen, and because it is a safety envelope
+        rather than a scheduling choice -- it can only ever narrow a
+        grant to one request holding the whole die.
+
+        **The fallback expires, and that is not a softening of the
+        clause.** A pairing that drifts badly is not necessarily a pairing
+        that will keep drifting: SDXL against CogVideoX-2b runs at 6.29x
+        predicted for two rounds -- a drift of 529%, five times over any
+        threshold -- and then at 1.01x for the rest of the process, where
+        it beats rotation by 41.7%. Four processes did the same thing to
+        within 0.02. A permanent refusal there scores 0.9982 against a
+        whole die's 1.0000: worse than never partitioning. So the refusal
+        holds for a backoff that doubles, and the pairing is retried.
+
+        Keyed by the pair of granted widths, because that is what the die
+        was measured to key its co-run state on.
+        """
+        if len(granted) < 2:
+            return granted, None
+        key = tuple(sorted(granted.values()))
+        held = self._fallbacks.get(key)
+        if held is not None and now_s < held["until"]:
+            return self._to_serial(granted), held["reason"]
+
+        # Profile missing: the cost model declines to invent a factor for
+        # a pairing it has never measured, and a co-run charged at 1.0 is
+        # an invention with a ledger entry.
+        models = {self.requests[rid].model for rid in granted}
+        widths = sorted(granted.values())
+        if len(widths) == 2:
+            for rid, units in granted.items():
+                peer = next(u for r, u in granted.items() if r != rid)
+                try:
+                    externality(units, peer, self.requests[rid].model)
+                except Exception:
+                    reason = (f"no measured profile for {widths[0]}+"
+                              f"{widths[1]} across {sorted(models)}")
+                    self._hold(key, reason, now_s)
+                    return self._to_serial(granted), reason
+        return granted, None
+
+    def _hold(self, key, reason: str, now_s: float) -> None:
+        held = self._fallbacks.get(key)
+        backoff = (self.fallback_backoff_s if held is None
+                   else min(self.max_fallback_backoff_s,
+                            held["backoff"] * 2))
+        self._fallbacks[key] = {"backoff": backoff,
+                                "until": now_s + backoff,
+                                "reason": reason}
+
+    def _to_serial(self, granted: dict[int, int]) -> dict[int, int]:
+        """The whole die to one request: the conservative action.
+
+        The one kept is the one furthest behind on its tenant's charge,
+        matching what the policy does when its own probe refuses a
+        pairing, so a fallback does not also become a fairness event.
+        """
+        behind = min(
+            granted,
+            key=lambda rid: (
+                self.quota_seconds_by_tenant.get(
+                    self.requests[rid].tenant, 0.0), rid),
+        )
+        return {behind: self.maskable_units}
+
+
     def _state_for(self, request: QueuedRequest,
                    executor: StepExecutor) -> RequestState:
         """The shape the frozen policy reads.
@@ -214,6 +296,8 @@ class Runtime:
         granted = (self.policy(states, self.maskable_units, now_s)
                    if states else {})
         decision_seconds = self._clock() - started
+
+        granted, fallback_reason = self._serial_fallback(granted, now_s)
 
         predicted = {s.request.request_id: s.predicted_step_seconds.get(
             granted.get(s.request.request_id, self.maskable_units))
@@ -355,6 +439,39 @@ class Runtime:
             for request in list(queue.in_flight):
                 queue.suspend(request.request_id)
 
+        # Drift, judged on this round's own ledger and acted on next
+        # round. plan.md asks for a serial fallback past 15%; the runtime
+        # cannot un-run the round it just measured, so what a drift
+        # verdict buys is the round after it.
+        # Against the *paired* expectation, not the solo one. The
+        # prediction is a solo step cost and a co-run legitimately costs
+        # more than it, so comparing to the raw prediction reports a
+        # 23.7% drift for a runtime doing exactly what the cost model
+        # says -- the envelope would fire on every round and the fallback
+        # would be permanent. plan.md's clause is the co-run prediction
+        # error, which is this one.
+        drift_hold = None
+        if len(granted) >= 2 and fallback_reason is None:
+            worst = 0.0
+            for rid, spent in observed.items():
+                belief = predicted.get(rid)
+                if not belief:
+                    continue
+                peer_units = next((u for r, u in granted.items()
+                                   if r != rid), None)
+                try:
+                    belief *= externality(granted[rid], peer_units,
+                                          self.requests[rid].model)
+                except Exception:
+                    continue
+                worst = max(worst, abs(spent / belief - 1.0))
+            if worst > self.drift_tolerance:
+                key = tuple(sorted(granted.values()))
+                drift_hold = (f"drift {worst * 100:.1f}% over "
+                              f"{self.drift_tolerance * 100:.0f}% on "
+                              f"{key[0]}+{key[1]}")
+                self._hold(key, drift_hold, now_s)
+
         record = RoundRecord(
             round_index=self._round,
             now_s=now_s,
@@ -368,7 +485,9 @@ class Runtime:
             resident_models=tuple(sorted(self.resident_models)),
             weight_bytes_moved=self.weight_bytes_moved,
             notes={"charged_from": sorted(charge_sources),
-                   "stale_quota_measurements": sorted(stale_charges)},
+                   "stale_quota_measurements": sorted(stale_charges),
+                   "serial_fallback": fallback_reason,
+                   "drift_hold": drift_hold},
         )
         self.ledger.append(record)
         self._round += 1

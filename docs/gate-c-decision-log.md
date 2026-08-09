@@ -1589,3 +1589,45 @@ costs 0.4% in the latched regime -- 1.0767 against a permanent verdict's
 1.0813 -- and it is worth 20% in the settling one. That is the shape of
 trade a design should take, and this morning it was justified only by
 "nothing rules it out".
+
+### 2026-08-08 -- the serial fallback, and the threshold it had to be measured against
+
+plan.md's week 9-10 clause: fall back to a conservative serial action
+when the profile is missing or drift exceeds 15%, recording the reason.
+Implemented in ``Runtime`` rather than in the policy, because the policy
+is frozen and because this is a safety envelope -- it can only ever
+narrow a grant to one request holding the whole die, never widen one.
+
+**Two thresholds, deliberately different.** The policy's probe fires at
+1.608x the *solo* prediction and asks "is this pairing in the slow
+state". The envelope fires at 1.15x the *paired* expectation and asks "is
+the cost model wrong about this pairing at all". The gap between them is
+where the envelope does its work.
+
+Getting that second comparison right was not optional, and the first
+attempt got it wrong in the way the policy's own comment warns about. A
+co-run legitimately costs more than the solo prediction, so comparing
+observed against the raw prediction reported a 23.7% drift for a runtime
+behaving exactly as the cost model says -- the envelope fired every round
+and the fallback would have been permanent. The test that caught it is
+the one asserting a faithful pairing is never held, which existed only
+because "the envelope must not fire on a runtime that is behaving" seemed
+worth stating.
+
+**The refusal expires, and that is the clause met rather than softened.**
+SDXL against CogVideoX-2b runs at 6.29x predicted for two rounds -- 529%
+drift, five times any threshold anyone would pick -- and then at 1.01x
+for the rest of the process, where it beats rotation by 41.7%, in four
+processes out of four. A permanent refusal there simulates at 0.9982
+against a whole die's 1.0000: worse than never partitioning. So the hold
+backs off, doubling 1 s to 60 s, keyed by the pair of granted widths
+because that is what the die keys its co-run state on.
+
+The profile-missing branch is the same mechanism. ``externality`` raises
+rather than inventing a factor for a pair it has not measured -- it did
+exactly that during today's split campaign, which is how that campaign
+was found to be asking for 12+20 -- and the runtime now turns that
+refusal into a serial round with a reason attached, instead of charging
+the co-run at 1.0 and recording an invention.
+
+946 tests pass; disabling the hold fails five of the six new ones.
