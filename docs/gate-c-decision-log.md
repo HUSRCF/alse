@@ -2140,3 +2140,43 @@ separates them. That region is what a pre-registration can honestly
 freeze. Per-request latencies are now kept in every cell payload, so for
 the baselines that do not read deadlines any slack can be evaluated
 afterwards without re-running the card.
+
+### 2026-08-09 -- with a burst-based deadline the cell discriminates
+
+Same cell, same seed, deadline slack 1.5 against the burst's isolated
+latency rather than one request's:
+
+| policy | urgent miss | video goodput |
+| --- | --- | --- |
+| exclusive_fcfs (FCFS) | 0.750 | 0.568 |
+| static_even (static SM partition) | 0.675 | 0.557 |
+| deadline_aware (EDF) | 0.675 | 0.557 |
+| slo_aware_partitioning | 0.550 | 0.557 |
+| probing_partitioning | **0.525** | 0.557 |
+
+Against the same cell with a per-request deadline, where all five sat
+between 0.925 and 0.950.
+
+**Which comparison is quoted matters more than the numbers, so all three
+are here.** plan.md's primary claim is against the *strongest non-oracle
+baseline*:
+
+    vs FCFS                                    0.750 -> 0.525   -30.0%
+    vs strongest baseline (static SM / EDF)    0.675 -> 0.525   -22.2%
+    vs this method's own ablation, slo_aware   0.550 -> 0.525    -4.5%
+
+The middle line is the one plan.md asks for, and it clears the 20% bar
+with 2.2 points to spare. The first is the flattering one and is not the
+claim. The third is worth keeping in view: most of the distance from FCFS
+comes from partitioning at all, and the probe adds 4.5% on top of it --
+which is the honest decomposition of where the gain lives.
+
+Video goodput moves 0.568 to 0.557, down 1.9%, inside plan.md's 5%
+allowance. So the first Pareto branch of the primary claim -- 20%
+relative miss reduction with under 5% goodput loss -- is met.
+
+**On one cell, one seed.** That is not the claim; it is evidence that the
+experiment can produce the claim, which is what was in doubt this morning
+when every policy sat at the ceiling. Five seeds and the frozen load and
+burst set are what turns it into a result, and the wall clock for that is
+measured: 159 s a cell, about 7 hours for the 160-cell primary subset.
