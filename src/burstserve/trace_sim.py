@@ -167,6 +167,9 @@ SLOW_PAIRING_EXTERNALITY = 1.7866   # 20 side measurements, +72.9 to +83.4%
 # the threshold to 1.529 and start discarding fast pairings on their first
 # step. The number is load-bearing as a threshold coefficient, so the
 # measurements go beside it rather than into it.
+# SUSPENDED 2026-08-08 with the table below: same instrument, same
+# failure. A span measurement over three processes saw 1.23-1.35
+# with no bimodality at all.
 MEASURED_STEP_PAIRING_FAST = 1.176   # 54 episodes, 6 processes
 MEASURED_STEP_PAIRING_SLOW = 1.776   # 18 episodes, 2 processes
 MEASURED_STEP_PAIRING_FAST_RATE = 0.75   # 6 of 8 processes; see below
@@ -201,6 +204,16 @@ MEASURED_STEP_PAIRING_FAST_RATE = 0.75   # 6 of 8 processes; see below
 # what every mixed-model trace costs; the change is worth making
 # separately, with the lock re-examined, rather than as a side effect of
 # recording measurements. See docs/gate-c-decision-log.md.
+# **SUSPENDED 2026-08-08.** Every value below is a median of
+# ``adapter.last_step_seconds``, and that reading was found the same day
+# to violate containment against a device-span measurement of the same
+# steps -- 10.888 where the span said 1.022. The deferred read only
+# updates when the previous step's events have retired, so a stale value
+# is counted again and one slow reading can own the median. The entries
+# are kept, with their provenance, because deleting a measurement is not
+# how a measurement gets corrected; nothing should be calibrated against
+# them until they are re-established with an instrument that does not
+# have this failure. See docs/gate-c-decision-log.md.
 MEASURED_STEP_PAIR_EXTERNALITY: dict[tuple[str, int, str, int], float] = {
     # SDXL beside CogVideoX-2b, settled.
     ("sdxl", 4, "cogvideox-2b", 28): 0.981,
