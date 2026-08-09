@@ -1467,3 +1467,68 @@ it re-probes.
 Neither number is a claim about hardware throughput. They are what the
 simulator returns given a cost model, which is the only thing a
 simulator can say.
+
+### 2026-08-08 (night) -- mismatched tenants: partitioning pays, and pays twice
+
+The case the scheduler was designed for and the only one with no per-step
+measurement. SDXL at 768 against CogVideoX-2b at 480x720x9f, 16+16
+disjoint masks, five co-run episodes per process, four processes, solo
+remeasured after the episodes:
+
+| episode | SDXL externality | SDXL vs rotation | CogVideoX externality | CogVideoX vs rotation |
+| --- | --- | --- | --- | --- |
+| 1 | 6.29 | -77.3% | 1.046 | +22.9% |
+| 2 | 6.15 | -76.8% | 1.051 | +22.4% |
+| 3-5 | **1.01** | **+41.7%** | **1.051** | **+22.3%** |
+
+Settled, over episodes 4-5 across all four processes: SDXL 1.010 and
+CogVideoX 1.051. Both tenants run at very nearly their solo speed while
+holding half the die each.
+
+**Both gain, so partitioning Pareto-dominates rotation here.** The
+comparison is per tenant against its own share: under rotation a tenant
+with half the schedule runs alone on the whole die for half the wall
+clock, so its rate is 0.5/solo32; partitioned it holds half the die
+always, so its rate is 1/corun. In time T, partitioning gives SDXL 6.41T
+steps against 4.56T and CogVideoX 1.198T against 0.98T. Neither tenant is
+paying for the other's gain, which is what the self-paired case could
+never manage.
+
+**This is the opposite result from self-pairing, and the contrast is the
+finding.** Identical tenants at 16+16 pay 1.176 in the fast state and
+1.776 in the slow one, so partitioning wins 13.0% or loses 25.9%
+depending on a draw. Mismatched tenants pay 1.01 and 1.05, with no draw
+at all -- four of four processes traced the same curve to within 0.02.
+Two tenants wanting the same units in the same way at the same instant is
+the hard case; two wanting different things is the easy one, and the
+scheduler exists for the second.
+
+**The two-episode transient is not a detail.** SDXL runs at 6.29x for its
+first two episodes -- 28 steps at ~970 ms against a 153 ms solo -- before
+dropping to 1.01 and staying there for the rest of the process. It is
+perfectly reproducible: every process, both episodes, 6.11 to 6.34.
+Whatever settles, settles after two episodes of real co-run and then
+holds across fresh executors.
+
+That transient is a trap for exactly the action this project just built.
+``probing_partitioning`` compares observed against 1.608x predicted, and
+6.29 clears it by four times, so the probe drops this pairing on its
+first step -- the pairing that would have paid +41.7% three episodes
+later. The frozen policy re-forms every round, so it pays two episodes
+and finds the good state. **The sticky variant would not**, if its
+verdict were permanent.
+
+So the backoff earns its place. It was written this morning as insurance
+against a state that might change on a timescale longer than the two
+minutes measured -- speculative, and justified only by not being ruled
+out. The mismatched pairing is a measured case where giving up
+permanently costs 41.7%, and where re-probing after 1, 2, 4 seconds finds
+it. A design that had reasoned only from the self-paired latch would have
+made the verdict permanent and been wrong.
+
+**Not established.** What settles. The obvious guesses -- allocator
+warm-up, some driver-side placement decision, CogVideoX's first episodes
+disturbing something SDXL then recovers from -- are guesses, and this
+project has already written four wrong explanations for a co-run effect.
+What is measured is that it takes two episodes, it is the same in four
+processes, and it holds afterwards.
