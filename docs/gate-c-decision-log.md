@@ -1631,3 +1631,56 @@ refusal into a serial round with a reason attached, instead of charging
 the co-run at 1.0 and recording an invention.
 
 946 tests pass; disabling the hold fails five of the six new ones.
+
+### 2026-08-08 -- the mismatched result across splits, and what the transient is
+
+Four more splits, four episodes each, one process per split, SDXL against
+CogVideoX-2b. Settled figures are episodes 3-4; the sign is what matters
+and both tenants carry it.
+
+| split (sdxl+cog) | transient, first 2 eps | settled SDXL | settled CogVideoX |
+| --- | --- | --- | --- |
+| 4+28 | 1.89, 1.82 | **+67.9%** | +1.7% |
+| 8+24 | 3.11, 3.06 | **+61.3%** | +7.4% |
+| 16+16 | 6.29, 6.15 | **+41.7%** | +22.3% |
+| 24+8 | 13.41, 13.26 | +16.6% (one episode) | +28.6% |
+| 28+4 | 26.32, 26.16 | +2.6% | **+30.6%** |
+
+Every split, once settled, pays both tenants. The split decides how the
+gain is divided, not whether there is one: the narrower SDXL's quota, the
+more it gains and the less CogVideoX does, monotonically across all five.
+
+**The transient has a shape, and the shape says what it is.** During the
+first two episodes each side's step costs about the *sum* of the two solo
+steps:
+
+    split    solo_a + solo_b      measured transient
+    4+28     526 + 550 = 1076     994
+    8+24     272 + 595 =  867     844
+    16+16    153 + 793 =  946     970
+    24+8     127 + 1567 = 1694    1704
+    28+4     123 + 3097 = 3220    3250
+
+Five splits, agreement within 3-9%, over a range where the sum varies by
+3x. That is what full serialisation looks like: for two episodes the die
+runs one masked stream's kernels then the other's, and each side's CUDA
+events span the whole alternation. It also explains why CogVideoX barely
+notices -- its own step dominates the sum -- and why the effect looked
+like "SDXL is crushed" rather than "nothing overlaps".
+
+**Stated as a prediction rather than a story, because this project has
+written four wrong explanations for a co-run effect.** If the transient
+is serialisation, then a pairing of two *equal* step costs should show a
+transient of about 2.0x on both sides, and the self-paired 16+16 case
+should open at 2.0x rather than the 1.33x surcharge it actually shows
+over its plateau. It does not, so the account is incomplete: whatever
+happens for two episodes is full serialisation between different models
+and something weaker within one. That is a discriminating measurement
+someone can run, not a conclusion.
+
+**One outlier, unexplained and kept.** 24+8 episode 4 read 4699.8 ms for
+SDXL -- externality 37.0 -- after episode 3 read 127.3 ms at 1.002. One
+process, four episodes, so there is no repeat to say whether it is a
+third state, a stray, or something on the box. It is in the payload and
+in this table's caveat rather than dropped, and 24+8 is the split to
+repeat first.
