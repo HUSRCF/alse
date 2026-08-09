@@ -2084,3 +2084,59 @@ Memory budgets are restated rather than renumbered: 24/20/16 GB was the
 4090's regime and the R9700 has 34.2 GB. The requirement stays "three
 budgets spanning weights-resident, weights-barely-resident and
 must-evict", with values to be justified.
+
+### 2026-08-09 -- the first real cell, and a metric pinned at its ceiling
+
+One cell of the main matrix on the card: SDXL urgent against a
+CogVideoX-2b video stream, Poisson bursts at offered load 0.6, burst 4,
+deadline slack 1.5, seed 0. Isolated service measured in-process: urgent
+0.88 s per request with a 110 ms step p99, video 15.4 s with 517 ms.
+Horizon sized to 40 urgent requests, 118 s, 42 requests.
+
+**Wall clock, which is what the single-SKU decision needed:** 17 s model
+load, 34 s isolated measurement, 107 s cell run, 159 s total. A primary
+subset of 8 baselines x 2 loads x 2 bursts x 5 seeds is 160 cells, so
+about 7 hours serially on the one card -- the two-week window holds it.
+The full grid as written, 4 loads x 3 bursts x 3 slacks x 8 baselines x 5
+seeds, is 1440 cells and about 64 hours, which it does not comfortably
+hold alongside everything else in those two weeks.
+
+**Three faults the run found, each recorded in the commit and fixed.**
+Completions were read from the runtime's executors, but ``tick`` retires
+a finished request itself; the cell reported 0 of 40 urgent done while
+the ledger showed 1360 quota-seconds charged to that tenant. Idle rounds
+spun the loop 4.9 million times in 106 seconds and made the decision p99
+read 0.1 us by measuring empty ticks. And the deadline multiplied the
+isolated *step* p99 rather than the request's isolated latency -- 0.110 s
+against 0.87 s -- so every deadline was unmeetable and the miss rate was
+exactly 1.0.
+
+**Then the fixed cell said something about the experiment rather than
+about the code.** Five policies on the identical cell:
+
+    exclusive_fcfs           miss 0.950   video 0.563 steps/s
+    static_even              miss 0.950   video 0.556
+    deadline_aware           miss 0.950   video 0.559
+    slo_aware_partitioning   miss 0.925   video 0.557
+    probing_partitioning     miss 0.925   video 0.562
+
+One request in forty separates the best from the worst, and the video
+goodput spread is 1.3%. **The metric does not discriminate at this
+parameterisation, and the reason is structural rather than statistical:**
+a burst of four requests each needing 0.88 s alone carries 3.5 s of work,
+against a deadline of 1.5 x 0.88 = 1.32 s. Three of every four urgent
+requests miss on the whole die with no contention at all. No scheduler
+can move a number that the arrival process has already decided.
+
+plan.md's primary claim asks for a 20% relative reduction in urgent SLO
+miss rate. That is unreachable from 0.94 regardless of the scheduler, so
+the frozen deadline set {1.25x, 1.5x, 2.0x} -- chosen before any of this
+was measured -- puts every cell of the primary claim at its ceiling.
+
+**What is being done about it is a measurement, not a choice.** A sweep
+of deadline slack at fixed burst, with two policies chosen to differ as
+much as any pair in the set, finds the region where the miss rate
+separates them. That region is what a pre-registration can honestly
+freeze. Per-request latencies are now kept in every cell payload, so for
+the baselines that do not read deadlines any slack can be evaluated
+afterwards without re-running the card.

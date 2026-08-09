@@ -267,6 +267,15 @@ def main() -> int:
                      "admitted": len(admitted), "finished": len(finished),
                      "outstanding": len(trace.requests) - len(finished)},
         "urgent": {
+            # Per-request latency and slack, kept whole. A miss rate is a
+            # threshold applied to these, so keeping them lets any
+            # deadline be evaluated afterwards for the policies that do
+            # not read deadlines -- which is most of the baselines -- and
+            # keeps a pre-registration honest about where the metric can
+            # discriminate at all.
+            "latencies_s": sorted(latencies),
+            "deadline_s_from_arrival": (spec.deadline_slack
+                                        * service["urgent"]),
             "steps_done": urgent_steps_done,
             "completed": len(latencies),
             "miss_rate": len(misses) / len(urgent) if urgent else None,
