@@ -1,0 +1,36 @@
+{
+  "schema_version": "burstserve.amd-runtime-loop/v1",
+  "policy": "policies.probing_partitioning",
+  "arrangement": "one process, one pipeline, per-request executors",
+  "tenants": 2,
+  "requests": 4,
+  "steps_each": 6,
+  "workpoint": "768x768",
+  "rounds": 23,
+  "scheduler_decision_seconds": {
+    "p50": 8.639995940029621e-06,
+    "p99": 1.872098073363304e-05,
+    "max": 1.872098073363304e-05,
+    "n": 23
+  },
+  "scheduler_p99_under_1ms": true,
+  "charged_from_measurement": true,
+  "weight_bytes_after_first_round": 0,
+  "resident_models": [
+    "sdxl"
+  ],
+  "quota_seconds_by_tenant": {
+    "t0": 422.52553125000014,
+    "t1": 38.948655395507814
+  },
+  "service_seconds_by_tenant": {
+    "t0": 14.344896972656255,
+    "t1": 1.2690941162109375
+  },
+  "prediction_error": {
+    "n": 24,
+    "mean": 4.4024081628743925,
+    "max": 18.753707082648027
+  },
+  "all_finished": true
+}

@@ -1,0 +1,129 @@
+=== process 1 start 1786231217.277058086 ===
+loading sdxl ...
+warming ...
+  ep  1 16+16  solo  156.7  a  251.4  b  249.8  ext 1.605  first steps 251 251 251 251 251
+  ep  2 16+16  solo  157.9  a  189.8  b  198.0  ext 1.202  first steps 190 190 190 190 190
+  ep  3 16+16  solo  159.2  a  190.2  b  198.3  ext 1.195  first steps 190 190 190 190 190
+  ep  4 16+16  solo  161.0  a  189.8  b  200.2  ext 1.179  first steps 190 190 190 190 190
+  ep  5  8+24  solo  280.7  a  310.5  b  144.8  ext 1.106  first steps 311 311 311 311 311
+  ep  6 16+16  solo  164.4  a  191.9  b  202.7  ext 1.167  first steps 192 192 192 192 192
+  ep  7 16+16  solo  163.7  a  192.1  b  202.5  ext 1.173  first steps 192 192 192 192 192
+  ep  8 16+16  solo  165.9  a  193.7  b  202.9  ext 1.167  first steps 194 194 194 194 194
+  ep  9  8+24  solo  287.7  a  312.2  b  145.0  ext 1.085  first steps 312 312 312 312 312
+  ep 10 16+16  solo  166.0  a  194.0  b  202.9  ext 1.169  first steps 194 194 194 194 194
+  ep 11 16+16  solo  165.1  a  193.5  b  203.2  ext 1.172  first steps 194 194 194 194 194
+  ep 12 16+16  solo  164.7  a  192.8  b  203.5  ext 1.170  first steps 193 193 193 193 193
+-> experiments/runs/amd_runtime/latch_p1_20260808.json
+=== process 2 start 1786231298.573243359 ===
+loading sdxl ...
+warming ...
+  ep  1 16+16  solo  161.5  a  245.9  b  251.7  ext 1.523  first steps 246 246 246 246 246
+  ep  2 16+16  solo  162.1  a  192.1  b  201.4  ext 1.185  first steps 192 192 192 192 192
+  ep  3 16+16  solo  162.2  a  191.5  b  201.5  ext 1.181  first steps 191 191 191 191 191
+  ep  4 16+16  solo  162.5  a  192.3  b  203.0  ext 1.183  first steps 192 192 192 192 192
+  ep  5  8+24  solo  284.4  a  390.2  b  355.1  ext 1.372  first steps 390 390 390 390 390
+  ep  6 16+16  solo  166.6  a  193.8  b  202.9  ext 1.163  first steps 194 194 194 194 194
+  ep  7 16+16  solo  164.5  a  193.4  b  203.0  ext 1.175  first steps 193 193 193 193 193
+  ep  8 16+16  solo  165.1  a  193.0  b  203.2  ext 1.169  first steps 193 193 193 193 193
+  ep  9  8+24  solo  287.2  a  388.7  b  353.4  ext 1.353  first steps 389 389 389 389 389
+  ep 10 16+16  solo  166.1  a  193.8  b  203.5  ext 1.167  first steps 194 194 194 194 194
+  ep 11 16+16  solo  164.6  a  193.7  b  203.4  ext 1.177  first steps 194 194 194 194 194
+  ep 12 16+16  solo  164.6  a  193.7  b  203.9  ext 1.177  first steps 194 194 194 194 194
+-> experiments/runs/amd_runtime/latch_p2_20260808.json
+=== process 3 start 1786231382.320101074 ===
+loading sdxl ...
+warming ...
+  ep  1 16+16  solo  161.9  a  259.4  b  242.2  ext 1.603  first steps 259 259 259 259 259
+  ep  2 16+16  solo  162.3  a  192.6  b  201.8  ext 1.187  first steps 193 193 193 193 193
+  ep  3 16+16  solo  163.4  a  192.6  b  202.1  ext 1.179  first steps 193 193 193 193 193
+  ep  4 16+16  solo  164.3  a  192.5  b  203.2  ext 1.172  first steps 192 192 192 192 192
+  ep  5  8+24  solo  286.3  a  312.6  b  145.9  ext 1.092  first steps 313 313 313 313 313
+  ep  6 16+16  solo  166.0  a  193.9  b  203.5  ext 1.168  first steps 194 194 194 194 194
+  ep  7 16+16  solo  164.5  a  194.2  b  203.4  ext 1.181  first steps 194 194 194 194 194
+  ep  8 16+16  solo  164.7  a  193.7  b  203.0  ext 1.176  first steps 194 194 194 194 194
+  ep  9  8+24  solo  289.1  a  311.3  b  145.1  ext 1.077  first steps 311 311 311 311 311
+  ep 10 16+16  solo  165.7  a  194.0  b  203.8  ext 1.171  first steps 194 194 194 194 194
+  ep 11 16+16  solo  164.7  a  193.6  b  203.5  ext 1.176  first steps 194 194 194 194 194
+  ep 12 16+16  solo  165.4  a  194.3  b  203.7  ext 1.175  first steps 194 194 194 194 194
+-> experiments/runs/amd_runtime/latch_p3_20260808.json
+=== process 4 start 1786231464.212945123 ===
+loading sdxl ...
+warming ...
+  ep  1 16+16  solo  161.5  a  250.5  b  255.3  ext 1.552  first steps 251 251 251 251 251
+  ep  2 16+16  solo  161.2  a  192.1  b  201.0  ext 1.191  first steps 192 192 192 192 192
+  ep  3 16+16  solo  163.5  a  192.5  b  202.1  ext 1.177  first steps 193 193 193 193 193
+  ep  4 16+16  solo  163.5  a  193.1  b  202.0  ext 1.181  first steps 193 193 193 193 193
+  ep  5  8+24  solo  287.9  a  311.6  b  145.7  ext 1.082  first steps 312 312 312 312 312
+  ep  6 16+16  solo  165.9  a  193.0  b  203.1  ext 1.164  first steps 193 193 193 193 193
+  ep  7 16+16  solo  165.5  a  193.1  b  203.1  ext 1.167  first steps 193 193 193 193 193
+  ep  8 16+16  solo  165.0  a  193.5  b  203.6  ext 1.172  first steps 193 193 193 193 193
+  ep  9  8+24  solo  287.6  a  311.9  b  145.2  ext 1.084  first steps 312 312 312 312 312
+  ep 10 16+16  solo  165.9  a  193.7  b  203.3  ext 1.168  first steps 194 194 194 194 194
+  ep 11 16+16  solo  166.1  a  194.1  b  203.8  ext 1.169  first steps 194 194 194 194 194
+  ep 12 16+16  solo  164.6  a  194.1  b  202.9  ext 1.179  first steps 194 194 194 194 194
+-> experiments/runs/amd_runtime/latch_p4_20260808.json
+=== process 5 start 1786231546.074357902 ===
+loading sdxl ...
+warming ...
+  ep  1 16+16  solo  162.2  a  338.7  b  335.7  ext 2.088  first steps 339 339 339 339 339
+  ep  2 16+16  solo  163.0  a  286.6  b  291.9  ext 1.759  first steps 287 287 287 287 287
+  ep  3 16+16  solo  165.0  a  296.0  b  301.2  ext 1.794  first steps 296 296 296 296 296
+  ep  4 16+16  solo  166.5  a  288.4  b  293.8  ext 1.732  first steps 288 288 288 288 288
+  ep  5  8+24  solo  287.7  a  313.5  b  146.2  ext 1.090  first steps 314 314 314 314 314
+  ep  6 16+16  solo  166.8  a  298.1  b  304.6  ext 1.788  first steps 298 298 298 298 298
+  ep  7 16+16  solo  166.9  a  293.0  b  291.9  ext 1.755  first steps 293 293 293 293 293
+  ep  8 16+16  solo  165.5  a  304.0  b  299.6  ext 1.837  first steps 304 304 304 304 304
+  ep  9  8+24  solo  290.3  a  313.2  b  144.7  ext 1.079  first steps 313 313 313 313 313
+  ep 10 16+16  solo  165.8  a  293.2  b  292.7  ext 1.768  first steps 293 293 293 293 293
+  ep 11 16+16  solo  165.7  a  293.2  b  292.8  ext 1.770  first steps 293 293 293 293 293
+  ep 12 16+16  solo  165.1  a  288.7  b  294.6  ext 1.749  first steps 289 289 289 289 289
+-> experiments/runs/amd_runtime/latch_p5_20260808.json
+=== process 6 start 1786231641.350671573 ===
+loading sdxl ...
+warming ...
+  ep  1 16+16  solo  162.1  a  254.8  b  257.9  ext 1.572  first steps 255 255 255 255 255
+  ep  2 16+16  solo  162.5  a  192.4  b  201.3  ext 1.184  first steps 192 192 192 192 192
+  ep  3 16+16  solo  163.0  a  192.2  b  202.4  ext 1.179  first steps 192 192 192 192 192
+  ep  4 16+16  solo  164.1  a  193.5  b  203.3  ext 1.179  first steps 193 193 193 193 193
+  ep  5  8+24  solo  287.2  a  392.6  b  356.2  ext 1.367  first steps 393 393 393 393 393
+  ep  6 16+16  solo  166.4  a  194.4  b  202.5  ext 1.169  first steps 194 194 194 194 194
+  ep  7 16+16  solo  164.8  a  194.3  b  202.6  ext 1.179  first steps 194 194 194 194 194
+  ep  8 16+16  solo  166.0  a  194.5  b  203.5  ext 1.171  first steps 194 194 194 194 194
+  ep  9  8+24  solo  289.3  a  382.5  b  341.1  ext 1.322  first steps 382 382 382 382 382
+  ep 10 16+16  solo  166.2  a  193.9  b  203.4  ext 1.167  first steps 194 194 194 194 194
+  ep 11 16+16  solo  164.8  a  194.3  b  203.2  ext 1.179  first steps 194 194 194 194 194
+  ep 12 16+16  solo  164.5  a  193.7  b  203.1  ext 1.178  first steps 194 194 194 194 194
+-> experiments/runs/amd_runtime/latch_p6_20260808.json
+=== process 7 start 1786231725.403174020 ===
+loading sdxl ...
+warming ...
+  ep  1 16+16  solo  161.9  a  330.7  b  314.6  ext 2.043  first steps 331 331 331 331 331
+  ep  2 16+16  solo  163.2  a  302.0  b  298.5  ext 1.850  first steps 302 302 302 302 302
+  ep  3 16+16  solo  164.6  a  293.8  b  289.5  ext 1.785  first steps 294 294 294 294 294
+  ep  4 16+16  solo  166.7  a  293.1  b  292.1  ext 1.758  first steps 293 293 293 293 293
+  ep  5  8+24  solo  290.3  a  314.3  b  146.5  ext 1.083  first steps 314 314 314 314 314
+  ep  6 16+16  solo  167.7  a  293.3  b  292.3  ext 1.750  first steps 293 293 293 293 293
+  ep  7 16+16  solo  166.8  a  292.9  b  292.0  ext 1.756  first steps 293 293 293 293 293
+  ep  8 16+16  solo  166.4  a  293.3  b  292.7  ext 1.762  first steps 293 293 293 293 293
+  ep  9  8+24  solo  289.3  a  312.0  b  144.7  ext 1.079  first steps 312 312 312 312 312
+  ep 10 16+16  solo  166.3  a  304.1  b  302.9  ext 1.829  first steps 304 304 304 304 304
+  ep 11 16+16  solo  165.6  a  292.9  b  292.2  ext 1.768  first steps 293 293 293 293 293
+  ep 12 16+16  solo  166.9  a  294.6  b  290.0  ext 1.766  first steps 295 295 295 295 295
+-> experiments/runs/amd_runtime/latch_p7_20260808.json
+=== process 8 start 1786231820.741107244 ===
+loading sdxl ...
+warming ...
+  ep  1 16+16  solo  162.3  a  248.8  b  247.9  ext 1.533  first steps 249 249 249 249 249
+  ep  2 16+16  solo  160.7  a  192.8  b  202.0  ext 1.199  first steps 193 193 193 193 193
+  ep  3 16+16  solo  161.9  a  192.0  b  202.2  ext 1.186  first steps 192 192 192 192 192
+  ep  4 16+16  solo  163.3  a  193.2  b  203.6  ext 1.184  first steps 193 193 193 193 193
+  ep  5  8+24  solo  286.8  a  312.7  b  145.7  ext 1.090  first steps 313 313 313 313 313
+  ep  6 16+16  solo  166.0  a  193.5  b  202.9  ext 1.165  first steps 193 193 193 193 193
+  ep  7 16+16  solo  165.3  a  193.1  b  203.6  ext 1.169  first steps 193 193 193 193 193
+  ep  8 16+16  solo  164.5  a  193.6  b  202.8  ext 1.177  first steps 194 194 194 194 194
+  ep  9  8+24  solo  288.6  a  312.5  b  145.2  ext 1.083  first steps 313 313 313 313 313
+  ep 10 16+16  solo  165.9  a  194.5  b  203.5  ext 1.173  first steps 195 195 195 195 195
+  ep 11 16+16  solo  165.2  a  193.3  b  203.5  ext 1.170  first steps 193 193 193 193 193
+  ep 12 16+16  solo  164.4  a  193.8  b  203.3  ext 1.179  first steps 194 194 194 194 194
+-> experiments/runs/amd_runtime/latch_p8_20260808.json
+=== all done ===

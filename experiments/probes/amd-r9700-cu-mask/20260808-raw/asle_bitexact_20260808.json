@@ -1,0 +1,74 @@
+{
+  "schema_version": "burstserve.asle-bitexact/v1",
+  "question": "does the scheduled runtime reproduce ASLE's latent byte for byte",
+  "reference": "vendor/asle/r1_driver.py run_urgent, inlined",
+  "prompt": "a red apple",
+  "negative_prompt": "",
+  "guidance_scale": 5.0,
+  "latent_shape": [
+    1,
+    4,
+    128,
+    128
+  ],
+  "steps": 8,
+  "seed": 0,
+  "scheduled_quotas": [
+    4,
+    8,
+    16,
+    32
+  ],
+  "suspensions": 7,
+  "asle_digest": "b0703be11cbd39cb944d101fd0d4f1525e4687a86fe9435c61f10eea93ed98d7",
+  "scheduled_digest": "664215de451c442334b18bf3d3cbb572c817f335399a8537e694f7797cbb5e23",
+  "identical": false,
+  "first_divergence_step": 0,
+  "per_step": [
+    {
+      "step": 0,
+      "identical": false,
+      "max_abs": 36.875
+    },
+    {
+      "step": 1,
+      "identical": false,
+      "max_abs": 27.375
+    },
+    {
+      "step": 2,
+      "identical": false,
+      "max_abs": 21.78125
+    },
+    {
+      "step": 3,
+      "identical": false,
+      "max_abs": 18.671875
+    },
+    {
+      "step": 4,
+      "identical": false,
+      "max_abs": 16.796875
+    },
+    {
+      "step": 5,
+      "identical": false,
+      "max_abs": 15.34375
+    },
+    {
+      "step": 6,
+      "identical": false,
+      "max_abs": 14.0625
+    },
+    {
+      "step": 7,
+      "identical": false,
+      "max_abs": 12.2734375
+    },
+    {
+      "step": 8,
+      "identical": false,
+      "max_abs": 11.9765625
+    }
+  ]
+}

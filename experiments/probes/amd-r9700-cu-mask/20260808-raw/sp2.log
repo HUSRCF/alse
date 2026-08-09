@@ -1,0 +1,69 @@
+=== rep 1 start 1786230371.378899806 ===
+loading sdxl ...
+  warming widths [4, 8, 16, 24, 28, 32] ...
+  solo  4u: predicted  521.4 ms  observed  520.7 ms    +0.1%
+  solo  8u: predicted  268.8 ms  observed  280.2 ms    -4.1%
+  solo 16u: predicted  157.5 ms  observed  162.1 ms    -2.8%
+  solo 24u: predicted  124.9 ms  observed  123.6 ms    +1.1%
+  solo 28u: predicted  120.6 ms  observed  120.4 ms    +0.1%
+  solo 32u: predicted  115.5 ms  observed  109.0 ms    +6.0%
+  corun 4+28 a: predicted  697.8 ms  observed  591.1 ms   +18.1%
+  corun 4+28 b: predicted  129.1 ms  observed  604.6 ms   -78.7%
+  corun 8+24 a: predicted  351.3 ms  observed  310.5 ms   +13.1%
+  corun 8+24 b: predicted  140.7 ms  observed  145.0 ms    -3.0%
+  corun 16+16 a: predicted  194.8 ms  observed  300.8 ms   -35.2%
+  corun 16+16 b: predicted  194.8 ms  observed  300.4 ms   -35.2%
+  corun 24+8 a: predicted  140.7 ms  observed  331.7 ms   -57.6%
+  corun 24+8 b: predicted  351.3 ms  observed  383.7 ms    -8.4%
+  corun 28+4 a: predicted  129.1 ms  observed  452.5 ms   -71.5%
+  corun 28+4 b: predicted  697.8 ms  observed  641.2 ms    +8.8%
+solo MAPE   2.37%   (clause: under 10%)
+corun MAPE 32.96%   (clause: under 15%)
+-> experiments/runs/amd_runtime/corun_splits_r1_20260808.json
+=== rep 1 end 1786230436.084439437 ===
+=== rep 2 start 1786230436.085637809 ===
+loading sdxl ...
+  warming widths [4, 8, 16, 24, 28, 32] ...
+  solo  4u: predicted  521.4 ms  observed  525.0 ms    -0.7%
+  solo  8u: predicted  268.8 ms  observed  284.1 ms    -5.4%
+  solo 16u: predicted  157.5 ms  observed  162.8 ms    -3.3%
+  solo 24u: predicted  124.9 ms  observed  124.2 ms    +0.6%
+  solo 28u: predicted  120.6 ms  observed  120.7 ms    -0.1%
+  solo 32u: predicted  115.5 ms  observed  108.5 ms    +6.5%
+  corun 4+28 a: predicted  697.8 ms  observed  597.2 ms   +16.8%
+  corun 4+28 b: predicted  129.1 ms  observed  601.6 ms   -78.5%
+  corun 8+24 a: predicted  351.3 ms  observed  308.9 ms   +13.7%
+  corun 8+24 b: predicted  140.7 ms  observed  145.2 ms    -3.1%
+  corun 16+16 a: predicted  194.8 ms  observed  286.6 ms   -32.0%
+  corun 16+16 b: predicted  194.8 ms  observed  292.7 ms   -33.4%
+  corun 24+8 a: predicted  140.7 ms  observed  339.4 ms   -58.6%
+  corun 24+8 b: predicted  351.3 ms  observed  391.0 ms   -10.2%
+  corun 28+4 a: predicted  129.1 ms  observed  451.4 ms   -71.4%
+  corun 28+4 b: predicted  697.8 ms  observed  638.8 ms    +9.2%
+solo MAPE   2.76%   (clause: under 10%)
+corun MAPE 32.71%   (clause: under 15%)
+-> experiments/runs/amd_runtime/corun_splits_r2_20260808.json
+=== rep 2 end 1786230500.759791221 ===
+=== rep 3 start 1786230500.761023824 ===
+loading sdxl ...
+  warming widths [4, 8, 16, 24, 28, 32] ...
+  solo  4u: predicted  521.4 ms  observed  524.5 ms    -0.6%
+  solo  8u: predicted  268.8 ms  observed  284.0 ms    -5.4%
+  solo 16u: predicted  157.5 ms  observed  163.7 ms    -3.8%
+  solo 24u: predicted  124.9 ms  observed  125.2 ms    -0.2%
+  solo 28u: predicted  120.6 ms  observed  120.7 ms    -0.1%
+  solo 32u: predicted  115.5 ms  observed  109.3 ms    +5.7%
+  corun 4+28 a: predicted  697.8 ms  observed  603.1 ms   +15.7%
+  corun 4+28 b: predicted  129.1 ms  observed  551.1 ms   -76.6%
+  corun 8+24 a: predicted  351.3 ms  observed  309.2 ms   +13.6%
+  corun 8+24 b: predicted  140.7 ms  observed  145.1 ms    -3.0%
+  corun 16+16 a: predicted  194.8 ms  observed  289.4 ms   -32.7%
+  corun 16+16 b: predicted  194.8 ms  observed  296.5 ms   -34.3%
+  corun 24+8 a: predicted  140.7 ms  observed  331.2 ms   -57.5%
+  corun 24+8 b: predicted  351.3 ms  observed  384.6 ms    -8.7%
+  corun 28+4 a: predicted  129.1 ms  observed  439.2 ms   -70.6%
+  corun 28+4 b: predicted  697.8 ms  observed  631.3 ms   +10.5%
+solo MAPE   2.63%   (clause: under 10%)
+corun MAPE 32.32%   (clause: under 15%)
+-> experiments/runs/amd_runtime/corun_splits_r3_20260808.json
+=== rep 3 end 1786230566.596935482 ===

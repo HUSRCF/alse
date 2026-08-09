@@ -1,0 +1,96 @@
+{
+  "schema_version": "burstserve.amd-mismatched-corun/v1",
+  "question": "does spatial partitioning pay when the two tenants are different models, measured per step",
+  "measured_through": "each model's own step adapter, so predicted and observed describe the same quantity",
+  "models": [
+    "sdxl",
+    "cogvideox-2b"
+  ],
+  "split": "16+16",
+  "steps": 14,
+  "warmup_dropped": 4,
+  "sdxl_workpoint": "768x768",
+  "cogvideox_workpoint": "720x480x9f",
+  "text_encoders_released_bytes": {
+    "sdxl": 1642389504,
+    "cogvideox-2b": 11538935808
+  },
+  "stream_attestation": [
+    {
+      "units": 16,
+      "requested_mask": "0xffff",
+      "installed_mask": "0xffff",
+      "popcount": 16,
+      "matches_request": true
+    },
+    {
+      "units": 16,
+      "requested_mask": "0xffff0000",
+      "installed_mask": "0xffff0000",
+      "popcount": 16,
+      "matches_request": true
+    },
+    {
+      "units": 32,
+      "requested_mask": "0xffffffff",
+      "installed_mask": "0xffffffff",
+      "popcount": 32,
+      "matches_request": true
+    }
+  ],
+  "solo": [
+    {
+      "model": "sdxl",
+      "units": 16,
+      "p50_s": 0.15317913818359374,
+      "samples": 10
+    },
+    {
+      "model": "sdxl",
+      "units": 32,
+      "p50_s": 0.10943299102783204,
+      "samples": 10
+    },
+    {
+      "model": "cogvideox-2b",
+      "units": 16,
+      "p50_s": 0.792806427001953,
+      "samples": 10
+    },
+    {
+      "model": "cogvideox-2b",
+      "units": 32,
+      "p50_s": 0.509965576171875,
+      "samples": 10
+    }
+  ],
+  "verdict": [
+    {
+      "side": "a",
+      "model": "sdxl",
+      "units": 16,
+      "share": 0.5,
+      "corun_p50_s": 0.9723870239257812,
+      "corun_overlap_p50_s": 0.9723870239257812,
+      "solo_at_quota_s": 0.15317913818359374,
+      "solo_full_die_s": 0.10943299102783204,
+      "externality": 6.348038221499334,
+      "rotating_equivalent_s": 0.21886598205566407,
+      "partitioning_gain": -0.7749188577485899
+    },
+    {
+      "side": "b",
+      "model": "cogvideox-2b",
+      "units": 16,
+      "share": 0.5,
+      "corun_p50_s": 0.8351229553222657,
+      "corun_overlap_p50_s": 0.8350355834960937,
+      "solo_at_quota_s": 0.792806427001953,
+      "solo_full_die_s": 0.509965576171875,
+      "externality": 1.0533756121028626,
+      "rotating_equivalent_s": 1.01993115234375,
+      "partitioning_gain": 0.22129459601570733
+    }
+  ],
+  "comparison": "rotating gives a tenant the full die for its share of the wall clock; partitioning gives it its share of the die all the time. partitioning_gain > 0 means partitioning advances that tenant faster."
+}

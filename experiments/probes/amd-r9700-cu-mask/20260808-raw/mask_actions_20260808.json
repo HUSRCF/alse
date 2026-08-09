@@ -1,0 +1,265 @@
+{
+  "schema_version": "burstserve.amd-mask-actions/v1",
+  "manifest": "experiments/manifests/amd_r9700_gfx1201.json",
+  "declared_maskable_units": 32,
+  "rounds_attested": 14,
+  "bits_touched": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "bits_outside_manifest": [],
+  "masks_match_manifest": true,
+  "disjoint_every_round": true,
+  "mask_attestations": [
+    {
+      "round": 0,
+      "masks": {
+        "0": "0xffff",
+        "1": "0xffff0000"
+      },
+      "units": {
+        "0": 16,
+        "1": 16
+      },
+      "disjoint": true
+    },
+    {
+      "round": 1,
+      "masks": {
+        "1": "0xffffffff"
+      },
+      "units": {
+        "1": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 2,
+      "masks": {
+        "1": "0xffffffff"
+      },
+      "units": {
+        "1": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 3,
+      "masks": {
+        "1": "0xffffffff"
+      },
+      "units": {
+        "1": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 4,
+      "masks": {
+        "1": "0xffffffff"
+      },
+      "units": {
+        "1": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 5,
+      "masks": {
+        "1": "0xffffffff"
+      },
+      "units": {
+        "1": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 6,
+      "masks": {
+        "0": "0xffffffff"
+      },
+      "units": {
+        "0": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 7,
+      "masks": {
+        "0": "0xffff",
+        "1": "0xffff0000"
+      },
+      "units": {
+        "0": 16,
+        "1": 16
+      },
+      "disjoint": true
+    },
+    {
+      "round": 8,
+      "masks": {
+        "1": "0xffffffff"
+      },
+      "units": {
+        "1": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 9,
+      "masks": {
+        "0": "0xffffffff"
+      },
+      "units": {
+        "0": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 10,
+      "masks": {
+        "0": "0xffffffff"
+      },
+      "units": {
+        "0": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 11,
+      "masks": {
+        "0": "0xffffffff"
+      },
+      "units": {
+        "0": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 12,
+      "masks": {
+        "0": "0xffffffff"
+      },
+      "units": {
+        "0": 32
+      },
+      "disjoint": true
+    },
+    {
+      "round": 13,
+      "masks": {
+        "0": "0xffffffff"
+      },
+      "units": {
+        "0": 32
+      },
+      "disjoint": true
+    }
+  ],
+  "streams_created": 8,
+  "stream_attestation": [
+    {
+      "units": 4,
+      "requested_mask": "0xf",
+      "installed_mask": "0xf",
+      "popcount": 4,
+      "matches_request": true
+    },
+    {
+      "units": 8,
+      "requested_mask": "0xff",
+      "installed_mask": "0xff",
+      "popcount": 8,
+      "matches_request": true
+    },
+    {
+      "units": 12,
+      "requested_mask": "0xfff",
+      "installed_mask": "0xfff",
+      "popcount": 12,
+      "matches_request": true
+    },
+    {
+      "units": 16,
+      "requested_mask": "0xffff",
+      "installed_mask": "0xffff",
+      "popcount": 16,
+      "matches_request": true
+    },
+    {
+      "units": 24,
+      "requested_mask": "0xffffff",
+      "installed_mask": "0xffffff",
+      "popcount": 24,
+      "matches_request": true
+    },
+    {
+      "units": 28,
+      "requested_mask": "0xfffffff",
+      "installed_mask": "0xfffffff",
+      "popcount": 28,
+      "matches_request": true
+    },
+    {
+      "units": 16,
+      "requested_mask": "0xffff0000",
+      "installed_mask": "0xffff0000",
+      "popcount": 16,
+      "matches_request": true
+    },
+    {
+      "units": 32,
+      "requested_mask": "0xffffffff",
+      "installed_mask": "0xffffffff",
+      "popcount": 32,
+      "matches_request": true
+    }
+  ],
+  "reconfiguration": {
+    "fixed_width": 32,
+    "varying_widths": [
+      4,
+      32,
+      8,
+      24,
+      16,
+      32,
+      12,
+      28
+    ],
+    "fixed_digest": "7de3e567c2ddbeda23fb0f535213e35276d09196256f15de174cb954a13dd060",
+    "varying_digest": "437b3503528b882317109f6061493dc7fb055a102834c8361fd200989802936d",
+    "identical": false,
+    "max_abs_difference": NaN
+  }
+}
