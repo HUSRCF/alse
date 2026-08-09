@@ -1990,3 +1990,45 @@ drains on its first step and latches a correct value for that width, and
 the resulting numbers agree with Gate B's quota curves, which were
 measured with a fresh adapter per point. That is an argument, and it
 would be better as a measurement; the span instrument can produce one.
+
+### 2026-08-09 -- solo measured the same way, and the verdict closes
+
+The last dependency on the unreliable reading was the solo baseline every
+externality is divided by. It came from ``adapter.last_step_seconds``,
+and the argument for trusting it -- ``run_solo`` changes width, so the
+adapter drains on its first step -- was an argument. ``solo_span``
+measures it with the same events as the co-run.
+
+Six processes, solo and co-run both by device span:
+
+| | processes | ext | solo 16u | solo 32u | paired | rotating | partitioning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| fast | 5 of 6 | 1.299 | 154.6 ms | 112.0 ms | 200.9 ms | 224.1 ms | **+11.5%** |
+| slow | 1 of 6 | 1.945 | 155.4 ms | 112.6 ms | 302.4 ms | 225.2 ms | **-25.5%** |
+
+Across both span campaigns, twelve of fourteen processes draw fast.
+
+The correction from measuring solo the same way is real but small: solo
+at 32 units reads 112.0 ms by span against 108.9 by the adapter, 2.8%
+high, which moves the rotation baseline the verdict is against. That is
+the direction that makes partitioning look better, and it is worth saying
+so explicitly rather than pocketing it: +11.5% here against +8.5%
+computed with the old baseline and the same span externality.
+
+``MEASURED_STEP_PAIRING_FAST`` and ``_SLOW`` are un-suspended and moved
+to 1.299 and 1.945, with the rate at 12 of 14. The two 16+16 mismatched
+entries in ``MEASURED_STEP_PAIR_EXTERNALITY`` are updated to their span
+values, 1.022 and 1.054. **The other eight entries stay suspended**:
+only 16+16 has been re-measured, and the four other splits are still
+medians of the variable that held one number per episode.
+
+**Where this leaves the claim.** Self-paired partitioning at 768 pays
++11.5% when the die grants the fast state and costs 25.5% when it does
+not; the fast state is drawn twelve times in fourteen, latched per
+process, and readable from an episode. Mismatched partitioning is very
+nearly free on both sides. A scheduler that measures rides that; one
+calibrated to a constant takes the draw. That is the same claim as
+yesterday evening, arrived at through an instrument that has now been
+checked against another, with the numbers it actually produces.
+
+954 tests pass; freeze verifies.

@@ -167,12 +167,23 @@ SLOW_PAIRING_EXTERNALITY = 1.7866   # 20 side measurements, +72.9 to +83.4%
 # the threshold to 1.529 and start discarding fast pairings on their first
 # step. The number is load-bearing as a threshold coefficient, so the
 # measurements go beside it rather than into it.
-# SUSPENDED 2026-08-08 with the table below: same instrument, same
-# failure. A span measurement over three processes saw 1.23-1.35
-# with no bimodality at all.
-MEASURED_STEP_PAIRING_FAST = 1.176   # 54 episodes, 6 processes
-MEASURED_STEP_PAIRING_SLOW = 1.776   # 18 episodes, 2 processes
-MEASURED_STEP_PAIRING_FAST_RATE = 0.75   # 6 of 8 processes; see below
+# Re-established 2026-08-09 on the device-span instrument, after the
+# adapter's deferred reading was found to hold one value for a whole
+# episode whenever the measured side's steps are short. Solo and co-run
+# both come from that instrument now, so the ratio below does not mix
+# two ways of measuring a step.
+#
+#   fast   12 of 14 processes   1.299   (1.238-1.344)
+#   slow    2 of 14 processes   1.945   (1.843-1.970)
+#
+# The shape the adapter reported survived -- two states, latched per
+# process, no process straddling -- and its numbers did not: it gave
+# 1.176 and 1.776 for the same two states. Recorded because "the old
+# reading was 8% low on one state and 9% low on the other" is a more
+# useful fact about that instrument than "it was wrong".
+MEASURED_STEP_PAIRING_FAST = 1.299   # 12 of 14 processes, span
+MEASURED_STEP_PAIRING_SLOW = 1.945   # 2 of 14 processes, span
+MEASURED_STEP_PAIRING_FAST_RATE = 0.857  # 12 of 14; see below
 # The rate is the one thing here a design should not lean on. Two slow
 # draws in eight is 25% with a wide interval, and ten decorrelation
 # processes earlier the same day all drew fast, which at 25% has
@@ -204,8 +215,9 @@ MEASURED_STEP_PAIRING_FAST_RATE = 0.75   # 6 of 8 processes; see below
 # what every mixed-model trace costs; the change is worth making
 # separately, with the lock re-examined, rather than as a side effect of
 # recording measurements. See docs/gate-c-decision-log.md.
-# **SUSPENDED 2026-08-08.** Every value below is a median of
-# ``adapter.last_step_seconds``, and that reading was found the same day
+# **MOSTLY SUSPENDED 2026-08-08.** Every value below except the two
+# marked is a median of ``adapter.last_step_seconds``, and that reading
+# was found the same day
 # to violate containment against a device-span measurement of the same
 # steps -- 10.888 where the span said 1.022. The deferred read only
 # updates when the previous step's events have retired, so a stale value
@@ -218,13 +230,13 @@ MEASURED_STEP_PAIR_EXTERNALITY: dict[tuple[str, int, str, int], float] = {
     # SDXL beside CogVideoX-2b, settled.
     ("sdxl", 4, "cogvideox-2b", 28): 0.981,
     ("sdxl", 8, "cogvideox-2b", 24): 0.991,
-    ("sdxl", 16, "cogvideox-2b", 16): 1.010,
+    ("sdxl", 16, "cogvideox-2b", 16): 1.022,   # span, re-measured
     ("sdxl", 24, "cogvideox-2b", 8): 0.998,
     ("sdxl", 28, "cogvideox-2b", 4): 1.006,
     # CogVideoX-2b beside SDXL, settled. Same pairings, the other side.
     ("cogvideox-2b", 28, "sdxl", 4): 1.055,
     ("cogvideox-2b", 24, "sdxl", 8): 1.062,
-    ("cogvideox-2b", 16, "sdxl", 16): 1.051,
+    ("cogvideox-2b", 16, "sdxl", 16): 1.054,   # span, re-measured
     ("cogvideox-2b", 8, "sdxl", 24): 1.007,
     ("cogvideox-2b", 4, "sdxl", 28): 1.015,
     # SDXL against itself. The only pairing measured that is bistable,
@@ -232,7 +244,7 @@ MEASURED_STEP_PAIR_EXTERNALITY: dict[tuple[str, int, str, int], float] = {
     # one of these per mask pair and latches it, 6 of 8 processes fast.
     # MEASURED_STEP_PAIRING_FAST / _SLOW carry the same two numbers for
     # the simulator's draw.
-    ("sdxl", 16, "sdxl", 16): MEASURED_STEP_PAIRING_FAST,
+    ("sdxl", 16, "sdxl", 16): MEASURED_STEP_PAIRING_FAST,  # span
 }
 
 # The transient, kept because it is the largest effect in the data and

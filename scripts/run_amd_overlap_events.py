@@ -77,6 +77,41 @@ def coverage(intervals_a, intervals_b):
     return busy, both
 
 
+def solo_span(adapter, pool, units, args, torch):
+    """Solo step time from device spans, not from the adapter's reading.
+
+    The solo baselines every externality is divided by came from
+    ``adapter.last_step_seconds``, which was found to hold one value for a
+    whole episode when the steps are short. They survive that for a
+    reason -- the width changes, so the adapter drains on its first step
+    and latches a correct value -- but a reason is weaker than a
+    measurement, and the same events that measure the co-run can measure
+    this.
+    """
+    adapter.stream = pool.for_quota(units).handle
+    wrapper = torch.cuda.ExternalStream(adapter.stream.value)
+    executor = StepExecutor(object(), adapter, total_steps=args.steps)
+    executor.prepare()
+    torch.cuda.synchronize()
+    origin = torch.cuda.Event(enable_timing=True)
+    origin.record()
+    marks = []
+    while True:
+        before = torch.cuda.Event(enable_timing=True)
+        after = torch.cuda.Event(enable_timing=True)
+        before.record(wrapper)
+        more = executor.run_step(quota_units=units)
+        after.record(wrapper)
+        marks.append((before, after))
+        if not more:
+            break
+    torch.cuda.synchronize()
+    adapter.drain_timing()
+    spans = [origin.elapsed_time(after) - origin.elapsed_time(before)
+             for before, after in marks]
+    return spans[args.warmup:]
+
+
 def episode(models, adapters, pool, units, args, torch, *, sync=True):
     """One co-run, keeping every step's start and end event."""
     left, right = pool.disjoint_pair(units[0], units[1])
@@ -201,13 +236,18 @@ def main() -> int:
             harness.warm(adapters[index], pool, width, args)
 
     solo = {}
+    solo_full = {}
     for index, model in enumerate(models):
-        samples = harness.run_solo(adapters[index], pool, units[index], args)
-        solo[index] = statistics.median(samples)
-        if args.also_solo_32:
-            harness.run_solo(adapters[index], pool, 32, args)
+        spans = solo_span(adapters[index], pool, units[index], args, torch)
+        solo[index] = statistics.median(spans) / 1000.0
+        # The full die too, because the verdict against rotation divides
+        # by it and it should come from the same instrument as everything
+        # else it is compared with.
+        full = solo_span(adapters[index], pool, 32, args, torch)
+        solo_full[index] = statistics.median(full) / 1000.0
         print(f"  solo {model:13s} {units[index]:2d}u: "
-              f"{solo[index] * 1000:8.1f} ms", flush=True)
+              f"{solo[index] * 1000:8.1f} ms   32u: "
+              f"{solo_full[index] * 1000:8.1f} ms", flush=True)
 
     rows = []
     for index in range(1, args.episodes + 1):
@@ -272,6 +312,9 @@ def main() -> int:
         "steps": args.steps,
         "warmup_dropped": args.warmup,
         "solo_p50_s": {str(k): v for k, v in solo.items()},
+        "solo_full_die_p50_s": {str(k): v
+                                for k, v in solo_full.items()},
+        "solo_instrument": "device span, same as the co-run",
         "episodes": rows,
     }
     if early and late:
