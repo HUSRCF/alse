@@ -95,7 +95,19 @@ def isolated_service(adapter, pool, steps, args, torch):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--policy", default="probing_partitioning")
+    parser.add_argument("--policy", default="probing_partitioning",
+                        help="one policy, or use --policies for a group")
+    parser.add_argument("--policies", default="",
+                        help="comma-separated policies run back to back in "
+                             "one process. This is how a group is run, not "
+                             "a convenience: the die warms 30 C over a few "
+                             "minutes and solo step time rises 5% with it, "
+                             "so running one arm to completion and then the "
+                             "next puts the whole drift on one of them. "
+                             "Interleaving inside a group pairs them in "
+                             "time, which is the rule that replaced "
+                             "'compare on the same card' when the matrix "
+                             "moved to one card.")
     parser.add_argument("--load", type=float, default=0.6)
     parser.add_argument("--burst", type=int, default=4)
     parser.add_argument("--deadline-slack", type=float, default=1.5)
@@ -142,7 +154,20 @@ def main() -> int:
         harness.free_text_encoders(pipelines[model])
     loaded_s = time.perf_counter() - began_all
 
-    print("measuring isolated service ...", flush=True)
+    policies = ([p.strip() for p in args.policies.split(",") if p.strip()]
+                or [args.policy])
+    out_template = str(args.out)
+    for policy_name in policies:
+        run_one(policy_name, args, torch, models, pool, pipelines,
+                warm_adapters, loaded_s, began_all, out_template,
+                len(policies) > 1)
+    return 0
+
+
+def run_one(policy_name, args, torch, models, pool, pipelines,
+            warm_adapters, loaded_s, began_all, out_template, many):
+    began_all = time.perf_counter() - loaded_s
+    print(f"measuring isolated service [{policy_name}] ...", flush=True)
     service, p99 = {}, {}
     for tenant in models:
         steps = (args.urgent_steps if tenant == "urgent" else args.video_steps)
@@ -176,8 +201,8 @@ def main() -> int:
     print(f"cell {spec.cell_id}: horizon {horizon:.0f} s, "
           f"{len(trace.requests)} requests", flush=True)
 
-    policy = (POLICY_FACTORIES[args.policy]() if args.policy
-              in POLICY_FACTORIES else BASELINES[args.policy])
+    policy = (POLICY_FACTORIES[policy_name]() if policy_name
+              in POLICY_FACTORIES else BASELINES[policy_name])
     runtime = Runtime(policy, stream_pool=pool)
     # Warm-up is residency, not a tenant's debt: on the card a first step
     # measured 1.855 s against a 0.157 s steady step, and charging it made
@@ -258,7 +283,7 @@ def main() -> int:
     payload = {
         "schema_version": "burstserve.amd-matrix-cell/v1",
         "cell": spec.cell_id,
-        "policy": args.policy,
+        "policy": policy_name,
         "spec": {"load": spec.load, "burst": spec.burst,
                  "deadline_slack": spec.deadline_slack,
                  "deadline_base": spec.deadline_base, "seed": spec.seed,
@@ -315,10 +340,12 @@ def main() -> int:
                          "cell_run": ran_s,
                          "total": time.perf_counter() - began_all},
     }
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(payload, indent=2) + "\n")
+    out = Path(out_template.replace("POLICY", policy_name) if many
+               else out_template)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(payload, indent=2) + "\n")
 
-    print(f"\ncell {spec.cell_id} [{args.policy}]")
+    print(f"\ncell {spec.cell_id} [{policy_name}]")
     print(f"  urgent {len(latencies)}/{len(urgent)} done, "
           f"miss rate {payload['urgent']['miss_rate']}")
     print(f"  video  {video_steps_done} steps, "
@@ -327,7 +354,7 @@ def main() -> int:
           f"{(runtime.decision_p99_seconds() or 0) * 1e6:.1f} us")
     print(f"  wall clock: load {loaded_s:.0f}s + isolated "
           f"{warmed_s - loaded_s:.0f}s + run {ran_s:.0f}s")
-    print(f"-> {args.out}")
+    print(f"-> {out}")
     return 0
 
 
