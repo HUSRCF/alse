@@ -1,0 +1,458 @@
+{
+  "schema_version": "burstserve.amd-mismatched-corun/v1",
+  "question": "does spatial partitioning pay when the two tenants are different models, measured per step",
+  "measured_through": "each model's own step adapter, so predicted and observed describe the same quantity",
+  "models": [
+    "sdxl",
+    "cogvideox-2b"
+  ],
+  "split": "24+8",
+  "steps": 14,
+  "warmup_dropped": 4,
+  "sdxl_workpoint": "768x768",
+  "cogvideox_workpoint": "720x480x9f",
+  "text_encoders_released_bytes": {
+    "sdxl": 1642389504,
+    "cogvideox-2b": 11538935808
+  },
+  "stream_attestation": [
+    {
+      "units": 8,
+      "requested_mask": "0xff",
+      "installed_mask": "0xff",
+      "popcount": 8,
+      "matches_request": true
+    },
+    {
+      "units": 24,
+      "requested_mask": "0xffffff",
+      "installed_mask": "0xffffff",
+      "popcount": 24,
+      "matches_request": true
+    },
+    {
+      "units": 8,
+      "requested_mask": "0xff000000",
+      "installed_mask": "0xff000000",
+      "popcount": 8,
+      "matches_request": true
+    },
+    {
+      "units": 32,
+      "requested_mask": "0xffffffff",
+      "installed_mask": "0xffffffff",
+      "popcount": 32,
+      "matches_request": true
+    }
+  ],
+  "episodes": 6,
+  "solo": [
+    {
+      "model": "sdxl",
+      "units": 24,
+      "p50_s": 0.12845252990722655,
+      "samples": 10
+    },
+    {
+      "model": "sdxl",
+      "units": 32,
+      "p50_s": 0.11281903076171874,
+      "samples": 10
+    },
+    {
+      "model": "cogvideox-2b",
+      "units": 8,
+      "p50_s": 1.5841574096679687,
+      "samples": 10
+    },
+    {
+      "model": "cogvideox-2b",
+      "units": 32,
+      "p50_s": 0.5154194946289062,
+      "samples": 10
+    }
+  ],
+  "solo_after": [
+    {
+      "model": "sdxl",
+      "units": 24,
+      "p50_s": 0.12705948638916015
+    },
+    {
+      "model": "sdxl",
+      "units": 32,
+      "p50_s": 0.11195429992675782
+    },
+    {
+      "model": "cogvideox-2b",
+      "units": 8,
+      "p50_s": 1.5760986328125
+    },
+    {
+      "model": "cogvideox-2b",
+      "units": 32,
+      "p50_s": 0.51513720703125
+    }
+  ],
+  "per_episode": [
+    {
+      "episode": 1,
+      "verdict": [
+        {
+          "side": "a",
+          "model": "sdxl",
+          "units": 24,
+          "share": 0.75,
+          "corun_p50_s": 1.71441845703125,
+          "corun_overlap_p50_s": 1.71441845703125,
+          "solo_at_quota_s": 0.12845252990722655,
+          "solo_full_die_s": 0.11281903076171874,
+          "externality": 13.34670837755761,
+          "rotating_equivalent_s": 0.15042537434895834,
+          "partitioning_gain": -0.9122586590618953
+        },
+        {
+          "side": "b",
+          "model": "cogvideox-2b",
+          "units": 8,
+          "share": 0.25,
+          "corun_p50_s": 1.5910825195312501,
+          "corun_overlap_p50_s": 1.5913258056640625,
+          "solo_at_quota_s": 1.5841574096679687,
+          "solo_full_die_s": 0.5154194946289062,
+          "externality": 1.0043714783777282,
+          "rotating_equivalent_s": 2.061677978515625,
+          "partitioning_gain": 0.29577061730463683
+        }
+      ],
+      "a_series_s": [
+        1.71441845703125,
+        1.71441845703125,
+        1.71441845703125,
+        1.71441845703125,
+        1.71441845703125,
+        1.71441845703125,
+        1.71441845703125,
+        1.71441845703125,
+        1.71441845703125,
+        0.12741746520996095
+      ],
+      "b_series_s": [
+        1.5922740478515625,
+        1.594033935546875,
+        1.591472412109375,
+        1.5941622314453125,
+        1.589372314453125,
+        1.5913258056640625,
+        1.58934326171875,
+        1.5908392333984376,
+        1.587825439453125,
+        1.588310791015625
+      ]
+    },
+    {
+      "episode": 2,
+      "verdict": [
+        {
+          "side": "a",
+          "model": "sdxl",
+          "units": 24,
+          "share": 0.75,
+          "corun_p50_s": 1.6855531005859374,
+          "corun_overlap_p50_s": 1.6855531005859374,
+          "solo_at_quota_s": 0.12845252990722655,
+          "solo_full_die_s": 0.11281903076171874,
+          "externality": 13.12199223949353,
+          "rotating_equivalent_s": 0.15042537434895834,
+          "partitioning_gain": -0.9107560750849872
+        },
+        {
+          "side": "b",
+          "model": "cogvideox-2b",
+          "units": 8,
+          "share": 0.25,
+          "corun_p50_s": 1.591543640136719,
+          "corun_overlap_p50_s": 1.59168798828125,
+          "solo_at_quota_s": 1.5841574096679687,
+          "solo_full_die_s": 0.5154194946289062,
+          "externality": 1.0046625609448105,
+          "rotating_equivalent_s": 2.061677978515625,
+          "partitioning_gain": 0.2953951915126374
+        }
+      ],
+      "a_series_s": [
+        1.6855531005859374,
+        1.6855531005859374,
+        1.6855531005859374,
+        1.6855531005859374,
+        1.6855531005859374,
+        1.6855531005859374,
+        1.6855531005859374,
+        1.6855531005859374,
+        1.6855531005859374,
+        0.1274621124267578
+      ],
+      "b_series_s": [
+        1.58984521484375,
+        1.5945933837890625,
+        1.5913992919921875,
+        1.5927110595703124,
+        1.5929554443359375,
+        1.5918638916015626,
+        1.589938232421875,
+        1.59168798828125,
+        1.5893167724609376,
+        1.5908193359375
+      ]
+    },
+    {
+      "episode": 3,
+      "verdict": [
+        {
+          "side": "a",
+          "model": "sdxl",
+          "units": 24,
+          "share": 0.75,
+          "corun_p50_s": 0.1274621124267578,
+          "corun_overlap_p50_s": 0.1274621124267578,
+          "solo_at_quota_s": 0.12845252990722655,
+          "solo_full_die_s": 0.11281903076171874,
+          "externality": 0.9922896226241393,
+          "rotating_equivalent_s": 0.15042537434895834,
+          "partitioning_gain": 0.18015755023200053
+        },
+        {
+          "side": "b",
+          "model": "cogvideox-2b",
+          "units": 8,
+          "share": 0.25,
+          "corun_p50_s": 1.5903584594726563,
+          "corun_overlap_p50_s": 1.590502197265625,
+          "solo_at_quota_s": 1.5841574096679687,
+          "solo_full_die_s": 0.5154194946289062,
+          "externality": 1.0039144151754384,
+          "rotating_equivalent_s": 2.061677978515625,
+          "partitioning_gain": 0.2963605571031154
+        }
+      ],
+      "a_series_s": [
+        0.1274621124267578,
+        0.1274621124267578,
+        0.1274621124267578,
+        0.1274621124267578,
+        0.1274621124267578,
+        0.1274621124267578,
+        0.1274621124267578,
+        0.1274621124267578,
+        0.1274621124267578,
+        0.1272006378173828
+      ],
+      "b_series_s": [
+        1.5910699462890625,
+        1.5902147216796876,
+        1.5895645751953125,
+        1.59388623046875,
+        1.587874755859375,
+        1.59101416015625,
+        1.58776611328125,
+        1.5909056396484376,
+        1.590502197265625,
+        1.5894642333984375
+      ]
+    },
+    {
+      "episode": 4,
+      "verdict": [
+        {
+          "side": "a",
+          "model": "sdxl",
+          "units": 24,
+          "share": 0.75,
+          "corun_p50_s": 0.1272006378173828,
+          "corun_overlap_p50_s": 0.1272006378173828,
+          "solo_at_quota_s": 0.12845252990722655,
+          "solo_full_die_s": 0.11281903076171874,
+          "externality": 0.9902540487855871,
+          "rotating_equivalent_s": 0.15042537434895834,
+          "partitioning_gain": 0.18258349116864037
+        },
+        {
+          "side": "b",
+          "model": "cogvideox-2b",
+          "units": 8,
+          "share": 0.25,
+          "corun_p50_s": 1.5905932006835937,
+          "corun_overlap_p50_s": 1.59043408203125,
+          "solo_at_quota_s": 1.5841574096679687,
+          "solo_full_die_s": 0.5154194946289062,
+          "externality": 1.004062595658959,
+          "rotating_equivalent_s": 2.061677978515625,
+          "partitioning_gain": 0.296169239016973
+        }
+      ],
+      "a_series_s": [
+        0.1272006378173828,
+        0.1272006378173828,
+        0.1272006378173828,
+        0.1272006378173828,
+        0.1272006378173828,
+        0.1272006378173828,
+        0.1272006378173828,
+        0.1272006378173828,
+        0.1272006378173828,
+        0.12744452667236328
+      ],
+      "b_series_s": [
+        1.5891976318359375,
+        1.592671142578125,
+        1.5891668701171875,
+        1.59043408203125,
+        1.5912474365234375,
+        1.5910823974609376,
+        1.588157470703125,
+        1.5907523193359374,
+        1.58991357421875,
+        1.5917703857421874
+      ]
+    },
+    {
+      "episode": 5,
+      "verdict": [
+        {
+          "side": "a",
+          "model": "sdxl",
+          "units": 24,
+          "share": 0.75,
+          "corun_p50_s": 0.12744452667236328,
+          "corun_overlap_p50_s": 0.12744452667236328,
+          "solo_at_quota_s": 0.12845252990722655,
+          "solo_full_die_s": 0.11281903076171874,
+          "externality": 0.9921527179294071,
+          "rotating_equivalent_s": 0.15042537434895834,
+          "partitioning_gain": 0.18032039724761684
+        },
+        {
+          "side": "b",
+          "model": "cogvideox-2b",
+          "units": 8,
+          "share": 0.25,
+          "corun_p50_s": 1.5903876953125,
+          "corun_overlap_p50_s": 1.589939453125,
+          "solo_at_quota_s": 1.5841574096679687,
+          "solo_full_die_s": 0.5154194946289062,
+          "externality": 1.0039328703110615,
+          "rotating_equivalent_s": 2.061677978515625,
+          "partitioning_gain": 0.29633672631661034
+        }
+      ],
+      "a_series_s": [
+        0.12744452667236328,
+        0.12744452667236328,
+        0.12744452667236328,
+        0.12744452667236328,
+        0.12744452667236328,
+        0.12744452667236328,
+        0.12744452667236328,
+        0.12744452667236328,
+        0.12744452667236328,
+        0.12752877044677735
+      ],
+      "b_series_s": [
+        1.58860546875,
+        1.5919346923828126,
+        1.5896295166015626,
+        1.5908359375,
+        1.58795654296875,
+        1.594129150390625,
+        1.589939453125,
+        1.5929072265625,
+        1.588665771484375,
+        1.5924832763671875
+      ]
+    },
+    {
+      "episode": 6,
+      "verdict": [
+        {
+          "side": "a",
+          "model": "sdxl",
+          "units": 24,
+          "share": 0.75,
+          "corun_p50_s": 0.12752877044677735,
+          "corun_overlap_p50_s": 0.12752877044677735,
+          "solo_at_quota_s": 0.12845252990722655,
+          "solo_full_die_s": 0.11281903076171874,
+          "externality": 0.9928085537815692,
+          "rotating_equivalent_s": 0.15042537434895834,
+          "partitioning_gain": 0.17954069361734049
+        },
+        {
+          "side": "b",
+          "model": "cogvideox-2b",
+          "units": 8,
+          "share": 0.25,
+          "corun_p50_s": 1.5898450317382813,
+          "corun_overlap_p50_s": 1.5893316650390625,
+          "solo_at_quota_s": 1.5841574096679687,
+          "solo_full_die_s": 0.5154194946289062,
+          "externality": 1.0035903137122621,
+          "rotating_equivalent_s": 2.061677978515625,
+          "partitioning_gain": 0.2967792063742578
+        }
+      ],
+      "a_series_s": [
+        0.12752877044677735,
+        0.12752877044677735,
+        0.12752877044677735,
+        0.12752877044677735,
+        0.12752877044677735,
+        0.12752877044677735,
+        0.12752877044677735,
+        0.12752877044677735,
+        0.12752877044677735,
+        0.12705948638916015
+      ],
+      "b_series_s": [
+        1.5893316650390625,
+        1.5929569091796876,
+        1.589296142578125,
+        1.5926422119140624,
+        1.5887459716796875,
+        1.5935081787109375,
+        1.5887825927734376,
+        1.592433837890625,
+        1.5884339599609374,
+        1.5903583984375
+      ]
+    }
+  ],
+  "verdict": [
+    {
+      "side": "a",
+      "model": "sdxl",
+      "units": 24,
+      "share": 0.75,
+      "corun_p50_s": 0.12752877044677735,
+      "corun_overlap_p50_s": 0.12752877044677735,
+      "solo_at_quota_s": 0.12845252990722655,
+      "solo_full_die_s": 0.11281903076171874,
+      "externality": 0.9928085537815692,
+      "rotating_equivalent_s": 0.15042537434895834,
+      "partitioning_gain": 0.17954069361734049
+    },
+    {
+      "side": "b",
+      "model": "cogvideox-2b",
+      "units": 8,
+      "share": 0.25,
+      "corun_p50_s": 1.5898450317382813,
+      "corun_overlap_p50_s": 1.5893316650390625,
+      "solo_at_quota_s": 1.5841574096679687,
+      "solo_full_die_s": 0.5154194946289062,
+      "externality": 1.0035903137122621,
+      "rotating_equivalent_s": 2.061677978515625,
+      "partitioning_gain": 0.2967792063742578
+    }
+  ],
+  "comparison": "rotating gives a tenant the full die for its share of the wall clock; partitioning gives it its share of the die all the time. partitioning_gain > 0 means partitioning advances that tenant faster."
+}

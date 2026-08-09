@@ -1684,3 +1684,43 @@ process, four episodes, so there is no repeat to say whether it is a
 third state, a stray, or something on the box. It is in the payload and
 in this table's caveat rather than dropped, and 24+8 is the split to
 repeat first.
+
+### 2026-08-08 -- 24+8 repeated: the outlier is quantised, not noise
+
+Three processes, six episodes each, the split whose single run produced a
+37x reading.
+
+Settled (episodes 3-6, the one outlier excluded): SDXL at 24 units reads
+0.998 and CogVideoX at 8 reads 1.007 -- both essentially free, both
+gaining, +17.2% and +29.1%. That confirms the single-process result and
+completes the picture: every split measured pays both tenants once
+settled.
+
+**The outlier recurred, and it is a discrete state rather than a stray.**
+
+    original run, episode 4   4699.8 ms   externality 37.0
+    repeat r1,   episode 5    4701.2 ms   externality 37.3
+
+Two occurrences 0.03% apart. And 4701 ms is not an arbitrary number: the
+peer's solo step is 1587 ms, and 4701 / 1587 = 2.96. SDXL's step spans
+almost exactly **three** of CogVideoX's. Both times the very next episode
+returned to 127 ms.
+
+So this is not noise and not degradation; it is a round in which one
+tenant is serviced once per three of its peer's steps. Two of fourteen
+settled episodes, which is a rate with a wide interval and not one any
+design should lean on -- what matters is the shape: quantised, severe,
+and self-clearing in one episode.
+
+**It is also the case the serial fallback was built for**, and it is
+worth noticing that it was built before this was measured. A 3:1 starve
+is a drift of 2900%, far over the envelope's 15%, so the round after it
+goes serial with a reason recorded; and because the hold backs off rather
+than being permanent, the pairing -- which pays +17% and +29% in the
+other eleven episodes -- is retried rather than written off. A permanent
+refusal would have cost both tenants their gain on the strength of one
+round in seven.
+
+What produces a 3:1 quantisation is unmeasured, and this project has
+written four wrong explanations for a co-run effect. It is recorded as a
+shape and a rate.
