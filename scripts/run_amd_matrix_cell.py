@@ -185,6 +185,19 @@ def main() -> int:
     # episodes -- so it costs seconds, and it turns "the probe never
     # fired" into "the probe never fired, and here is the state it would
     # have fired on".
+    # Warm both widths the cells will actually use, including the full
+    # die, before measuring the state. Two reasons, and the second is the
+    # one that made the old probe useless. Kernel compilation is a
+    # property of the process, and a state measured through it is
+    # measuring the compile. And the policies grant 32 units to a single
+    # runnable request -- exclusive_fcfs always does -- so a state probe
+    # that has never masked the full die is not sampling the process the
+    # cells will run in. The old probe reported fast in 30 of 30
+    # processes where the span harness, which warms 32, drew slow in 7 of
+    # 30; at the pooled 22.7% rate, 0 of 30 has probability 0.0005.
+    for tenant in models:
+        for width in (16, 32):
+            harness.warm(warm_adapters[tenant], pool, width, args)
     drawn = drawn_state(args, torch, models, pool, warm_adapters)
     print(f"  drawn co-run state: {drawn['externality']:.3f} "
           f"({drawn['state']})", flush=True)
@@ -214,6 +227,10 @@ def _span_series(adapter, torch, stream_handle, steps):
     """Run steps on a stream, returning each step's bracketing events."""
     from burstserve.executor import StepExecutor as Executor
 
+    # Never ask for more steps than the adapter's own schedule holds:
+    # the urgent adapter carries 8 timesteps and stepping past them
+    # indexes off the end of the tensor.
+    steps = min(steps, getattr(adapter, "steps", steps))
     adapter.stream = stream_handle
     wrapper = torch.cuda.ExternalStream(stream_handle.value)
     executor = Executor(object(), adapter, total_steps=steps)
@@ -248,12 +265,16 @@ def drawn_state(args, torch, models, pool, warm_adapters):
     sides = (("a", "urgent", left), ("b", "video", right))
 
     solo = {}
+    # Longer than the first version's 6 steps. The span harness that
+    # draws slow 23% of the time uses 14 with 4 dropped, and a probe that
+    # samples less of the episode than the thing it is being compared
+    # against is not comparable to it.
     for name, tenant, _ in sides:
         torch.cuda.synchronize()
         origin = torch.cuda.Event(enable_timing=True)
         origin.record()
         marks = _span_series(warm_adapters[tenant], torch,
-                             pool.for_quota(16).handle, 5)
+                             pool.for_quota(16).handle, 8)
         torch.cuda.synchronize()
         warm_adapters[tenant].drain_timing()
         spans = [origin.elapsed_time(y) - origin.elapsed_time(x)
@@ -265,7 +286,7 @@ def drawn_state(args, torch, models, pool, warm_adapters):
 
     def side(name, tenant, stream):
         marks[name] = _span_series(warm_adapters[tenant], torch,
-                                   stream.handle, 6)
+                                   stream.handle, 14)
         warm_adapters[tenant].drain_timing()
 
     torch.cuda.synchronize()
@@ -280,8 +301,10 @@ def drawn_state(args, torch, models, pool, warm_adapters):
 
     per_side = {}
     for name, _, _ in sides:
+        got = marks.get(name) or []
+        drop = min(4, max(1, len(got) // 3))
         spans = [origin.elapsed_time(y) - origin.elapsed_time(x)
-                 for x, y in marks[name]][2:]
+                 for x, y in got][drop:]
         if spans and solo[name]:
             per_side[name] = statistics.median(spans) / solo[name]
     ext = statistics.mean(per_side.values()) if per_side else None

@@ -2448,3 +2448,46 @@ If it holds it is the first thing found that predicts the draw, after
 four earlier explanations were proposed and retracted. If it does not,
 the matrix probe's failure has some other cause and this is one more
 refuted guess -- which is why the criterion is written down first.
+
+### 2026-08-10 -- the full-die guess is not supported, and the state probe is being fixed first
+
+Twelve processes per arm, same seeds, arms alternating:
+
+    full-die mask created    1 of 12 slow  (8.3%)
+    never created            0 of 12 slow  (0%)
+
+The criterion written beforehand was 23% against 0%. Fisher's exact on
+(1,11) against (0,12) gives p about 1.0, so **the guess is not
+supported**. The one informative piece is thin: if the "never created"
+arm had the same 23% rate, 0 of 12 has probability 0.045 -- but the
+"created" arm returning only 1 of 12 undercuts even that.
+
+**Not extending N to rescue it.** Adding processes after seeing an
+underpowered result and re-running the same test is optional stopping. If
+this is pursued it needs a confirmatory N fixed in advance and reported
+separately from this pilot. It is a fifth candidate explanation for the
+draw joining four already retracted, and it is parked, not adopted.
+
+**The blocking problem is the state probe, and that is worth fixing on
+its own.** The matrix runner measured the state before any warm-up and
+with a 6-step episode, while the span harness that draws slow 23% of the
+time warms 16 and 32 first and uses 14 steps with 4 dropped. Two
+differences, and the second is disqualifying regardless of what triggers
+the draw: the policies grant 32 units to a single runnable request --
+``exclusive_fcfs`` always does -- so a probe that has never masked the
+full die is not sampling the process the cells run in.
+
+The probe now warms both widths first and uses the longer episode, capped
+at the adapter's own schedule -- the urgent adapter holds 8 timesteps and
+stepping past them indexed off the end of the tensor, which is what the
+first fixed version did.
+
+**It is being validated before it is used.** Twenty short processes that
+run the probe and nothing else: if it reports slow at about 23% it is
+measuring the same thing as the span harness, and the 30-seed same-model
+campaign can be re-run and split by state. If it reports 0 of 20 again it
+is still broken, and four hours of re-run would produce another set of
+labels nobody can trust. Its absolute values differ from the reference
+distribution -- 1.137 against 1.297 -- because the two tenants carry 8
+and 140 timesteps rather than an identical 14, so the validation is about
+whether the two clusters separate, not whether the numbers match.
