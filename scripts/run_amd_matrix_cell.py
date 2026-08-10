@@ -32,6 +32,7 @@ import ctypes
 import json
 import statistics
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -97,6 +98,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", default="probing_partitioning",
                         help="one policy, or use --policies for a group")
+    parser.add_argument("--video-model", default="cogvideox-2b",
+                        help="the long-running tenant's model. sdxl makes "
+                             "the co-location same-model, which is the only "
+                             "arrangement the die was measured bistable in: "
+                             "self-paired 16+16 draws 1.274 or 1.871 per "
+                             "process, while sdxl against cogvideox measured "
+                             "1.02 and 1.05 with no draw in four processes. "
+                             "The probe fires on the slow state, so a "
+                             "mismatched workload cannot exercise it.")
     parser.add_argument("--drift-tolerance", type=float, default=0.15,
                         help="the runtime's serial-fallback threshold. The "
                              "campaign found it firing for static_even, "
@@ -150,14 +160,15 @@ def main() -> int:
     import torch
 
     began_all = time.perf_counter()
-    models = {"urgent": "sdxl", "video": "cogvideox-2b"}
+    models = {"urgent": "sdxl", "video": args.video_model}
     pool = MaskedStreamPool(harness.make_stream)
 
     pipelines, warm_adapters = {}, {}
     for tenant, model in models.items():
-        print(f"loading {model} ...", flush=True)
-        pipelines[model] = harness.build_pipeline(model,
-                                                  drop_text_encoders=False)
+        if model not in pipelines:
+            print(f"loading {model} ...", flush=True)
+            pipelines[model] = harness.build_pipeline(
+                model, drop_text_encoders=False)
         # One adapter per tenant is enough here: each tenant runs at most
         # one request at a time, which is what TenantRegistry offers.
         args.steps = (args.urgent_steps if tenant == "urgent"
@@ -167,6 +178,16 @@ def main() -> int:
     for model in pipelines:
         harness.free_text_encoders(pipelines[model])
     loaded_s = time.perf_counter() - began_all
+
+    # Which co-run state this process drew, measured before any policy
+    # runs and shared by the whole group. One step identifies it -- the
+    # per-step series inside an episode is constant to 0.00% over 72
+    # episodes -- so it costs seconds, and it turns "the probe never
+    # fired" into "the probe never fired, and here is the state it would
+    # have fired on".
+    drawn = drawn_state(args, torch, models, pool, warm_adapters)
+    print(f"  drawn co-run state: {drawn['externality']:.3f} "
+          f"({drawn['state']})", flush=True)
 
     policies = ([p.strip() for p in args.policies.split(",") if p.strip()]
                 or [args.policy])
@@ -185,8 +206,88 @@ def main() -> int:
     for policy_name in policies:
         run_one(policy_name, args, torch, models, pool, pipelines,
                 warm_adapters, loaded_s, began_all, out_template,
-                len(policies) > 1, shared)
+                len(policies) > 1, shared, drawn)
     return 0
+
+
+def _span_series(adapter, torch, stream_handle, steps):
+    """Run steps on a stream, returning each step's bracketing events."""
+    from burstserve.executor import StepExecutor as Executor
+
+    adapter.stream = stream_handle
+    wrapper = torch.cuda.ExternalStream(stream_handle.value)
+    executor = Executor(object(), adapter, total_steps=steps)
+    executor.prepare()
+    marks = []
+    for _ in range(steps):
+        before = torch.cuda.Event(enable_timing=True)
+        after = torch.cuda.Event(enable_timing=True)
+        before.record(wrapper)
+        more = executor.run_step(quota_units=16)
+        after.record(wrapper)
+        marks.append((before, after))
+        if not more:
+            break
+    return marks
+
+
+def drawn_state(args, torch, models, pool, warm_adapters):
+    """The co-run externality this process drew, by device span.
+
+    Measured on the pairing the runtime will actually form -- both
+    tenants at 16+16 -- rather than on a canonical self-pairing, because
+    the die keys its state on the mask pair and the two arrangements
+    differ: self-paired is bistable at 1.274 or 1.871, mismatched measured
+    1.02 and 1.05 with no draw at all.
+
+    Uses the device-span instrument, not the adapter's deferred reading,
+    which was found on 2026-08-08 to hold one stale value for a whole
+    episode whenever the measured side's steps are short.
+    """
+    left, right = pool.disjoint_pair(16, 16)
+    sides = (("a", "urgent", left), ("b", "video", right))
+
+    solo = {}
+    for name, tenant, _ in sides:
+        torch.cuda.synchronize()
+        origin = torch.cuda.Event(enable_timing=True)
+        origin.record()
+        marks = _span_series(warm_adapters[tenant], torch,
+                             pool.for_quota(16).handle, 5)
+        torch.cuda.synchronize()
+        warm_adapters[tenant].drain_timing()
+        spans = [origin.elapsed_time(y) - origin.elapsed_time(x)
+                 for x, y in marks]
+        solo[name] = (statistics.median(spans[1:]) if len(spans) > 1
+                      else spans[0])
+
+    marks = {}
+
+    def side(name, tenant, stream):
+        marks[name] = _span_series(warm_adapters[tenant], torch,
+                                   stream.handle, 6)
+        warm_adapters[tenant].drain_timing()
+
+    torch.cuda.synchronize()
+    origin = torch.cuda.Event(enable_timing=True)
+    origin.record()
+    threads = [threading.Thread(target=side, args=s) for s in sides]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    torch.cuda.synchronize()
+
+    per_side = {}
+    for name, _, _ in sides:
+        spans = [origin.elapsed_time(y) - origin.elapsed_time(x)
+                 for x, y in marks[name]][2:]
+        if spans and solo[name]:
+            per_side[name] = statistics.median(spans) / solo[name]
+    ext = statistics.mean(per_side.values()) if per_side else None
+    # 1.57 is the midpoint of the two measured states, 1.274 and 1.871.
+    return {"externality": ext, "per_side": per_side,
+            "state": ("slow" if ext and ext > 1.57 else "fast")}
 
 
 def measure_isolated(args, torch, models, pool, warm_adapters, *, label):
@@ -203,7 +304,7 @@ def measure_isolated(args, torch, models, pool, warm_adapters, *, label):
 
 def run_one(policy_name, args, torch, models, pool, pipelines,
             warm_adapters, loaded_s, began_all, out_template, many,
-            shared=None):
+            shared=None, drawn=None):
     began_all = time.perf_counter() - loaded_s
     if shared is not None:
         service, p99 = shared
@@ -331,6 +432,8 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "isolated_service_s": service,
         "isolated_step_p99_s": p99,
         "isolated_shared_across_group": shared is not None,
+        "drawn_co_run_state": drawn,
+        "video_model": args.video_model,
         "deadline_base_s": service["urgent"],
         "deadline_base": "isolated request latency, not step p99",
         "requests": {"total": len(trace.requests),
