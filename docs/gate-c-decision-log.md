@@ -2615,3 +2615,48 @@ to build on yet. The slow-only campaign was pre-registered at 60
 processes and will run to 60 regardless of what it draws -- changing it
 now because the early draws are unfavourable is the same optional
 stopping I refused three days running.
+
+### 2026-08-10 -- both states measured: the probe works, and not for the reason it was built
+
+The slow-only campaign ran its pre-registered 60 processes and drew 7
+slow. With the 3 from the earlier campaign that is 10 slow-state
+processes with full three-arm cells, against 33 fast.
+
+| segment | slow (n=10) | fast (n=33) |
+| --- | --- | --- |
+| deadline actions | -0.57%, spans zero | +0.62%, spans zero |
+| **probe** | **-10.87% [-0.0635, -0.0083]** | **-9.75% [-0.0292, -0.0112]** |
+| both | -11.37%, excludes zero | -9.19%, excludes zero |
+| serial fallbacks | 1341 -> 448 (-67%) | 5498 -> 2158 (-61%) |
+| video goodput | +0.03% | +0.04% |
+
+**The probe is established in both states, at the same magnitude, by the
+same mechanism.** -10.87% and -9.75%; 67% and 61% fewer serial
+fallbacks. The deadline actions are null in both.
+
+That is a direct refutation of the argument the probe was designed from.
+It was built to detect a bistable co-run state and stop pairing when the
+die drew badly; if that were what it does, its effect would concentrate
+in the slow state and vanish in the fast one. It does not. What it does,
+identically in both, is drop a degrading pairing itself before the drift
+envelope has to bail the round out with the whole die -- a cheap early
+correction standing in for an expensive late one.
+
+**The draw rate, pooled over 160 processes: 27, 16.9%, [11.4%, 23.6%].**
+The between-campaign spread that looked alarming at 3/36 against 7/20 is
+still there -- 8.3%, 11.7%, 22.7%, 35.0% -- and no predictor of the draw
+has survived five attempts. But the rate no longer matters to the claim,
+because the claim no longer depends on which state a process draws.
+
+**What is and is not claimed.**
+
+Established: under same-model co-location at 768, the probe reduces
+urgent SLO miss rate by about 10% relative, in both co-run states, at no
+cost to video goodput, over 43 paired processes. Its mechanism is a 61-67%
+reduction in serial fallbacks.
+
+Not established, and not to be elided: this is not plan.md's primary
+workload. The matrix pairs SDXL with CogVideoX-2b, which measured 1.02 and
+1.05 with no draw at all, and there the probe never fires and contributes
+exactly nothing across 180 cells. The honest scope is same-model
+co-location. And 10% is still under plan.md's 20% bar.
