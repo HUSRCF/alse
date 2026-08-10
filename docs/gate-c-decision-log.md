@@ -2349,3 +2349,56 @@ So the likely reading is that the deadline actions produce the gain and
 the probe again does nothing -- which is a result, provided the
 decomposition is measured rather than argued. Thirty seeds are running,
 three arms each.
+
+### 2026-08-10 -- the probe works, the deadline actions do not, and I predicted the opposite
+
+Same-model co-location, 30 seeds, three arms so the gain can be
+attributed: pairing only, pairing plus the deadline actions, and both
+plus the probe. Paired-seed bootstrap over 30 pairs.
+
+| segment | absolute | 95% CI | relative | excludes zero |
+| --- | --- | --- | --- | --- |
+| deadline actions | +0.0010 | [-0.0011, +0.0037] | +0.47% | no |
+| **probe** | **-0.0195** | **[-0.0299, -0.0104]** | **-8.74%** | **yes** |
+| both | -0.0185 | [-0.0285, -0.0096] | -8.32% | yes |
+| video goodput | +0.0016 | | +0.06% | |
+
+**This is the opposite of what I wrote down before running it.** The
+prediction was that the probe would be silent because a fast-state co-run
+at 16 units measures about 0.20 s against its 0.253 s threshold, and that
+the deadline actions would turn out to be doing the work. The deadline
+actions do nothing at all -- +0.47% with an interval spanning zero -- and
+the probe carries the entire effect. Writing the prediction down first is
+what makes that a result rather than a story; the middle arm is what made
+it attributable at all.
+
+**The mechanism, from the ledger rather than from reasoning.** Serial
+fallbacks over the 30 seeds: 4880 for pairing alone, 4749 with the
+deadline actions, **1902 with the probe**. The probe cuts the runtime's
+serial fallbacks by 61%. It drops a degrading pairing itself, before the
+drift envelope has to bail the round out with the whole die -- a cheaper
+correction applied earlier. That is a different account of what the probe
+is for than "it catches the slow state", and it is the one the data
+supports here.
+
+Per seed the probe is negative in 13 of 30 and exactly zero in 17. It
+never makes a seed worse.
+
+**Two things this does not establish, stated because they are easy to
+elide.**
+
+It is not plan.md's primary workload. The matrix pairs SDXL with
+CogVideoX-2b; this pairs SDXL with SDXL, chosen precisely because the
+mismatched pairing measured 1.02 and 1.05 and left the mechanism nothing
+to act on. The honest sentence is "the probe is worth 8.7% under
+same-model co-location", not "the matrix claim holds".
+
+**All 30 processes drew the fast state**, 1.276 to 1.301. None drew slow.
+The span campaigns saw 2 of 8 and 1 of 6, so 0 of 30 at that rate has
+probability about 0.011. Either this process configuration suppresses the
+slow state or the two measurements are not of the same thing. **The
+probe's value in the slow state -- the case it was designed for --
+remains unmeasured**, and that is an open question rather than a detail.
+
+And 8.74%, interval roughly -13.4% to -4.7%, is still under plan.md's
+20% bar.
