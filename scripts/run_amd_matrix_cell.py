@@ -98,6 +98,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", default="probing_partitioning",
                         help="one policy, or use --policies for a group")
+    parser.add_argument("--require-state", default="any",
+                        choices=("any", "fast", "slow"),
+                        help="run the cells only when the process drew this "
+                             "state, and record the draw either way. The "
+                             "slow state is about one process in five, so "
+                             "sampling it by running full cells everywhere "
+                             "spends five times the card time on draws that "
+                             "answer nothing. The draw is written out even "
+                             "when the cells are skipped, so filtering here "
+                             "does not bias the rate this campaign "
+                             "contributes.")
     parser.add_argument("--video-model", default="cogvideox-2b",
                         help="the long-running tenant's model. sdxl makes "
                              "the co-location same-model, which is the only "
@@ -160,6 +171,7 @@ def main() -> int:
     import torch
 
     began_all = time.perf_counter()
+    began_all_unix = time.time()
     models = {"urgent": "sdxl", "video": args.video_model}
     pool = MaskedStreamPool(harness.make_stream)
 
@@ -206,6 +218,24 @@ def main() -> int:
                 or [args.policy])
     out_template = str(args.out)
 
+    if args.require_state != "any" and drawn["state"] != args.require_state:
+        skipped = Path(out_template.replace("POLICY", "draw"))
+        skipped.parent.mkdir(parents=True, exist_ok=True)
+        skipped.write_text(json.dumps({
+            "schema_version": "burstserve.amd-state-draw/v1",
+            "drawn_co_run_state": drawn,
+            "required": args.require_state,
+            "started_unix": began_all_unix,
+            "started_iso": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                         time.localtime(began_all_unix)),
+            "cells_run": False,
+            "seed": args.seed,
+            "video_model": args.video_model,
+        }, indent=2) + "\n")
+        print(f"  drew {drawn['state']}, wanted {args.require_state}: "
+              f"cells skipped, draw recorded -> {skipped}", flush=True)
+        return 0
+
     # Isolated service once per group, shared by every arm in it. The
     # deadline is derived from it, so measuring per arm gives the arm that
     # runs first a colder card and a shorter deadline: measured, the first
@@ -219,7 +249,7 @@ def main() -> int:
     for policy_name in policies:
         run_one(policy_name, args, torch, models, pool, pipelines,
                 warm_adapters, loaded_s, began_all, out_template,
-                len(policies) > 1, shared, drawn)
+                len(policies) > 1, shared, drawn, began_all_unix)
     return 0
 
 
@@ -339,7 +369,7 @@ def measure_isolated(args, torch, models, pool, warm_adapters, *, label):
 
 def run_one(policy_name, args, torch, models, pool, pipelines,
             warm_adapters, loaded_s, began_all, out_template, many,
-            shared=None, drawn=None):
+            shared=None, drawn=None, began_all_unix=None):
     began_all = time.perf_counter() - loaded_s
     if shared is not None:
         service, p99 = shared
@@ -454,6 +484,12 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
 
     payload = {
         "schema_version": "burstserve.amd-matrix-cell/v1",
+        # Wall clock, because a file's mtime is when it was copied. Asking
+        # "did the slow draws cluster in time" twice and finding the
+        # answer unavailable both times is what put this here.
+        "started_unix": began_all_unix,
+        "started_iso": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                     time.localtime(began_all_unix)),
         "cell": spec.cell_id,
         "policy": policy_name,
         "drift_tolerance": args.drift_tolerance,

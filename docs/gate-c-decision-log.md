@@ -2576,3 +2576,42 @@ either way -- so nothing in the obvious list explains it. It is recorded
 as an open inconsistency in the draw rate, which matters because "one
 process in five" is the number any claim about the slow state would rest
 on.
+
+### 2026-08-10 -- the draw rate is unstable, no predictor, and the runs had no clock
+
+The slow-only campaign is drawing 0 of its first 14, where the probe
+validation drew 7 of 20 with the same runner and probe a few hours
+earlier. Across everything so far:
+
+    span campaigns     10/44   22.7%
+    probe validation    7/20   35.0%
+    same-model v2       3/36    8.3%
+    slow-only (partial) 0/14    0.0%
+
+Fisher between the validation and the same-model campaign gives p =
+0.025. The rate is not stable at a level chance covers comfortably, and
+**no predictor of the draw has survived**: working set, power cap,
+uncontrollable bistability, launch stagger, and now the full-die mask --
+five proposed, five retracted or unsupported.
+
+**A test I could not run, twice.** "Do the slow draws cluster in time" is
+the obvious next question and the payloads carry no wall clock; a file's
+mtime is when it was copied here. The one campaign with epoch markers in
+its log puts its three slow draws at minutes 26.1, 111.3 and 125.2 of
+245, with a fast draw between the last two -- no clustering visible, and
+three draws cannot test for it either way.
+
+``started_unix`` and ``started_iso`` are now in every cell and every
+recorded draw. Asking the same question twice and finding the data
+absent both times is what put them there, and it is the cheapest thing
+in this entire log.
+
+**What this means for the claim.** The fast-state result stands on its
+own: the probe is worth -9.75% over 33 paired processes with an interval
+excluding zero, and it works by cutting serial fallbacks 61%, not by
+detecting a state. The slow state remains under-sampled, and a rate that
+moves between campaigns means even "one process in five" is not a number
+to build on yet. The slow-only campaign was pre-registered at 60
+processes and will run to 60 regardless of what it draws -- changing it
+now because the early draws are unfavourable is the same optional
+stopping I refused three days running.
