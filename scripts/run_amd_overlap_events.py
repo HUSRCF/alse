@@ -205,6 +205,10 @@ def main() -> int:
     parser.add_argument("--no-sync-before-episode", action="store_true",
                         help="skip the device synchronise before each "
                              "episode, as the mismatched harness does")
+    parser.add_argument("--no-warm-full-die", action="store_true",
+                        help="never create or use a 32-unit masked stream "
+                             "in this process, as the matrix runner's state "
+                             "probe does not")
     parser.add_argument("--also-solo-32", action="store_true",
                         help="run a full-die solo before the episodes, as "
                              "the mismatched harness does")
@@ -231,8 +235,16 @@ def main() -> int:
                                                seed=args.seed + index)
     for model in pipelines:
         harness.free_text_encoders(pipelines[model])
+    # Whether the full die is ever masked in this process is a variable,
+    # not a detail. The matrix runner's state probe never creates a
+    # 32-unit stream and drew fast in 30 of 30 processes; this harness
+    # always warms 32 and drew slow in 7 of 30. At a pooled rate of 22.7%,
+    # 0 of 30 has probability 0.0005, so the two cannot both be sampling
+    # the same thing.
+    widths = ([units[0], units[1]] if args.no_warm_full_die
+              else [units[0], units[1], 32])
     for index in range(2):
-        for width in sorted({units[0], units[1], 32}):
+        for width in sorted(set(widths)):
             harness.warm(adapters[index], pool, width, args)
 
     solo = {}
@@ -243,11 +255,15 @@ def main() -> int:
         # The full die too, because the verdict against rotation divides
         # by it and it should come from the same instrument as everything
         # else it is compared with.
-        full = solo_span(adapters[index], pool, 32, args, torch)
-        solo_full[index] = statistics.median(full) / 1000.0
+        if args.no_warm_full_die:
+            solo_full[index] = None
+        else:
+            full = solo_span(adapters[index], pool, 32, args, torch)
+            solo_full[index] = statistics.median(full) / 1000.0
+        full_txt = ("skipped" if solo_full[index] is None
+                    else f"{solo_full[index] * 1000:8.1f} ms")
         print(f"  solo {model:13s} {units[index]:2d}u: "
-              f"{solo[index] * 1000:8.1f} ms   32u: "
-              f"{solo_full[index] * 1000:8.1f} ms", flush=True)
+              f"{solo[index] * 1000:8.1f} ms   32u: {full_txt}", flush=True)
 
     rows = []
     for index in range(1, args.episodes + 1):
@@ -306,6 +322,7 @@ def main() -> int:
                        "origin, one synchronise per episode and it is "
                        "after the episode"),
         "sync_before_episode": not args.no_sync_before_episode,
+        "full_die_mask_used": not args.no_warm_full_die,
         "full_die_solo_before_episodes": bool(args.also_solo_32),
         "models": models,
         "split": args.split,

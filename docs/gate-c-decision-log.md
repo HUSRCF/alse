@@ -2402,3 +2402,49 @@ remains unmeasured**, and that is an open question rather than a detail.
 
 And 8.74%, interval roughly -13.4% to -4.7%, is still under plan.md's
 20% bar.
+
+### 2026-08-10 -- the slow state is one process in four, and the matrix never saw it
+
+Thirty processes with the span instrument, self-paired SDXL 16+16, two
+episodes each:
+
+    fast  23 of 30   1.297   (1.287-1.303)
+    slow   7 of 30   1.949   (1.923-1.962)
+
+No overlap between the clusters, and both are tight. Pooled with the two
+earlier span campaigns (2 of 8, 1 of 6): **10 of 44, 22.7%**, Clopper-
+Pearson 95% [11.5%, 37.8%].
+
+**So the matrix runner's state probe is broken, not the slow state
+rare.** It reported fast in 30 of 30 processes; at a true rate of 22.7%
+that has probability 0.0005.
+
+**What this costs.** Yesterday's same-model result -- the probe worth
+-8.74% -- was reported as being in the fast state on the strength of that
+probe. The 8.74% itself is unaffected, since it is a paired difference
+between two arms in the same process and does not depend on the label.
+What is wrong is the attribution: those 30 processes very likely
+contained about 7 slow ones, so the number is a mixture over both states
+and not a fast-state result. The claim has to be restated as "over 30
+processes drawn from the natural state distribution" until the split is
+measured.
+
+**A lead I recorded hours ago and did not follow.** The same-model span
+measurement gave about 195 ms (1.25) in three processes that ran no
+full-die solo, and about 300 ms (1.93) in one that did. I wrote that down
+as a possible confound and moved on. The matrix's state probe never
+creates a 32-unit stream at all -- it uses only ``for_quota(16)`` and
+``disjoint_pair(16, 16)`` -- while this harness warms 32 in every
+process. That is a concrete difference between the arrangement that never
+draws slow and the one that draws slow 23% of the time.
+
+Stated before running: **if masking the full die is what admits the slow
+state, then processes that never create a 32-unit stream draw fast in
+nearly all cases, and processes that do draw slow at about 23%.** Twelve
+processes per arm, same seeds, the two arms alternating so any drift is
+shared.
+
+If it holds it is the first thing found that predicts the draw, after
+four earlier explanations were proposed and retracted. If it does not,
+the matrix probe's failure has some other cause and this is one more
+refuted guess -- which is why the criterion is written down first.
