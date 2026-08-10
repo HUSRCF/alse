@@ -2527,3 +2527,52 @@ labelled a four-hour campaign entirely "fast" for the second time.
 The 36-seed same-model campaign is running with it, three arms, so the
 probe's effect can finally be split by the state the process drew --
 about 9 to 12 slow processes expected.
+
+### 2026-08-10 -- the probe's effect, split by the state the process drew
+
+36 seeds, three arms, with the validated state probe. 33 processes drew
+fast, 3 slow.
+
+| segment | fast (n=33) | slow (n=3) |
+| --- | --- | --- |
+| deadline actions | +0.62%, CI spans zero | -1.72%, CI spans zero |
+| **probe** | **-9.75%, [-0.0292, -0.0112]** | -8.77%, CI spans zero |
+| both | -9.19%, excludes zero | -10.34%, CI spans zero |
+| serial fallbacks | 5498 -> 2158 (-61%) | 340 -> 130 (-62%) |
+| video goodput | +0.04% | -0.01% |
+
+**The fast-state result is now solid**: the probe is worth -9.75% on 33
+paired processes with an interval excluding zero, and the deadline
+actions are null. The slow state has only three processes, so its
+interval spans zero and nothing is established there.
+
+**The interesting part is that the two states agree.** The probe's point
+estimate is -9.75% in the fast state and -8.77% in the slow one, and it
+cuts serial fallbacks by 61% and 62% respectively. If the probe were a
+slow-state detector its effect would be concentrated in the slow state
+and near zero in the fast one. It is not. What it does, in both states
+alike, is drop a degrading pairing before the drift envelope has to bail
+the round out with the whole die.
+
+That is a different mechanism from the one the design was argued from,
+and it is the one the data supports. The probe should be described as an
+early, cheap correction that pre-empts an expensive one -- not as a
+detector for a bistable hardware state.
+
+**An anomaly, recorded and not explained.** This campaign drew slow in 3
+of 36. The probe validation, using the same probe in the same runner,
+drew 7 of 20; the span campaigns drew 10 of 44.
+
+    this campaign      3/36  =  8.3%   [1.8%, 22.5%]
+    probe validation   7/20  = 35.0%   [15.4%, 59.2%]
+    span campaigns    10/44  = 22.7%   [11.5%, 37.8%]
+    all pooled        20/100 = 20.0%   [12.7%, 29.2%]
+
+Fisher against the validation gives p = 0.025, against the other pooled
+runs p = 0.037. So the rate is not stable between campaigns at a level
+that chance covers comfortably. The validation runs differ from these
+only in that their cells were empty -- the probe runs before any cell
+either way -- so nothing in the obvious list explains it. It is recorded
+as an open inconsistency in the draw rate, which matters because "one
+process in five" is the number any claim about the slow state would rest
+on.
