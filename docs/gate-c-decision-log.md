@@ -2306,3 +2306,46 @@ them "pick a different opponent":
 
 None of those is decided by data yet, and the frozen subset is what it
 is. It is recorded as a negative result at this parameterisation.
+
+### 2026-08-09 -- putting the probe somewhere it can act, and two corrections
+
+The 180-cell campaign never fired the probe, and the reason is
+structural. The matrix workload pairs SDXL against CogVideoX-2b; that
+mismatched pairing measured 1.02 and 1.05 with no draw at all across four
+processes, while the bistability the probe exists to catch was only ever
+measured in **same-model** co-location -- self-paired 16+16 at 1.274 or
+1.871, latched per process. A mismatched workload cannot exercise the
+mechanism, so running more of it answers nothing. The long tenant is now
+SDXL too.
+
+Every process also measures, before any policy runs, which state it drew
+-- by device span, on the pairing the runtime will actually form. It
+costs seconds because one step identifies the state, and it turns "the
+probe never fired" into "the probe never fired, and here is the state it
+would have fired on".
+
+**Correction one, found by running it.** Swapping the model and keeping
+the step count made the video request 3.3 s instead of 15.4, and both
+arms went to a miss rate of exactly 0.0. Offered load was still 0.6 by
+construction, but what makes this workload hard is head-of-line blocking,
+and that is set by a request's service time rather than its share of the
+load. 140 SDXL steps is about 15.9 s, matching the CogVideoX request the
+mismatched matrix used, so only the co-location changes.
+
+**Correction two, and it is the important one.** With the workload hard
+again, probing and step_matched separated: 0.400 to 0.300 at seed 0,
+0.386 to 0.341 at seed 1 -- both processes in the fast state. It would
+have been easy to report that as the probe working.
+
+It is not evidence for the probe. ``probing_partitioning`` is
+``slo_aware_partitioning`` plus the probe, and ``slo_aware`` is
+``step_matched_pairing`` plus the deadline actions, so a gain from the
+deadline actions is indistinguishable from a gain from the probe unless
+the middle arm is present. It now is. And the arithmetic says the probe
+should still be silent here: a fast-state co-run at 16 units measures
+about 0.20 s against a 0.253 s threshold.
+
+So the likely reading is that the deadline actions produce the gain and
+the probe again does nothing -- which is a result, provided the
+decomposition is measured rather than argued. Thirty seeds are running,
+three arms each.
