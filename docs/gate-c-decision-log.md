@@ -2491,3 +2491,39 @@ labels nobody can trust. Its absolute values differ from the reference
 distribution -- 1.137 against 1.297 -- because the two tenants carry 8
 and 140 timesteps rather than an identical 14, so the validation is about
 whether the two clusters separate, not whether the numbers match.
+
+### 2026-08-10 -- the state probe, validated, and what was wrong with it
+
+The first fixed probe still reported fast in 20 of 20, but not flatly:
+eighteen processes read 1.134-1.139 and two read 1.462 and 1.487. Two
+clusters, both under the 1.57 threshold. The states were there and the
+probe was halving them.
+
+**The arithmetic said why, and it checks out exactly.** The probe paired
+an 8-timestep urgent adapter against a 140-step video one, so the urgent
+side finished first and the video side's remaining steps ran alone,
+pulling its ratio toward 1.0. The reported value is the mean of the two
+sides:
+
+    fast   (1.30 + 1.0) / 2 = 1.15    measured 1.136
+    slow   (1.95 + 1.0) / 2 = 1.48    measured 1.462, 1.487
+
+Both predictions land. The probe was averaging each state with an
+unmeasured solo run.
+
+**With both sides running the same number of steps, it reproduces the
+reference distribution.** Twenty processes:
+
+    fast  13 of 20   1.292-1.296     reference 1.287-1.303
+    slow   7 of 20   1.901-1.956     reference 1.923-1.962
+
+7 of 20 against the span campaigns' 10 of 44 gives Fisher p about 0.25,
+so the rates are compatible; pooled, **17 of 64 = 26.6%**.
+
+That is a validated instrument rather than an assumed one, and the
+validation was worth its 50 minutes: the previous version would have
+labelled a four-hour campaign entirely "fast" for the second time.
+
+The 36-seed same-model campaign is running with it, three arms, so the
+probe's effect can finally be split by the state the process drew --
+about 9 to 12 slow processes expected.

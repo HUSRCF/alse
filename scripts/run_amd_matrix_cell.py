@@ -264,6 +264,17 @@ def drawn_state(args, torch, models, pool, warm_adapters):
     left, right = pool.disjoint_pair(16, 16)
     sides = (("a", "urgent", left), ("b", "video", right))
 
+    # Both sides run the same number of steps, so they overlap for the
+    # whole episode. With 8 against 14 the urgent side finishes first and
+    # the video side's remaining steps run alone, which pulls its ratio
+    # toward 1.0 and halves the gap between the states: measured, the two
+    # clusters came out at 1.136 and 1.47 -- exactly the means of
+    # (1.30, 1.0) and (1.95, 1.0) -- where the reference distribution is
+    # 1.297 and 1.949. The states were still there; the probe was
+    # averaging each of them with an unmeasured solo run.
+    episode_steps = min(14, *(getattr(warm_adapters[t], "steps", 14)
+                              for _, t, _ in sides))
+
     solo = {}
     # Longer than the first version's 6 steps. The span harness that
     # draws slow 23% of the time uses 14 with 4 dropped, and a probe that
@@ -274,7 +285,8 @@ def drawn_state(args, torch, models, pool, warm_adapters):
         origin = torch.cuda.Event(enable_timing=True)
         origin.record()
         marks = _span_series(warm_adapters[tenant], torch,
-                             pool.for_quota(16).handle, 8)
+                             pool.for_quota(16).handle,
+                             episode_steps)
         torch.cuda.synchronize()
         warm_adapters[tenant].drain_timing()
         spans = [origin.elapsed_time(y) - origin.elapsed_time(x)
@@ -286,7 +298,7 @@ def drawn_state(args, torch, models, pool, warm_adapters):
 
     def side(name, tenant, stream):
         marks[name] = _span_series(warm_adapters[tenant], torch,
-                                   stream.handle, 14)
+                                   stream.handle, episode_steps)
         warm_adapters[tenant].drain_timing()
 
     torch.cuda.synchronize()
