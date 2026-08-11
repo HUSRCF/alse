@@ -2728,3 +2728,54 @@ this workload regardless of load, and the 180-cell result is likely to
 repeat. If it does, that is worth having, because "the effect is absent
 across the whole grid" is a stronger negative than "absent at four
 points".
+
+### 2026-08-11 -- the grid closed: the probe's value depends on whether tenants contend
+
+225 coverage cells added to the 180 frozen ones: load 1.05 at bursts 2, 4
+and 8, and loads 0.6 and 0.85 at burst 2. Nine policies, five seeds, 405
+cells in total, all of plan.md's grid except load 0.3.
+
+Paired-seed bootstrap, probing against each baseline, over the whole grid
+(45 paired configurations):
+
+    exclusive_fcfs         -0.0314  [-0.0710, +0.0002]   -6.46%
+    deadline_aware         -0.0152  [-0.0253, -0.0059]   -3.23%
+    measured_pairs_only    -0.0152  [-0.0249, -0.0064]   -3.23%
+    static_even            -0.0125  [-0.0232, -0.0030]   -2.69%
+    step_matched_pairing   **+0.0025  [+0.0000, +0.0056]   +0.56%**
+
+**Against the strongest baseline the probe is worse, not equal.** On the
+coverage cells alone it is +1.01% worse with an interval of [0.0000,
++0.0100]. That is small, and it is not noise: the interval excludes zero
+on the wrong side.
+
+It also makes sense. In the mismatched workload every pairing measures
+1.02 to 1.06 -- nearly free -- so the probe has nothing to catch, but it
+can still fire spuriously and drop a pairing that was fine. No benefit
+available, a small cost paid.
+
+**Put beside the same-model result, this is the finding.**
+
+    mismatched co-location (SDXL x CogVideoX)   probe +0.56%, slightly harmful
+    same-model co-location (SDXL x SDXL)       probe -9.75% fast, -10.87% slow
+
+The probe's value depends entirely on whether the co-located tenants
+contend for the same resources. Mismatched tenants do not -- that is why
+partitioning them is nearly free and Pareto-dominates rotation at every
+split -- and a mechanism for managing contention has nothing to manage.
+Same-model tenants do, and there it is worth about 10%.
+
+That is a sharper claim than the one the project set out to make, and it
+is falsifiable in a way "the dual ledger raises utilisation" was not.
+
+**plan.md's primary claim fails on the full grid.** Against the strongest
+non-oracle baseline the method is 0.56% worse, where the bar is a 20%
+improvement. The pairing family does beat the non-pairing baselines --
+FCFS by 6.5%, though that interval touches zero, and static partition and
+EDF by about 3% with intervals that exclude it -- so **step-matched
+pairing** is what carries whatever the method has on this workload, and
+at overload (1.05, burst 4) it beats FCFS by 17%.
+
+Registered before these cells ran, and honoured: the overload result is
+reported as a fact about overload, and does not convert the
+frozen-subset failure into a pass.
