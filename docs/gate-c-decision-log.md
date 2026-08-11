@@ -2660,3 +2660,44 @@ workload. The matrix pairs SDXL with CogVideoX-2b, which measured 1.02 and
 1.05 with no draw at all, and there the probe never fires and contributes
 exactly nothing across 180 cells. The honest scope is same-model
 co-location. And 10% is still under plan.md's 20% bar.
+
+### 2026-08-10 -- the mismatched pairing re-measured, and the transient buried
+
+Five splits, five processes each, three episodes, SDXL against
+CogVideoX-2b, solo and co-run both by device span. Fifteen measurements
+per entry, every range within 0.005.
+
+| split | SDXL ext | CogVideoX ext | SDXL vs rotation | CogVideoX vs rotation |
+| --- | --- | --- | --- | --- |
+| 4+28 | 1.025 | 1.063 | **+71.4%** | +1.4% |
+| 8+24 | 1.029 | 1.052 | **+65.3%** | +8.5% |
+| 16+16 | 1.016 | 1.047 | +42.2% | +22.8% |
+| 24+8 | 1.004 | 1.006 | +17.7% | +29.5% |
+| 28+4 | 1.002 | 1.010 | +3.6% | **+30.9%** |
+
+**Both tenants gain at every split**, and the figures land within a few
+points of the retracted ones (+67.9/+1.7 through +2.6/+30.6). So the
+settled values had been right; the eight suspended entries are
+un-suspended and updated.
+
+**The transient is definitively an artifact.** Per episode, all five
+splits, the span instrument is flat to three decimals -- 4+28 reads
+1.025, 1.025, 1.024; 28+4 reads 1.001, 1.001, 1.003. There is no
+two-episode phase, and there never was one on the die.
+
+That closes the most instructive error in this log. The transient came
+with a quantitative account -- each side costing solo_a + solo_b for two
+episodes -- that fitted five splits within 3-9% over a 3x range of the
+sum. The fit was real and it was fitting a variable that held one stale
+number per episode. A good fit to an artifact is still a fit, and the
+only thing that caught it was running two instruments over the same
+steps in the same process and finding one reported ten times the other
+inside an interval that contained it.
+
+**Debt cleared.** The suspended values are gone from the codebase; what
+remains is measured on an instrument that has been checked against
+another. That matters more than the numbers: a suspended entry sitting
+in a table is worse than no entry, because the next reader sees a
+complete table and only the comment says otherwise.
+
+995 tests pass; freeze verifies.

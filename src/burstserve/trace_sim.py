@@ -215,30 +215,49 @@ MEASURED_STEP_PAIRING_FAST_RATE = 0.857  # 12 of 14; see below
 # what every mixed-model trace costs; the change is worth making
 # separately, with the lock re-examined, rather than as a side effect of
 # recording measurements. See docs/gate-c-decision-log.md.
-# **MOSTLY SUSPENDED 2026-08-08.** Every value below except the two
-# marked is a median of ``adapter.last_step_seconds``, and that reading
-# was found the same day
-# to violate containment against a device-span measurement of the same
-# steps -- 10.888 where the span said 1.022. The deferred read only
-# updates when the previous step's events have retired, so a stale value
-# is counted again and one slow reading can own the median. The entries
-# are kept, with their provenance, because deleting a measurement is not
-# how a measurement gets corrected; nothing should be calibrated against
-# them until they are re-established with an instrument that does not
-# have this failure. See docs/gate-c-decision-log.md.
+# Per-step, per-side, per model pair. Keyed by (model, units,
+# peer_model, peer_units) and giving *that side's* factor, because a
+# mismatched pairing does not penalise its two tenants equally: at 16+16
+# SDXL reads 1.016 and CogVideoX 1.047.
+#
+# **Re-measured 2026-08-10 on the device-span instrument** after the
+# adapter's deferred reading was found to hold one stale value for a
+# whole episode. Five splits, five processes each, three episodes, solo
+# and co-run both by span: 15 measurements per entry, every range within
+# 0.005. The suspended adapter-derived values were within 4% of these, so
+# the settled figures had been roughly right -- what the old instrument
+# invented was the two-episode transient, not the plateau.
+#
+# **The transient is now definitively an artifact.** Per episode, across
+# all five splits, the span instrument reads flat to three decimals:
+# 4+28 gives 1.025/1.025/1.024, 28+4 gives 1.001/1.001/1.003. The
+# "serialisation" account -- each side costing solo_a + solo_b for two
+# episodes, fitted across five splits to within 3-9% -- was fitting a
+# stale variable. A good fit to an artifact is still a fit.
+#
+# What the entries mean for the die: a mismatched pairing is very nearly
+# free on both sides at every split, and partitioning Pareto-dominates
+# rotation there -- +71.4% and +1.4% at 4+28 through +3.6% and +30.9% at
+# 28+4, with the split deciding how the gain divides rather than whether
+# there is one.
+#
+# Deliberately **not** wired into ``externality()``: that function is on
+# the path the behavioural lock covers, and repointing it would change
+# what every mixed-model trace costs. Worth doing on its own, with the
+# lock re-examined.
 MEASURED_STEP_PAIR_EXTERNALITY: dict[tuple[str, int, str, int], float] = {
-    # SDXL beside CogVideoX-2b, settled.
-    ("sdxl", 4, "cogvideox-2b", 28): 0.981,
-    ("sdxl", 8, "cogvideox-2b", 24): 0.991,
-    ("sdxl", 16, "cogvideox-2b", 16): 1.022,   # span, re-measured
-    ("sdxl", 24, "cogvideox-2b", 8): 0.998,
-    ("sdxl", 28, "cogvideox-2b", 4): 1.006,
-    # CogVideoX-2b beside SDXL, settled. Same pairings, the other side.
-    ("cogvideox-2b", 28, "sdxl", 4): 1.055,
-    ("cogvideox-2b", 24, "sdxl", 8): 1.062,
-    ("cogvideox-2b", 16, "sdxl", 16): 1.054,   # span, re-measured
-    ("cogvideox-2b", 8, "sdxl", 24): 1.007,
-    ("cogvideox-2b", 4, "sdxl", 28): 1.015,
+    # SDXL beside CogVideoX-2b. Span instrument, 15 measurements each.
+    ("sdxl", 4, "cogvideox-2b", 28): 1.025,
+    ("sdxl", 8, "cogvideox-2b", 24): 1.029,
+    ("sdxl", 16, "cogvideox-2b", 16): 1.016,
+    ("sdxl", 24, "cogvideox-2b", 8): 1.004,
+    ("sdxl", 28, "cogvideox-2b", 4): 1.002,
+    # CogVideoX-2b beside SDXL. Same pairings, the other side.
+    ("cogvideox-2b", 28, "sdxl", 4): 1.063,
+    ("cogvideox-2b", 24, "sdxl", 8): 1.052,
+    ("cogvideox-2b", 16, "sdxl", 16): 1.047,
+    ("cogvideox-2b", 8, "sdxl", 24): 1.006,
+    ("cogvideox-2b", 4, "sdxl", 28): 1.010,
     # SDXL against itself. The only pairing measured that is bistable,
     # and the entry a table cannot honestly hold on its own: the die draws
     # one of these per mask pair and latches it, 6 of 8 processes fast.
