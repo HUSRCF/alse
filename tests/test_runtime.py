@@ -557,3 +557,84 @@ class ConservativeSerialFallback(unittest.TestCase):
         second = runtime.tick(0.25)
         self.assertTrue(second.notes["serial_fallback"])
         self.assertIn("%", second.notes["serial_fallback"])
+
+
+class PredictorErrorIsInjectableAndOnlyReachesTheBelief(unittest.TestCase):
+    """plan.md week 15: +/-10% causes no safety failure, +/-20% degrades.
+
+    A scheduler can only be tested against a wrong belief if the belief
+    can be made wrong on purpose, so the error is injected where the
+    policy reads and nowhere else. Perturbing the charge as well would
+    test a runtime whose measurements are also wrong -- a different and
+    much weaker claim, since the dual ledger exists exactly so that a
+    wrong prediction meets a right measurement.
+    """
+
+    def test_the_policy_sees_the_skewed_prediction(self):
+        clean = build(steps=4)
+        skewed = Runtime(probing_partitioning, predictor_error=0.2)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=4)
+            skewed.submit(request, StepExecutor(request, CountingAdapter(),
+                                                total_steps=4))
+        a = clean.tick(0.0).predicted_step_seconds
+        b = skewed.tick(0.0).predicted_step_seconds
+        for rid in a:
+            self.assertAlmostEqual(b[rid] / a[rid], 1.2, places=6)
+
+    def test_a_negative_error_skews_the_other_way(self):
+        runtime = Runtime(probing_partitioning, predictor_error=-0.1)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=4)
+            runtime.submit(request, StepExecutor(request, CountingAdapter(),
+                                                 total_steps=4))
+        clean = build(steps=4)
+        a = clean.tick(0.0).predicted_step_seconds
+        b = runtime.tick(0.0).predicted_step_seconds
+        for rid in a:
+            self.assertAlmostEqual(b[rid] / a[rid], 0.9, places=6)
+
+    def test_the_charge_is_not_skewed(self):
+        """The measurement side must stay honest, or the test is vacuous."""
+        class Measuring(CountingAdapter):
+            def __init__(self):
+                super().__init__()
+                self.last_step_seconds = 0.2
+                self.last_step_units = None
+
+        for error in (0.0, 0.2, -0.2):
+            with self.subTest(error=error):
+                runtime = Runtime(probing_partitioning,
+                                  predictor_error=error)
+                for index in range(2):
+                    request = QueuedRequest(request_id=index,
+                                            tenant=f"t{index}", model="sdxl",
+                                            arrival_s=0.0, steps=4)
+                    runtime.submit(request, StepExecutor(
+                        request, Measuring(), total_steps=4))
+                record = runtime.tick(0.0)
+                for rid in record.observed_step_seconds:
+                    self.assertAlmostEqual(
+                        record.observed_step_seconds[rid], 0.2, places=6)
+
+    def test_the_grant_never_exceeds_the_die_under_error(self):
+        """The safety invariant, asserted across the tested range."""
+        for error in (-0.2, -0.1, 0.0, 0.1, 0.2):
+            with self.subTest(error=error):
+                runtime = Runtime(probing_partitioning,
+                                  predictor_error=error)
+                for index in range(3):
+                    request = QueuedRequest(request_id=index,
+                                            tenant=f"t{index % 2}",
+                                            model="sdxl", arrival_s=0.0,
+                                            steps=6)
+                    runtime.submit(request, StepExecutor(
+                        request, CountingAdapter(), total_steps=6))
+                for step in range(40):
+                    if runtime.all_finished():
+                        break
+                    record = runtime.tick(step * 0.25)
+                    self.assertLessEqual(sum(record.granted.values()),
+                                         runtime.maskable_units)

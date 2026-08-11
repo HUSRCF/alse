@@ -84,6 +84,7 @@ class Runtime:
                  discipline: Discipline = Discipline.FCFS,
                  clock: Callable[[], float] | None = None,
                  stream_pool=None, drift_tolerance: float = 0.15,
+                 predictor_error: float = 0.0,
                  fallback_backoff_s: float = 1.0,
                  max_fallback_backoff_s: float = 60.0):
         self.policy = policy
@@ -92,6 +93,18 @@ class Runtime:
         # and the masks of a co-running pair are constructed disjoint
         # rather than assumed to be.
         self.stream_pool = stream_pool
+        # Multiplies every prediction the policy is shown, and nothing
+        # else. plan.md's week 15 acceptance is that +/-10% causes no
+        # safety failure and +/-20% degrades conservatively, and a
+        # scheduler can only be tested against a wrong belief if the
+        # belief can be made wrong on purpose.
+        #
+        # It is applied where the policy reads, not where the ledger
+        # charges. Perturbing the charge too would test a runtime whose
+        # measurements are also wrong, which is a different and much
+        # weaker claim: the dual ledger exists precisely so a wrong
+        # prediction meets a right measurement.
+        self.predictor_error = predictor_error
         # plan.md: fall back to a serial action past 15% drift.
         self.drift_tolerance = drift_tolerance
         self.fallback_backoff_s = fallback_backoff_s
@@ -268,8 +281,9 @@ class Runtime:
             ),
             steps_done=executor.steps_done,
         )
+        skew = 1.0 + self.predictor_error
         state.predicted_step_seconds = {
-            units: cost.step_seconds(units)
+            units: cost.step_seconds(units) * skew
             for units in (4, 8, 12, 16, 20, 24, 28, 32)
         }
         state.tenant_quota_seconds = self.quota_seconds_by_tenant.get(

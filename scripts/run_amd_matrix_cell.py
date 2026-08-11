@@ -118,6 +118,11 @@ def main() -> int:
                              "1.02 and 1.05 with no draw in four processes. "
                              "The probe fires on the slow state, so a "
                              "mismatched workload cannot exercise it.")
+    parser.add_argument("--predictor-error", type=float, default=0.0,
+                        help="multiply every prediction the policy sees by "
+                             "1+e, leaving the ledger's measurements alone. "
+                             "plan.md week 15: no safety failure at +/-10%, "
+                             "conservative degradation at +/-20%.")
     parser.add_argument("--drift-tolerance", type=float, default=0.15,
                         help="the runtime's serial-fallback threshold. The "
                              "campaign found it firing for static_even, "
@@ -405,7 +410,8 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
     policy = (POLICY_FACTORIES[policy_name]() if policy_name
               in POLICY_FACTORIES else BASELINES[policy_name])
     runtime = Runtime(policy, stream_pool=pool,
-                      drift_tolerance=args.drift_tolerance)
+                      drift_tolerance=args.drift_tolerance,
+                      predictor_error=args.predictor_error)
     # Warm-up is residency, not a tenant's debt: on the card a first step
     # measured 1.855 s against a 0.157 s steady step, and charging it made
     # one tenant's ledger 10.8x the other's for identical work.
@@ -417,6 +423,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
     admitted, finished = {}, {}
     began = time.perf_counter()
     rounds = 0
+    safety: list = []
     while True:
         now = time.perf_counter() - began
         while pending and pending[0].arrival_s <= now:
@@ -448,6 +455,18 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
             break
         record = runtime.tick(now)
         rounds += 1
+        # Safety invariants, checked every round rather than argued
+        # afterwards. plan.md's clause is that predictor error must not
+        # cause a safety failure, so what counts as one is named here and
+        # tested, not left for a reader to infer from a miss rate.
+        if sum(record.granted.values()) > runtime.maskable_units:
+            safety.append(("over-committed die", rounds,
+                           dict(record.granted)))
+        if "model" in record.notes.get("charged_from", []):
+            safety.append(("charged from the cost model", rounds, None))
+        if record.notes.get("stale_quota_measurements"):
+            safety.append(("charged a measurement from another quota",
+                           rounds, record.notes["stale_quota_measurements"]))
         # Completions are read from the runtime's own retirement, not
         # from its executors: tick() retires a finished request itself,
         # so an executor is gone by the time a caller could see it
@@ -493,6 +512,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "cell": spec.cell_id,
         "policy": policy_name,
         "drift_tolerance": args.drift_tolerance,
+        "predictor_error": args.predictor_error,
         "spec": {"load": spec.load, "burst": spec.burst,
                  "deadline_slack": spec.deadline_slack,
                  "deadline_base": spec.deadline_base, "seed": spec.seed,
@@ -533,6 +553,8 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "video": {"requests": len(video), "steps_done": video_steps_done,
                   "goodput_steps_per_s": video_steps_done / ran_s if ran_s
                   else None},
+        "safety_failures": safety,
+        "safe": not safety,
         "ledger": {
             "rounds": rounds,
             "decision_p99_s": runtime.decision_p99_seconds(),
