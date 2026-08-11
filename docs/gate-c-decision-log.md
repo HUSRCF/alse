@@ -2779,3 +2779,49 @@ at overload (1.05, burst 4) it beats FCFS by 17%.
 Registered before these cells ran, and honoured: the overload result is
 reported as a fact about overload, and does not convert the
 frozen-subset failure into a pass.
+
+### 2026-08-11 -- predictor error: no safety failure at +/-20%, and the ledger earns its name
+
+plan.md week 15: no safety failure at +/-10% predictor error, conservative
+degradation at +/-20%. The error multiplies every prediction the policy
+sees and nothing else -- the ledger's measurements stay honest, because
+perturbing those too would test a runtime that is wrong about everything,
+and the dual ledger exists precisely so a wrong belief meets a right
+measurement. A test asserts the observed side is unchanged at every error.
+
+What counts as a safety failure is named and checked every round rather
+than inferred from a miss rate afterwards: granting more than the die
+holds, charging from the cost model when a measurement existed, or
+charging a measurement taken at another quota.
+
+**Zero safety failures across 50 cells at five error levels including
++/-20%.**
+
+The miss rates were non-monotone in the error until the co-run draw was
+removed -- 25 processes, 3 of them slow, unevenly spread across the error
+levels. Fast-state cells only:
+
+| error | n | step_matched | probing | probe delta |
+| --- | --- | --- | --- | --- |
+| -0.2 | 5 | 0.2794 | 0.2515 | -0.0279 |
+| -0.1 | 4 | 0.3597 | 0.3394 | -0.0203 |
+| 0.0 | 4 | 0.3383 | 0.3186 | -0.0197 |
+| +0.1 | 5 | 0.3956 | 0.3503 | -0.0453 |
+| +0.2 | 4 | 0.4167 | 0.3333 | -0.0833 |
+
+**Degradation is conservative, and the probe is what makes it so.** At
++20% error the prediction-only policy degrades from 0.3383 to 0.4167, up
+23% relative; the measurement-based one goes 0.3186 to 0.3333, up 4.6%.
+The probe's benefit grows with the error -- -0.0197, -0.0453, -0.0833 --
+which is the design claim stated directly: the worse the belief, the more
+a measurement is worth.
+
+Under-prediction at -20% makes the baseline *better* (0.2794 against
+0.3383 at no error), which is worth noting rather than smoothing over: a
+scheduler that believes steps are cheaper than they are pairs more
+readily, and on this workload that happens to pay. The claim is about
+degradation under over-prediction, and that is the direction plan.md's
+safety clause cares about.
+
+Same-model workload, since a robustness test on a workload where the
+mechanism is inert would measure nothing. n is 4 or 5 per level.

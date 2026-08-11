@@ -1,0 +1,123 @@
+{
+  "schema_version": "burstserve.amd-matrix-cell/v1",
+  "started_unix": 1786476796.390768,
+  "started_iso": "2026-08-12T03:33:16",
+  "cell": "load0.6-burst4-slack1.5perburst-seed3",
+  "policy": "probing_partitioning",
+  "drift_tolerance": 0.15,
+  "predictor_error": 0.2,
+  "spec": {
+    "load": 0.6,
+    "burst": 4,
+    "deadline_slack": 1.5,
+    "deadline_base": "burst",
+    "seed": 3,
+    "horizon_s": 119.93957074433565,
+    "urgent_steps": 8,
+    "video_steps": 140
+  },
+  "one_adapter_per_tenant": true,
+  "identical_seeds_within_tenant": true,
+  "isolated_service_s": {
+    "urgent": 0.8995467805825174,
+    "video": 15.77333222065866
+  },
+  "isolated_step_p99_s": {
+    "urgent": 0.11259344482421875,
+    "video": 0.113358154296875
+  },
+  "isolated_shared_across_group": true,
+  "drawn_co_run_state": {
+    "externality": 1.2922774111435404,
+    "per_side": {
+      "a": 1.2605640191114305,
+      "b": 1.3239908031756502
+    },
+    "state": "fast"
+  },
+  "video_model": "sdxl",
+  "deadline_base_s": 0.8995467805825174,
+  "deadline_base": "isolated request latency, not step p99",
+  "requests": {
+    "total": 41,
+    "urgent": 40,
+    "video": 1,
+    "admitted": 41,
+    "finished": 41,
+    "outstanding": 0
+  },
+  "urgent": {
+    "latencies_s": [
+      0.45762895876961807,
+      0.4635452431085447,
+      0.4653182035070711,
+      0.46850131892084335,
+      0.48346959755503605,
+      0.48873663182608595,
+      0.8761884340862167,
+      1.3556821372750143,
+      1.3578689077520352,
+      1.3586821456664109,
+      1.362125694662808,
+      1.3661807696589179,
+      1.3717209738441483,
+      1.7748818950573337,
+      2.257350728234176,
+      2.262194777675053,
+      2.2628920226399885,
+      2.275790197750993,
+      2.2786221546375103,
+      2.2801574638695996,
+      2.6787108600916696,
+      3.155787216119368,
+      3.165193717837809,
+      3.1673795096830375,
+      3.1691573656388425,
+      3.1747398877167683,
+      3.1761097109173164,
+      3.580993924181385,
+      5.19358530471105,
+      6.291168970689213,
+      7.22080925985243,
+      8.107428329698777,
+      8.204951230283498,
+      9.114187224382206,
+      10.027111427239745,
+      10.939199446314618,
+      11.699017563107923,
+      12.601321566123083,
+      13.515122668090775,
+      14.424133278168306
+    ],
+    "deadline_s_from_arrival": 5.397280683495104,
+    "steps_done": 320,
+    "completed": 40,
+    "miss_rate": 0.275,
+    "latency_p50_s": 2.4794341619806346,
+    "latency_p99_s": 14.424133278168306
+  },
+  "video": {
+    "requests": 1,
+    "steps_done": 140,
+    "goodput_steps_per_s": 1.8850690998183077
+  },
+  "safety_failures": [],
+  "safe": true,
+  "ledger": {
+    "rounds": 962,
+    "decision_p99_s": 1.4291144907474518e-05,
+    "quota_seconds_by_tenant": {
+      "urgent": 1154.5122937011738,
+      "video": 606.8074328613269
+    },
+    "charged_from_measurement": true,
+    "serial_fallbacks": 33,
+    "stale_quota_measurements": 0
+  },
+  "wall_clock_s": {
+    "model_load": 9.589258958818391,
+    "isolated_measurement": 4.600733518600464e-07,
+    "cell_run": 74.26783453905955,
+    "total": 83.8580262567848
+  }
+}
