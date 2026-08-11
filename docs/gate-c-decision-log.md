@@ -2701,3 +2701,30 @@ in a table is worse than no entry, because the next reader sees a
 complete table and only the comment says otherwise.
 
 995 tests pass; freeze verifies.
+
+### 2026-08-11 -- pre-registered coverage: overload and burst 2
+
+The frozen primary subset covered load 0.6 and 0.85 at bursts 4 and 8.
+plan.md's grid also has load 0.3 and 1.05 and burst 2, and the overload
+point is where a scheduler should differ most. These are the cells that
+close the grid: load 1.05 at bursts 2, 4 and 8, and loads 0.6 and 0.85 at
+burst 2. Nine policies, five seeds, 25 groups, 225 cells, deadline 1.5x
+the burst's isolated latency, policy order rotated per group, isolated
+service shared within a group.
+
+**Registered before running, because the temptation here is obvious.**
+The primary claim failed on the frozen subset: probing beat the strongest
+baseline by 0.00% with an interval of exactly zero, against a 20% bar.
+These cells do not revisit that. If an effect appears at load 1.05 it is
+a finding **about overload**, to be reported as one, and it does not
+convert the frozen-subset result into a pass. Choosing the reported
+parameterisation after seeing which one flatters is the failure this
+whole log has been about; the frozen subset stays the primary claim
+whatever these show.
+
+What is expected: nothing in particular. The mismatched pairing measures
+1.02 to 1.06 at every split, so the probe has almost nothing to act on in
+this workload regardless of load, and the 180-cell result is likely to
+repeat. If it does, that is worth having, because "the effect is absent
+across the whole grid" is a stronger negative than "absent at four
+points".
