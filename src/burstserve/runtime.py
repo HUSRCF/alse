@@ -85,6 +85,8 @@ class Runtime:
                  clock: Callable[[], float] | None = None,
                  stream_pool=None, drift_tolerance: float = 0.15,
                  predictor_error: float = 0.0,
+                 externality_blind: bool = False,
+                 charge_currency: str = "quota-seconds",
                  fallback_backoff_s: float = 1.0,
                  max_fallback_backoff_s: float = 60.0):
         self.policy = policy
@@ -105,6 +107,25 @@ class Runtime:
         # weaker claim: the dual ledger exists precisely so a wrong
         # prediction meets a right measurement.
         self.predictor_error = predictor_error
+        # Ablations, week 15. Both exist so a claim can be shown to
+        # depend on the thing it is claimed to depend on.
+        #
+        # externality_blind makes the runtime believe a co-run costs what
+        # a solo step costs. The drift envelope then cannot tell "this
+        # pairing costs more because pairings do" from "the cost model is
+        # wrong about this pairing", which is the distinction the
+        # externality term exists to draw -- and getting that wrong once
+        # already made the envelope fire on every round of a runtime
+        # behaving exactly as predicted.
+        self.externality_blind = externality_blind
+        # The accounting currency. quota-seconds is units x seconds, and
+        # the fairness claim rests on it: a tenant holding 8 units for a
+        # second has not consumed what a tenant holding 24 did. Charging
+        # wall-seconds ignores the width, and step-count ignores both.
+        if charge_currency not in ("quota-seconds", "wall-seconds",
+                                   "step-count"):
+            raise ValueError(f"unknown currency {charge_currency!r}")
+        self.charge_currency = charge_currency
         # plan.md: fall back to a serial action past 15% drift.
         self.drift_tolerance = drift_tolerance
         self.fallback_backoff_s = fallback_backoff_s
@@ -116,6 +137,7 @@ class Runtime:
         self.requests: dict[int, QueuedRequest] = {}
         self.ledger: list[RoundRecord] = []
         self.quota_seconds_by_tenant: dict[str, float] = {}
+        self.die_seconds_by_tenant: dict[str, float] = {}
         self.service_seconds_by_tenant: dict[str, float] = {}
         self.resident_models: set[str] = set()
         self.weight_bytes_moved = 0
@@ -417,8 +439,29 @@ class Runtime:
             observed[rid] = spent
             charge_sources.add(charged_from)
 
+            # The accounting currency, and the fairness claim rests on
+            # which one this is. units x seconds says a tenant holding 8
+            # units for a second has not consumed what one holding 24
+            # did; wall-seconds says they have; step-count says a cheap
+            # step and an expensive one are the same. The alternatives
+            # exist to be measured, not offered.
+            if self.charge_currency == "wall-seconds":
+                charge = spent
+            elif self.charge_currency == "step-count":
+                charge = 1.0
+            else:
+                charge = units * spent
             self.quota_seconds_by_tenant[queued.tenant] = (
                 self.quota_seconds_by_tenant.get(queued.tenant, 0.0)
+                + charge
+            )
+            # Always units x seconds, whatever the currency. The charge
+            # above is what the policy is shown and therefore what it
+            # equalises; this is what fairness is scored on. Keeping only
+            # the first would make every currency perfectly fair in its
+            # own units, which is exactly the question the ablation asks.
+            self.die_seconds_by_tenant[queued.tenant] = (
+                self.die_seconds_by_tenant.get(queued.tenant, 0.0)
                 + units * spent
             )
             self.service_seconds_by_tenant[queued.tenant] = (
@@ -473,11 +516,12 @@ class Runtime:
                     continue
                 peer_units = next((u for r, u in granted.items()
                                    if r != rid), None)
-                try:
-                    belief *= externality(granted[rid], peer_units,
-                                          self.requests[rid].model)
-                except Exception:
-                    continue
+                if not self.externality_blind:
+                    try:
+                        belief *= externality(granted[rid], peer_units,
+                                              self.requests[rid].model)
+                    except Exception:
+                        continue
                 worst = max(worst, abs(spent / belief - 1.0))
             if worst > self.drift_tolerance:
                 key = tuple(sorted(granted.values()))

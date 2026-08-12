@@ -638,3 +638,137 @@ class PredictorErrorIsInjectableAndOnlyReachesTheBelief(unittest.TestCase):
                     record = runtime.tick(step * 0.25)
                     self.assertLessEqual(sum(record.granted.values()),
                                          runtime.maskable_units)
+
+
+class AblationsChangeOnlyWhatTheyName(unittest.TestCase):
+    """Week 15: every performance claim needs an ablation or a mechanism.
+
+    Both switches exist so a claim can be shown to depend on the thing it
+    is claimed to depend on, and both are asserted to touch nothing else.
+    """
+
+    def test_an_unknown_currency_is_refused(self):
+        with self.assertRaises(ValueError):
+            Runtime(probing_partitioning, charge_currency="dollars")
+
+    def test_wall_seconds_ignores_the_width(self):
+        """Which is the whole of what it ablates."""
+        class Fixed(CountingAdapter):
+            def __init__(self):
+                super().__init__()
+                self.last_step_seconds = 0.1
+
+        charged = {}
+        for currency in ("quota-seconds", "wall-seconds", "step-count"):
+            runtime = Runtime(exclusive_fcfs, charge_currency=currency)
+            request = QueuedRequest(request_id=0, tenant="t", model="sdxl",
+                                    arrival_s=0.0, steps=1)
+            runtime.submit(request, StepExecutor(request, Fixed(),
+                                                 total_steps=1))
+            runtime.tick(0.0)
+            charged[currency] = runtime.quota_seconds_by_tenant["t"]
+        # exclusive_fcfs grants the whole die, so 32 x 0.1 against 0.1.
+        self.assertAlmostEqual(charged["quota-seconds"], 3.2, places=6)
+        self.assertAlmostEqual(charged["wall-seconds"], 0.1, places=6)
+        self.assertAlmostEqual(charged["step-count"], 1.0, places=6)
+
+    def test_the_currency_does_not_change_what_runs(self):
+        """An accounting change that altered the schedule would confound
+        the fairness measurement with a scheduling one."""
+        grants = {}
+        for currency in ("quota-seconds", "wall-seconds"):
+            runtime = Runtime(exclusive_fcfs, charge_currency=currency)
+            for index in range(2):
+                request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                        model="sdxl", arrival_s=0.0, steps=3)
+                runtime.submit(request, StepExecutor(
+                    request, CountingAdapter(), total_steps=3))
+            grants[currency] = [dict(runtime.tick(i * 0.25).granted)
+                                for i in range(4)]
+        self.assertEqual(grants["quota-seconds"], grants["wall-seconds"])
+
+    def test_externality_blind_leaves_the_charge_alone(self):
+        """It ablates the belief, not the measurement."""
+        class Measuring(CountingAdapter):
+            def __init__(self):
+                super().__init__()
+                self.last_step_seconds = 0.3
+
+        seen = {}
+        for blind in (False, True):
+            runtime = Runtime(probing_partitioning, externality_blind=blind)
+            for index in range(2):
+                request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                        model="sdxl", arrival_s=0.0, steps=4)
+                runtime.submit(request, StepExecutor(
+                    request, Measuring(), total_steps=4))
+            record = runtime.tick(0.0)
+            seen[blind] = record.observed_step_seconds
+        self.assertEqual(seen[False], seen[True])
+
+    def test_externality_blind_makes_the_envelope_fire_on_a_faithful_run(self):
+        """The mechanism the ablation is meant to expose.
+
+        A co-run legitimately costs about 1.24x a solo step, so a runtime
+        that does not know that reads a faithful pairing as 24% drift and
+        holds it. That is the distinction the externality term draws, and
+        it is why getting it wrong once made the envelope fire every
+        round.
+        """
+        class Faithful(CountingAdapter):
+            def __init__(self):
+                super().__init__()
+                # 0.1575 solo at 16 units x the fast-state externality.
+                self.last_step_seconds = 0.1575 * 1.2367
+
+        held = {}
+        for blind in (False, True):
+            runtime = Runtime(probing_partitioning, externality_blind=blind)
+            for index in range(2):
+                request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                        model="sdxl", arrival_s=0.0, steps=6)
+                runtime.submit(request, StepExecutor(
+                    request, Faithful(), total_steps=6))
+            runtime.tick(0.0)
+            held[blind] = runtime.tick(0.25).notes["serial_fallback"]
+        self.assertIsNone(held[False], "a faithful pairing is not held")
+        self.assertIsNotNone(held[True], "blind to externality, it is held")
+
+
+class FairnessIsScoredInOneCurrencyWhateverIsCharged(unittest.TestCase):
+    """The trap the currency ablation exists to avoid.
+
+    Charging wall-seconds and then scoring fairness in wall-seconds makes
+    wall-seconds perfectly fair by construction. die_seconds_by_tenant is
+    always units x seconds, so every currency is scored on die time
+    consumed and the ablation can say something.
+    """
+
+    class Fixed(CountingAdapter):
+        def __init__(self):
+            super().__init__()
+            self.last_step_seconds = 0.1
+
+    def test_the_canonical_accumulator_ignores_the_currency(self):
+        seen = {}
+        for currency in ("quota-seconds", "wall-seconds", "step-count"):
+            runtime = Runtime(exclusive_fcfs, charge_currency=currency)
+            request = QueuedRequest(request_id=0, tenant="t", model="sdxl",
+                                    arrival_s=0.0, steps=1)
+            runtime.submit(request, StepExecutor(request, self.Fixed(),
+                                                 total_steps=1))
+            runtime.tick(0.0)
+            seen[currency] = runtime.die_seconds_by_tenant["t"]
+        self.assertEqual(len(set(round(v, 9) for v in seen.values())), 1)
+        self.assertAlmostEqual(seen["wall-seconds"], 3.2, places=6)
+
+    def test_the_charged_currency_still_differs(self):
+        """Otherwise the ablation would be a no-op with extra steps."""
+        runtime = Runtime(exclusive_fcfs, charge_currency="wall-seconds")
+        request = QueuedRequest(request_id=0, tenant="t", model="sdxl",
+                                arrival_s=0.0, steps=1)
+        runtime.submit(request, StepExecutor(request, self.Fixed(),
+                                             total_steps=1))
+        runtime.tick(0.0)
+        self.assertNotAlmostEqual(runtime.quota_seconds_by_tenant["t"],
+                                  runtime.die_seconds_by_tenant["t"])

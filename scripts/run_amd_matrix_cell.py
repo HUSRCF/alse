@@ -118,6 +118,16 @@ def main() -> int:
                              "1.02 and 1.05 with no draw in four processes. "
                              "The probe fires on the slow state, so a "
                              "mismatched workload cannot exercise it.")
+    parser.add_argument("--externality-blind", action="store_true",
+                        help="ablation: the runtime believes a co-run costs "
+                             "what a solo step costs, so the drift envelope "
+                             "cannot separate 'pairings cost more' from "
+                             "'the model is wrong'")
+    parser.add_argument("--charge-currency", default="quota-seconds",
+                        choices=("quota-seconds", "wall-seconds",
+                                 "step-count"),
+                        help="ablation: the accounting currency the "
+                             "fairness claim rests on")
     parser.add_argument("--predictor-error", type=float, default=0.0,
                         help="multiply every prediction the policy sees by "
                              "1+e, leaving the ledger's measurements alone. "
@@ -411,7 +421,9 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
               in POLICY_FACTORIES else BASELINES[policy_name])
     runtime = Runtime(policy, stream_pool=pool,
                       drift_tolerance=args.drift_tolerance,
-                      predictor_error=args.predictor_error)
+                      predictor_error=args.predictor_error,
+                      externality_blind=args.externality_blind,
+                      charge_currency=args.charge_currency)
     # Warm-up is residency, not a tenant's debt: on the card a first step
     # measured 1.855 s against a 0.157 s steady step, and charging it made
     # one tenant's ledger 10.8x the other's for identical work.
@@ -513,6 +525,8 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "policy": policy_name,
         "drift_tolerance": args.drift_tolerance,
         "predictor_error": args.predictor_error,
+        "externality_blind": args.externality_blind,
+        "charge_currency": args.charge_currency,
         "spec": {"load": spec.load, "burst": spec.burst,
                  "deadline_slack": spec.deadline_slack,
                  "deadline_base": spec.deadline_base, "seed": spec.seed,
@@ -559,6 +573,27 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
             "rounds": rounds,
             "decision_p99_s": runtime.decision_p99_seconds(),
             "quota_seconds_by_tenant": runtime.quota_seconds_by_tenant,
+            "jain": (
+                sum(runtime.quota_seconds_by_tenant.values()) ** 2
+                / (len(runtime.quota_seconds_by_tenant)
+                   * sum(v * v for v in
+                         runtime.quota_seconds_by_tenant.values()))
+                if runtime.quota_seconds_by_tenant
+                and any(runtime.quota_seconds_by_tenant.values()) else None),
+            # Fairness judged in the canonical currency regardless of what
+            # was charged in, so an ablation that charges wall-seconds is
+            # still scored on die-time consumed. Scoring each currency in
+            # its own units would make every currency perfectly fair by
+            # construction, which is the trap this ablation exists to
+            # avoid.
+            "die_seconds_by_tenant": runtime.die_seconds_by_tenant,
+            "jain_die_seconds": (
+                sum(runtime.die_seconds_by_tenant.values()) ** 2
+                / (len(runtime.die_seconds_by_tenant)
+                   * sum(v * v for v in
+                         runtime.die_seconds_by_tenant.values()))
+                if runtime.die_seconds_by_tenant
+                and any(runtime.die_seconds_by_tenant.values()) else None),
             "charged_from_measurement": runtime.charged_from_measurement(),
             "serial_fallbacks": sum(
                 1 for r in runtime.ledger if r.notes.get("serial_fallback")),
