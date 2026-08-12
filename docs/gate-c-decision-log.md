@@ -2825,3 +2825,35 @@ safety clause cares about.
 
 Same-model workload, since a robustness test on a workload where the
 mechanism is inert would measure nothing. n is 4 or 5 per level.
+
+### 2026-08-12 -- the ablation was confounded by the draw, for the third time
+
+Four arms of five seeds -- baseline, externality-blind, wall-seconds,
+step-count -- came back uninterpretable, and the reason is the one this
+log has now hit three times.
+
+The arms drew different co-run states: 1 slow in the baseline, 0 in
+externality-blind, 0 in wall-seconds, 1 in step-count. A slow process
+carries far more serial fallbacks than a fast one, so the arms were not
+comparable on the quantity the ablation is about. It showed
+externality-blind with **fewer** fallbacks than the baseline, 232 against
+355 -- the opposite of the mechanism, and of what a unit test on a
+faithful pairing demonstrates directly.
+
+Every interval spanned zero except one, and that one said wall-seconds
+was *more* fair than quota-seconds, which is the reverse of the claim the
+currency is supposed to support. With five seeds and a 20% draw rate,
+none of that is evidence either way.
+
+**The fix is to control the draw, not to dilute it.** The state probe
+works now, so every ablation arm is restricted to fast-state processes
+with ``--require-state fast``. Sixteen seeds per arm, four arms. That is
+cheaper than the N it would take to make a 20% composition difference
+average out, and it removes the confound instead of averaging over it.
+
+Recorded because the pattern is the point: the first campaign varied seed
+with position, the second let the deadline vary with the arm, the third
+let the state vary with the arm. Each time the fix was to make the
+nuisance variable identical across arms rather than to trust that it
+would balance. The uncontrolled run is kept as
+``ablation_uncontrolled``.
