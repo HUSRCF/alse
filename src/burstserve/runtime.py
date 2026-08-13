@@ -522,7 +522,22 @@ class Runtime:
                                               self.requests[rid].model)
                     except Exception:
                         continue
-                worst = max(worst, abs(spent / belief - 1.0))
+                # Over-run only. Using abs() here fired the envelope
+                # when a pairing came in *faster* than its paired
+                # expectation, which is a pessimisation and not a
+                # conservative action: what threatens a deadline is a
+                # step costing more than believed, never less.
+                #
+                # Measured, and it inverted an ablation. With the paired
+                # expectation at 1.2367x solo, an observed step at 1.00x
+                # -- a pairing that turned out nearly free, which happens
+                # whenever one side finishes and the other runs on at a
+                # paired quota -- reads as 19% drift and takes the whole
+                # die serial. The externality-blind arm, whose belief is
+                # smaller, read the same round as 0% and did not. That is
+                # why blind held *less* on hardware while a simulation at
+                # 1.28x showed it holding more.
+                worst = max(worst, spent / belief - 1.0)
             if worst > self.drift_tolerance:
                 key = tuple(sorted(granted.values()))
                 drift_hold = (f"drift {worst * 100:.1f}% over "

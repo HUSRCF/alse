@@ -2902,3 +2902,55 @@ in advance: if the drift-caused holds rise under blind while
 profile-caused holds stay flat, the mechanism holds and the total was
 masking it; if drift holds also fall, the mechanism is wrong and the
 envelope does something other than what its comment says.
+
+### 2026-08-13 -- the open question closes on a defect of mine, and it is load-bearing
+
+Why did externality-blind produce *fewer* serial fallbacks on hardware
+when a controlled simulation showed it producing far more? Both
+measurements were right. The sign of the effect depends on which side of
+the paired expectation the observed step falls, and I had only simulated
+one side.
+
+The drift check used `abs(spent / belief - 1)`. Sweeping the ratio in
+simulation:
+
+| observed / solo | base held | blind held |
+| --- | --- | --- |
+| 1.00 | **293** | 0 |
+| 1.05 | **293** | 0 |
+| 1.15 | 0 | 0 |
+| 1.2367 | 0 | **293** |
+| 1.28 | 0 | **293** |
+| 1.45 | 293 | 293 |
+
+With the paired expectation at $1.2367\times$ solo, a round that comes in
+at $1.00\times$ -- a pairing that turned out nearly free, which happens
+whenever one side finishes and the other runs on at a paired quota --
+reads as 19% drift and takes the whole die serial. The blind arm, whose
+belief is smaller, reads the same round as 0%. That is the inversion,
+exactly.
+
+**So the envelope fired when a pairing was cheaper than predicted.** That
+is a pessimisation, not a conservative action: what threatens a deadline
+is a step costing more than believed, never less. Fixed to fire on
+over-run only, with four tests pinning the boundary.
+
+**The consequence is not confined to the ablation, and it is not
+comfortable.** The probe's measured value -- $-9.75\%$ in the fast state,
+$-10.87\%$ in the slow one -- came with a mechanism: it cuts serial
+fallbacks by 61--67%. If a share of those fallbacks were this defect
+firing on cheap rounds, then part of what the probe was being credited
+with is avoiding a bug of mine rather than managing contention.
+
+The number therefore cannot stand as measured. The three-arm same-model
+campaign is re-running with the corrected envelope, 30 seeds, and
+whatever it returns replaces $-9.75\%$ in
+``docs/claims-and-evidence.md`` and in the paper draft. Both currently
+state a figure that was measured against a runtime with a known defect,
+and they say so until it is replaced.
+
+Worth noting how this was found: not by inspecting the envelope, which I
+had read twice, but by an ablation whose result contradicted its own
+mechanism and which I refused to explain away. The fourth explanation
+would have been wrong too; sweeping the parameter the two measurements
+disagreed on was what settled it.

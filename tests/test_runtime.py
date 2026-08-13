@@ -772,3 +772,56 @@ class FairnessIsScoredInOneCurrencyWhateverIsCharged(unittest.TestCase):
         runtime.tick(0.0)
         self.assertNotAlmostEqual(runtime.quota_seconds_by_tenant["t"],
                                   runtime.die_seconds_by_tenant["t"])
+
+
+class TheEnvelopeFiresOnOverRunOnly(unittest.TestCase):
+    """Being faster than predicted is not a reason to go serial.
+
+    The check used abs(), so a pairing that came in cheaper than its
+    paired expectation -- which happens whenever one side finishes and
+    the other runs on at a paired quota -- read as drift and took the
+    whole die serial. Measured in simulation: at a paired expectation of
+    1.2367x solo, an observed step at 1.00x held 293 of 300 rounds. That
+    is a pessimisation, and it inverted an ablation on hardware.
+    """
+
+    class AtRatio(CountingAdapter):
+        def __init__(self, ratio):
+            super().__init__()
+            self.ratio = ratio
+            self.last_step_seconds = None
+            self.last_step_units = None
+
+        def denoise_one(self, state, *, quota_units):
+            solo = {4: 0.521, 8: 0.283, 16: 0.1575, 24: 0.1249,
+                    32: 0.1155}.get(quota_units, 0.1575)
+            self.last_step_seconds = solo * self.ratio
+            self.last_step_units = quota_units
+            return super().denoise_one(state, quota_units=quota_units)
+
+    def _held(self, ratio, rounds=12):
+        runtime = Runtime(probing_partitioning)
+        for index in range(2):
+            request = QueuedRequest(request_id=index, tenant=f"t{index}",
+                                    model="sdxl", arrival_s=0.0, steps=400)
+            runtime.submit(request, StepExecutor(request,
+                                                 self.AtRatio(ratio),
+                                                 total_steps=400))
+        return sum(1 for k in range(rounds)
+                   if runtime.tick(k * 0.25).notes.get("serial_fallback"))
+
+    def test_a_pairing_cheaper_than_expected_is_not_held(self):
+        """The defect. 1.00x solo against a 1.2367x expectation."""
+        self.assertEqual(self._held(1.00), 0)
+
+    def test_a_pairing_much_cheaper_is_still_not_held(self):
+        self.assertEqual(self._held(0.80), 0)
+
+    def test_a_pairing_dearer_than_the_tolerance_is_held(self):
+        """The behaviour that must survive the fix."""
+        self.assertGreater(self._held(1.95), 0)
+
+    def test_the_boundary_is_on_the_over_run_side(self):
+        """1.2367 x 1.15 = 1.422; just under holds nothing, just over holds."""
+        self.assertEqual(self._held(1.40), 0)
+        self.assertGreater(self._held(1.50), 0)
