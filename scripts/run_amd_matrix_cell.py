@@ -597,6 +597,23 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
             "charged_from_measurement": runtime.charged_from_measurement(),
             "serial_fallbacks": sum(
                 1 for r in runtime.ledger if r.notes.get("serial_fallback")),
+            # Split by cause. The envelope holds for two different
+            # reasons -- no measured profile for the pairing, or drift
+            # past the tolerance -- and only the second is gated by
+            # externality_blind. Counting them together is what made the
+            # externality ablation read backwards: blind came out with
+            # fewer holds than the baseline, which is impossible for the
+            # branch it touches and says nothing about the branch it does
+            # not.
+            "fallbacks_no_profile": sum(
+                1 for r in runtime.ledger
+                if "no measured profile" in (r.notes.get("serial_fallback")
+                                             or "")),
+            "fallbacks_drift": sum(
+                1 for r in runtime.ledger
+                if "drift" in (r.notes.get("serial_fallback") or "")),
+            "drift_verdicts": sum(
+                1 for r in runtime.ledger if r.notes.get("drift_hold")),
             "stale_quota_measurements": sum(
                 len(r.notes.get("stale_quota_measurements", []))
                 for r in runtime.ledger),

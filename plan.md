@@ -972,6 +972,18 @@ informed 优于 blind 的比例在 0.45 为 3/10、0.60 为 9/10、0.80 为 10/1
 
 - 扫描 predictor error、profile drift、warm/cold residency、不同 PCIe/NUMA 情况。
 - 消融 canonical ledger、resource debt、deadline guard、externality、SM partition、G 和 I/O model。
+  > **2026-08-12 更正:canonical ledger(计费货币)这条主张已撤除,不再作为论文主张。**
+  > 实测(16 seed/臂,全部限定在快态进程以消除抽取混淆):把计费从 units×seconds
+  > 改为 wall-seconds 或 step-count,**miss rate 与公平性都没有可测差异**——
+  > step-count 的 miss 差值精确为 0、区间 [0,0],即调度序列完全相同。
+  >
+  > 原因不是机制不存在,而是**这个工作负载检验不了它**:策略只在亏欠轮转的
+  > tie-break 中读 `tenant_quota_seconds`,两租户、宽度大体对称时该 tie-break
+  > 几乎不改变决策。要让它可检验需要持续非对称宽度的负载——而我们没有真实
+  > 负载可依据,**为了让差异显出来而设计一个负载,离"挑参数点"只有一步**。
+  >
+  > 因此:公平性结论(Jain)保留为观测事实,但**不再声称它依赖 canonical
+  > ledger 的货币选择**。消融代码与实测数据保留在库中作为该结论的依据。
 - 验证 overload admission、sleep/wakeup gaming、tenant request splitting 和长期 burst。
 - 复验跨板厂等价性：技嘉卡（GPU 1/3）热余量比公版少 8.2 °C，长压测下
   可能先热降频；若失效，profile 与主张必须按板厂分组重述。

@@ -2857,3 +2857,48 @@ let the state vary with the arm. Each time the fix was to make the
 nuisance variable identical across arms rather than to trust that it
 would balance. The uncontrolled run is kept as
 ``ablation_uncontrolled``.
+
+### 2026-08-12 -- the ablation, controlled, and one claim withdrawn
+
+Sixteen seeds per arm, every arm restricted to fast-state processes so
+the draw cannot differ between them.
+
+| ablation | n | miss delta | 95% CI | Jain delta | fallbacks |
+| --- | --- | --- | --- | --- | --- |
+| externality-blind | 9 | -0.0233 | [-0.0471, +0.0009] | +0.0016, spans zero | **-29.2 [-54.4, -2.8]** |
+| wall-seconds | 9 | +0.0009 | [-0.0056, +0.0083] | +0.0058, spans zero | -3.1, spans zero |
+| step-count | 10 | **+0.0000** | **[0, 0]** | +0.0014, spans zero | -4.2 |
+
+**The currency claim is withdrawn.** Changing the accounting from units x
+seconds to wall-seconds or step-count moves neither the miss rate nor
+fairness. Step-count's miss delta is exactly zero with an interval of
+[0, 0] -- the schedules were identical, decision for decision.
+
+The reason is not that the mechanism is absent but that **this workload
+cannot test it**. The policy reads ``tenant_quota_seconds`` only in the
+deficit-rotation tie-break, and with two tenants at roughly symmetric
+widths that tie-break almost never changes a decision. Testing it needs
+sustained asymmetric widths -- and designing a workload so a difference
+appears is one step from choosing the parameterisation that flatters,
+which is the failure this log exists to prevent. There is no real trace
+to appeal to instead.
+
+So the Jain figure stays as an observation and **the paper no longer
+claims it depends on the canonical ledger's currency**. The ablation code
+and its data stay in the repository as the evidence for the withdrawal.
+
+**One result contradicts the mechanism I asserted, and is under
+investigation rather than explained.** externality-blind produced *fewer*
+serial fallbacks, -29.2 with an interval excluding zero, where the
+mechanism and a unit test on a faithful pairing both say it should
+produce more.
+
+The likely reason I conflated two things: the envelope holds for two
+causes -- no measured profile for the pairing, or drift past tolerance --
+and ``externality_blind`` gates only the second. Counting them together
+cannot say anything about the branch it touches. The payload now splits
+the count by cause, and twelve seeds per arm are running with it. Stated
+in advance: if the drift-caused holds rise under blind while
+profile-caused holds stay flat, the mechanism holds and the total was
+masking it; if drift holds also fall, the mechanism is wrong and the
+envelope does something other than what its comment says.
