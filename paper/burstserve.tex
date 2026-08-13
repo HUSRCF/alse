@@ -1,24 +1,27 @@
-% Draft. Compiles with the article class, which is always present; the
-% submission classes are listed in paper/README.md with their status.
-\documentclass[10pt,twocolumn]{article}
+% Draft. acmart/sigconf, verified to build on this box on 2026-08-13
+% after collection-latexextra completed; see paper/README.md for how the
+% environment was checked (by compiling, not by kpsewhich).
+%
+% To fall back to a class that needs nothing installed, swap the two
+% lines below and drop \acmConference..\keywords. The article version
+% built 3 pages with no warnings and is what every claim here was
+% drafted against.
+\documentclass[sigconf,nonacm]{acmart}
+% \documentclass[10pt,twocolumn]{article}\usepackage[margin=0.75in]{geometry}
 
-\usepackage[margin=0.75in]{geometry}
 \usepackage{booktabs}
 \usepackage{microtype}
 \usepackage{amsmath}
-\usepackage{xcolor}
-\usepackage{caption}
-\usepackage[hidelinks]{hyperref}
 
 \newcommand{\ci}[2]{[\,#1,\ #2\,]}
 
-\title{\bf Spatial partitioning on a masked GPU is bistable, and a
+\title{Spatial partitioning on a masked GPU is bistable, and a
 scheduler that measures can ride it}
-\author{Draft --- claims traced to \texttt{docs/claims-and-evidence.md}}
-\date{2026-08-13}
+\author{Draft}
+\affiliation{\institution{Claims traced to
+  \texttt{docs/claims-and-evidence.md}}\country{}}
 
 \begin{document}
-\maketitle
 
 \begin{abstract}
 We partition a single AMD GPU between concurrent diffusion tenants using
@@ -61,6 +64,8 @@ caught it was running two instruments over the same steps in the same
 process, where one reported ten times the other inside an interval that
 physically contained it.
 \end{abstract}
+
+\maketitle
 
 \section{Introduction}
 
