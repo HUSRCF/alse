@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1786639310.46023 "burstserve.tex" "burstserve.pdf" "burstserve" 1786639311.14422 0
+["pdflatex"] 1786679912.53628 "burstserve.tex" "burstserve.pdf" "burstserve" 1786679913.17082 0
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/adobe/symbol/psyr.tfm" 1136768653 1408 5937f58aa508ea2cea4901c07d10f5fe ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/adobe/zapfding/pzdr.tfm" 1136768653 1528 f853c4d1b4e0550255e02831fdc8496f ""
@@ -142,9 +142,9 @@
   "/data/zhuoxu/tools/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1781765658 2301082 5aa60e3d93e636e236d4a5ea57cab2bb ""
   "/data/zhuoxu/tools/texlive/2026/texmf.cnf" 1781765650.5675 583 b437dc24b6fdbf0dd367603a3bd7a051 ""
   "/srv/zhuoxu/texmf/tex/latex/balance/balance.sty" 1786185375.0112 3231 a1070732d815b855012531f9a52c6602 ""
-  "burstserve.aux" 1786639311.03692 3003 24b6fe241e0cf57f11c729761bc9c308 "pdflatex"
-  "burstserve.out" 1786639311.03692 1692 d962b71910c970a81cbce7bd3016c9fd "pdflatex"
-  "burstserve.tex" 1786639309.67281 14665 22f1b395c2c8139b559bdfc5a76beb0e ""
+  "burstserve.aux" 1786679913.08736 3003 00b5b776821471ef2c842e6e8a2ecd87 "pdflatex"
+  "burstserve.out" 1786679913.08736 1692 d962b71910c970a81cbce7bd3016c9fd "pdflatex"
+  "burstserve.tex" 1786679911.79526 14666 1b3eecee7611daa460ab97c7d059c75f ""
   (generated)
   "burstserve.aux"
   "burstserve.log"

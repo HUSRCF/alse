@@ -44,9 +44,9 @@ $+30.9\%$. The split decides how the gain divides, not whether there is
 one.
 
 Third, a dual-ledger scheduler that charges from measurement rather than
-prediction reduces urgent SLO miss rate by about $10\%$ under same-model
+prediction reduces urgent SLO miss rate by about $13\%$ under same-model
 co-location, in \emph{both} co-run states, by cutting expensive serial
-fallbacks by 61--67\%. It does not detect the bistable state, which is
+fallbacks by 73--81\%. It does not detect the bistable state, which is
 what it was designed to do; it makes a cheap correction before an
 expensive one is forced.
 
@@ -219,16 +219,16 @@ every process's drawn state recorded.
 \centering
 \begin{tabular}{lrr}
 \toprule
-segment & fast ($n{=}33$) & slow ($n{=}10$) \\
+segment & fast ($n{=}20$) & slow ($n{=}10$) \\
 \midrule
-deadline actions & $+0.62\%$ & $-0.57\%$ \\
-\textbf{probe} & $\mathbf{-9.75\%}$ & $\mathbf{-10.87\%}$ \\
-serial fallbacks & $-61\%$ & $-67\%$ \\
+deadline actions & $+1.05\%$ & $+3.02\%$ \\
+\textbf{probe} & $\mathbf{-13.14\%}$ & $\mathbf{-14.20\%}$ \\
+serial fallbacks & $-73\%$ & $-81\%$ \\
 video goodput & $+0.04\%$ & $-0.01\%$ \\
 \bottomrule
 \end{tabular}
-\caption{Probe intervals \ci{-0.0292}{-0.0112} and
-\ci{-0.0635}{-0.0083}; both deadline intervals span zero.}
+\caption{Probe intervals \ci{-0.0530}{-0.0127} and
+\ci{-0.0604}{-0.0106}; both deadline intervals span zero.}
 \end{table}
 
 The probe carries the entire effect and the deadline actions carry none.

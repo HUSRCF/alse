@@ -65,12 +65,12 @@ CogVideoX-2b at 480x720x9 frames.
 
 | | |
 | --- | --- |
-| **Claim** | Under same-model co-location the measurement-driven probe reduces urgent SLO miss rate by about 10% relative, in **both** co-run states, at no cost to video goodput. **Under re-measurement as of 2026-08-13** — see below. |
-| **Evidence** | Three arms from one code path — pairing only, plus the deadline actions, plus the probe — paired by seed. Fast state: -9.75%, [-0.0292, -0.0112], n=33. Slow state: -10.87%, [-0.0635, -0.0083], n=10. Deadline actions null in both (+0.62% and -0.57%, both intervals spanning zero). |
-| **Mechanism** | Serial fallbacks fall 61% in the fast state and 67% in the slow one. The probe drops a degrading pairing itself, before the drift envelope has to bail the round out with the whole die. |
+| **Claim** | Under same-model co-location the measurement-driven probe reduces urgent SLO miss rate by about 13% relative, in **both** co-run states, at no cost to video goodput. |
+| **Evidence** | Three arms from one code path — pairing only, plus the deadline actions, plus the probe — paired by seed. Fast state: -13.14%, [-0.0530, -0.0127], n=20. Slow state: -14.20%, [-0.0604, -0.0106], n=10. Deadline actions null in both (+1.05% and +3.02%, both intervals spanning zero). |
+| **Mechanism** | Serial fallbacks fall 73% in the fast state and 81% in the slow one. The probe drops a degrading pairing itself, before the drift envelope has to bail the round out with the whole die. |
 | **Scope** | Same-model co-location. **Not** the mismatched workload — see 2.2. |
 | **Falsifier** | An effect concentrated in one state. That would restore the original "slow-state detector" account, which this refutes. |
-| **Caveat** | These numbers were measured against a drift envelope that also fired when a pairing came in *cheaper* than predicted — a defect fixed on 2026-08-13. Since the probe's mechanism is fallback reduction, part of the credited benefit may have been avoiding that defect. A 30-seed re-measurement with the corrected envelope is running and will replace these figures. |
+| **History** | Measured at -9.75% and -10.87% against an envelope that also fired when a pairing came in *cheaper* than predicted. That defect was fixed and the figures above are the 30-seed re-measurement. The number rose, which deserves scrutiny: over half the old fallbacks were the defect (5838 to 2725 for pairing alone), the envelope helps whichever arm it fires on, and pairing alone triggered it far more than the probe did — so removing the spurious help cost the baseline more than the method. |
 
 ### 1.7 A wrong prediction meets a right measurement
 

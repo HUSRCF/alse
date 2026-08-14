@@ -2954,3 +2954,36 @@ had read twice, but by an ablation whose result contradicted its own
 mechanism and which I refused to explain away. The fourth explanation
 would have been wrong too; sweeping the parameter the two measurements
 disagreed on was what settled it.
+
+### 2026-08-13 -- the probe re-measured on the corrected envelope: -13.1% and -14.2%
+
+Thirty seeds, three arms, with the envelope firing on over-run only.
+
+| segment | fast ($n{=}20$) | slow ($n{=}10$) |
+| --- | --- | --- |
+| deadline actions | +1.05%, spans zero | +3.02%, spans zero |
+| **probe** | **-13.14%, [-0.0530, -0.0127]** | **-14.20%, [-0.0604, -0.0106]** |
+| serial fallbacks | 2725 -> 735 (-73%) | 1383 -> 266 (-81%) |
+| video goodput | -0.01% | -0.01% |
+
+Against -9.75% and -10.87% measured on the defective envelope. **The
+number went up, which is exactly the pattern that deserves scrutiny, so
+here is why.**
+
+Over half the previous fallbacks were the defect. Totals fell from 5838
+to 2725 for pairing alone and from 2288 to 735 for the probe. And the
+envelope *helps* the arm it fires on -- measured directly, on against off
+gives 0.5169 against 0.6447. Pairing alone triggered it far more than the
+probe did, so most of that spurious help was landing on the baseline
+arm. Removing it costs the baseline more than the method, and the probe's
+relative advantage grows.
+
+The direction is therefore predicted rather than selected. What I feared
+was the probe getting credit for dodging my bug; what was happening was
+the baseline getting credit for benefiting from it.
+
+The mechanism and the state-independence both survive: fallbacks cut 73%
+and 81%, the two states agree to within a point, and the deadline actions
+remain null in both. This still is not a slow-state detector.
+
+Draw rate in this campaign: 10 slow of 30. Pooled, 37 of 190, 19.5%.
