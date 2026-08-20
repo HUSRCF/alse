@@ -2987,3 +2987,37 @@ and 81%, the two states agree to within a point, and the deadline actions
 remain null in both. This still is not a slow-state detector.
 
 Draw rate in this campaign: 10 slow of 30. Pooled, 37 of 190, 19.5%.
+
+### 2026-08-20 -- a week of nothing, and a log that read as success
+
+The two re-runs queued on 2026-08-13 never ran a single cell. The chain
+script was written with `cat > file <<"EOS"`, where `$` is already
+literal, and I escaped it anyway. `\$e` and `\$(seq 0 11)` came out as
+literal backslash-dollars: the envelope loop died on a bash syntax error
+at its `for` line, and every predictor-error run handed argparse the
+string `\$e` as a float and exited.
+
+**The log read as success.** Both `=== chain: ... done ===` markers
+printed, because a bare `echo` prints whether or not anything above it
+worked, and the per-run stderr was filtered away by a `grep` for the
+lines a successful run emits. When I checked a week later I grepped for
+those markers and saw both. Nothing in what I looked at could have shown
+a failure.
+
+That is the same error as `kpsewhich acmart.cls` reporting the class
+present while a minimal document would not build: **I checked a thing
+that passes by construction instead of the thing I wanted to know.** The
+version now running counts output files and failures explicitly and
+prints both, and I verified it by watching two JSON files appear rather
+than by reading a marker.
+
+The mixed convention is worth stating so it is not repeated: `bash -c
+"..."` needs `\$` for a variable meant for the remote shell; a quoted
+heredoc `<<"EOS"` needs a bare `$`. I have used both forms in this
+project and this is where they crossed.
+
+Cost: seven days on two campaigns, and two claims -- the predictor-error
+degradation figures and the envelope's own value -- carrying a
+"measured against a defective envelope" caveat for a week longer than
+necessary. Nothing was corrupted and no result was wrong; the time is
+simply gone.
