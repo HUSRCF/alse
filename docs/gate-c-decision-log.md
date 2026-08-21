@@ -3021,3 +3021,62 @@ degradation figures and the envelope's own value -- carrying a
 "measured against a defective envelope" caveat for a week longer than
 necessary. Nothing was corrupted and no result was wrong; the time is
 simply gone.
+
+### 2026-08-20 -- the probe's benefit is avoiding our own envelope
+
+With the envelope corrected to fire on over-run only, two re-runs
+finished. Together they retract this project's third contribution.
+
+**The envelope is a net cost.** Turning it off improves every policy,
+all four intervals excluding zero, over 9 paired seeds:
+
+    static_even            0.3011 -> 0.2415   (-0.0596)
+    deadline_aware         0.2999 -> 0.2574   (-0.0426)
+    step_matched_pairing   0.3011 -> 0.2415   (-0.0596)
+    probing_partitioning   0.2619 -> 0.2353   (-0.0266)
+
+And it buys nothing measurable: **zero safety failures in both arms**, 36
+cells with it on and 48 with it off. Its profile-missing branch never
+fired at all, because every pairing the policies formed had an entry in
+the table; only the drift branch ever ran, and that is the branch that
+costs.
+
+**The probe's benefit is the envelope.** Comparing probing against
+step-matched pairing within each arm:
+
+    envelope on    -13.01%   [-0.0668, -0.0132]   n=9
+    envelope off    +0.41%   [-0.0211, +0.0256]   n=12, spans zero
+
+With the envelope on, the -13.01% reproduces the 30-seed figure of
+-13.14% exactly. With it off, the probe does **nothing** -- the interval
+spans zero and the point estimate is on the wrong side.
+
+So the mechanism identified two days ago was right and its significance
+was backwards. The probe does cut serial fallbacks by 73-81%, and those
+fallbacks are harmful, and they are harmful because they are ours. The
+probe is a workaround for a mechanism this project introduced. Remove the
+mechanism and the workaround has no measured value.
+
+**The best configuration measured is the envelope off and no probe**:
+step-matched pairing at 0.2276, against 0.2286 with the probe --
+statistically identical -- and both better than anything with the
+envelope on.
+
+**What this retracts.** Claim 1.6 as written: "the probe is worth about
+13% under same-model co-location". It is worth 13% only against a
+runtime carrying a mechanism that costs more than the probe recovers. The
+claim is withdrawn, not reworded.
+
+**What survives.** The bistability, the draw rate, the mismatched
+partitioning result, the mask and bit-exactness clauses, and the
+operational clauses -- none of those touch the envelope. The zero safety
+failures at +/-20% predictor error survives as well, and is now stronger
+for holding with the envelope off too.
+
+**What is unestablished rather than refuted.** The envelope's safety
+value. Its profile-missing branch never fired in any workload measured
+here, so "a conservative fallback when the cost model has no entry for a
+pairing" has not been tested -- only the drift branch has, and only on
+workloads where the cost model was right enough that firing was a
+mistake. A workload with genuinely unmeasured pairings would test it.
+That is a design the project does not currently have.
