@@ -128,6 +128,13 @@ def main() -> int:
                                  "step-count"),
                         help="ablation: the accounting currency the "
                              "fairness claim rests on")
+    parser.add_argument("--predictor-errors", default="",
+                        help="comma-separated errors swept inside one "
+                             "process, so the co-run state is identical "
+                             "across them by construction. Sweeping across "
+                             "processes broke the pairing: --require-state "
+                             "fast admits a different set of seeds at each "
+                             "level, and only 2 of 8 survived all five.")
     parser.add_argument("--predictor-error", type=float, default=0.0,
                         help="multiply every prediction the policy sees by "
                              "1+e, leaving the ledger's measurements alone. "
@@ -261,10 +268,16 @@ def main() -> int:
     if not args.per_policy_isolated and len(policies) > 1:
         shared = measure_isolated(args, torch, models, pool, warm_adapters,
                                   label="group")
-    for policy_name in policies:
-        run_one(policy_name, args, torch, models, pool, pipelines,
-                warm_adapters, loaded_s, began_all, out_template,
-                len(policies) > 1, shared, drawn, began_all_unix)
+    errors = ([float(e) for e in args.predictor_errors.split(",")
+               if e.strip()] or [args.predictor_error])
+    many = len(policies) > 1 or len(errors) > 1
+    for error in errors:
+        args.predictor_error = error
+        for policy_name in policies:
+            run_one(policy_name, args, torch, models, pool, pipelines,
+                    warm_adapters, loaded_s, began_all,
+                    out_template.replace("ERROR", f"{error:g}"),
+                    many, shared, drawn, began_all_unix)
     return 0
 
 

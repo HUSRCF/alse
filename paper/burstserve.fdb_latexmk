@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1786679912.53628 "burstserve.tex" "burstserve.pdf" "burstserve" 1786679913.17082 0
+["pdflatex"] 1787292658.37 "burstserve.tex" "burstserve.pdf" "burstserve" 1787292659.00839 0
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/adobe/symbol/psyr.tfm" 1136768653 1408 5937f58aa508ea2cea4901c07d10f5fe ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/adobe/zapfding/pzdr.tfm" 1136768653 1528 f853c4d1b4e0550255e02831fdc8496f ""
@@ -13,8 +13,6 @@
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/symbols/msbm5.tfm" 1246382020 940 75ac932a52f80982a9f8ea75d03a34cf ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/symbols/msbm7.tfm" 1246382020 940 228d6584342e91276bf566bcf9716b83 ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmbx10.tfm" 1136768653 1328 c834bbb027764024c09d3d2bf908b5f0 ""
-  "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmbx5.tfm" 1136768653 1332 f817c21a1ba54560425663374f1b651a ""
-  "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmbx6.tfm" 1136768653 1344 8a0be4fe4d376203000810ad4dc81558 ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmbx9.tfm" 1136768653 1328 5442e22a7072966dbaf88ca900acf3f0 ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmmi6.tfm" 1136768653 1512 f21f83efb36853c0b70002322c1ab3ad ""
   "/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmmi9.tfm" 1136768653 1524 d89e2d087a9828407a196f428428ef4a ""
@@ -142,9 +140,9 @@
   "/data/zhuoxu/tools/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1781765658 2301082 5aa60e3d93e636e236d4a5ea57cab2bb ""
   "/data/zhuoxu/tools/texlive/2026/texmf.cnf" 1781765650.5675 583 b437dc24b6fdbf0dd367603a3bd7a051 ""
   "/srv/zhuoxu/texmf/tex/latex/balance/balance.sty" 1786185375.0112 3231 a1070732d815b855012531f9a52c6602 ""
-  "burstserve.aux" 1786679913.08736 3003 00b5b776821471ef2c842e6e8a2ecd87 "pdflatex"
-  "burstserve.out" 1786679913.08736 1692 d962b71910c970a81cbce7bd3016c9fd "pdflatex"
-  "burstserve.tex" 1786679911.79526 14666 1b3eecee7611daa460ab97c7d059c75f ""
+  "burstserve.aux" 1787292658.92468 3075 b341930a90bc8c46e7a58cb487d8c81f "pdflatex"
+  "burstserve.out" 1787292658.92468 1860 c9f62ddbb072042f74194918c1ce25da "pdflatex"
+  "burstserve.tex" 1787292657.6006 15539 cf42950b31cf0ab2e5793db9539517e7 ""
   (generated)
   "burstserve.aux"
   "burstserve.log"

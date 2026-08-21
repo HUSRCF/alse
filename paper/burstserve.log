@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.6.17)  13 AUG 2026 22:58
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.6.17)  21 AUG 2026 01:10
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -701,7 +701,7 @@ File: mt-msa.cfg 2006/02/04 v1.1 microtype config. file: AMS symbols (a) (RS)
 (/data/zhuoxu/tools/texlive/2026/texmf-dist/tex/latex/microtype/mt-msb.cfg
 File: mt-msb.cfg 2005/06/01 v1.0 microtype config. file: AMS symbols (b) (RS)
 )
-Overfull \hbox (3.17964pt too wide) in paragraph at lines 72--79
+Overfull \hbox (3.17964pt too wide) in paragraph at lines 73--80
 \OT1/cmr/m/n/9 (-20) Serving a latency-sensitive im-age re-quest be-side a long
 -running
  []
@@ -710,8 +710,16 @@ Overfull \hbox (3.17964pt too wide) in paragraph at lines 72--79
 ap}
 
 {/data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t
-s1.enc}] [2.2]
-Overfull \vbox (1.05pt too high) has occurred while \output is active []
+s1.enc}]
+Underfull \vbox (badness 4013) has occurred while \output is active []
+
+
+Underfull \vbox (badness 6236) has occurred while \output is active []
+
+ [2.2]
+
+Package balance Warning: You have called \balance in second column
+(balance)                Columns might not be balanced.
 
 
 (/data/zhuoxu/tools/texlive/2026/texmf-dist/tex/generic/stringenc/se-pdfdoc.def
@@ -724,16 +732,16 @@ LaTeX2e <2026-06-01>
 L3 programming layer <2026-05-26>
  ***********
 Package rerunfilecheck Info: File `burstserve.out' has not changed.
-(rerunfilecheck)             Checksum: D962B71910C970A81CBCE7BD3016C9FD;1692.
+(rerunfilecheck)             Checksum: C9F62DDBB072042F74194918C1CE25DA;1860.
  ) 
 Here is how much of TeX's memory you used:
- 17277 strings out of 469114
- 280176 string characters out of 5458032
- 818807 words of memory out of 5000000
- 45670 multiletter control sequences out of 15000+600000
- 641334 words of font info for 150 fonts, out of 8000000 for 9000
+ 17258 strings out of 469114
+ 279976 string characters out of 5458032
+ 817005 words of memory out of 5000000
+ 45666 multiletter control sequences out of 15000+600000
+ 640353 words of font info for 143 fonts, out of 8000000 for 9000
  197 hyphenation exceptions out of 8191
- 89i,12n,131p,1007b,586s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 89i,12n,131p,1007b,576s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cm
 bx10.pfb></data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/amsfont
 s/cm/cmbx9.pfb></data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/a
@@ -749,10 +757,10 @@ tools/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></data/
 zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb><
 /data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0900
 .pfb>
-Output written on burstserve.pdf (3 pages, 188548 bytes).
+Output written on burstserve.pdf (3 pages, 189258 bytes).
 PDF statistics:
- 151 PDF objects out of 1000 (max. 8388607)
- 122 compressed objects within 2 object streams
- 26 named destinations out of 1000 (max. 500000)
- 33897 words of extra memory for PDF output out of 35830 (max. 10000000)
+ 150 PDF objects out of 1000 (max. 8388607)
+ 121 compressed objects within 2 object streams
+ 25 named destinations out of 1000 (max. 500000)
+ 29801 words of extra memory for PDF output out of 29859 (max. 10000000)
 

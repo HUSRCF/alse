@@ -43,12 +43,13 @@ at $4{+}28$, $+71.4\%$ and $+1.4\%$; at $28{+}4$, $+3.6\%$ and
 $+30.9\%$. The split decides how the gain divides, not whether there is
 one.
 
-Third, a dual-ledger scheduler that charges from measurement rather than
-prediction reduces urgent SLO miss rate by about $13\%$ under same-model
-co-location, in \emph{both} co-run states, by cutting expensive serial
-fallbacks by 73--81\%. It does not detect the bistable state, which is
-what it was designed to do; it makes a cheap correction before an
-expensive one is forced.
+Third, a negative about our own design. A dual-ledger probe that charges
+from measurement appeared to reduce urgent SLO miss rate by $13\%$ under
+same-model co-location, by cutting expensive serial fallbacks by
+73--81\%. Those fallbacks come from a conservative envelope we added.
+With the envelope removed, every policy improves and the probe's benefit
+vanishes: $+0.41\%$, \ci{-0.0211}{+0.0256}. The probe was a workaround
+for a mechanism we introduced.
 
 We also report a pre-registered negative. On the mismatched workload the
 grid was designed around --- 405 cells, nine policies --- the method is
@@ -89,11 +90,10 @@ behaves, and what a scheduler has to do about it.
 \item A measurement showing mismatched tenants partition almost for
   free, with both sides gaining over rotation at every split
   (\S\ref{sec:mismatch}).
-\item A dual-ledger scheduler whose probe is worth $\approx 10\%$ where
-  tenants contend, with the mechanism identified as fallback reduction
-  rather than state detection (\S\ref{sec:probe}).
-\item A pre-registered negative on the workload the grid was designed
-  around (\S\ref{sec:negative}).
+\item Two negatives, both about our own design: a probe whose measured
+  benefit is entirely the avoidance of a conservative envelope we added
+  (\S\ref{sec:probe}), and a pre-registered failure on the workload the
+  grid was built around (\S\ref{sec:negative}).
 \item A methodological account of an instrument that produced a
   beautiful and wrong quantitative model (\S\ref{sec:method}).
 \end{enumerate}
@@ -196,56 +196,64 @@ same-model case never manages --- and no draw is observed: the two
 arrangements behave differently and the die keys its state on the mask
 pair.
 
-\section{A scheduler that measures}
+\section{A scheduler that measures, and what it was really doing}
 \label{sec:probe}
 
-The runtime charges each tenant from the \emph{measured} cost of the
-step it just ran, never from the cost model. Charging from prediction
-would make the accounting exact by construction and blind: the point of
-keeping both ledgers is that they can disagree, and the disagreement is
-what admission control reads.
+The runtime charges each tenant from the \emph{measured} cost of the step
+it just ran, never from the cost model. Charging from prediction would
+make the accounting exact by construction and blind. The policy pairs
+tenants by matched step cost and probes: if a formed pairing's observed
+step exceeds its paired expectation by a tolerance, the pairing is
+dropped for a round. The runtime adds a safety envelope that falls back
+to a serial action when a pairing has no measured profile or when drift
+exceeds 15\%.
 
-The policy pairs tenants by matched step cost, and probes: if a formed
-pairing's observed step exceeds its paired expectation by a tolerance,
-the pairing is dropped for a round. The runtime adds a safety envelope
-that falls back to a serial action when a pairing has no measured
-profile or when drift exceeds 15\%.
-
-We decompose the gain with three arms from one code path --- pairing
-only, plus the deadline actions, plus the probe --- paired by seed, with
-every process's drawn state recorded.
+Decomposed with three arms from one code path --- pairing only, plus the
+deadline actions, plus the probe --- paired by seed, the probe carried
+$-13.14\%$ in the fast state and $-14.20\%$ in the slow one, with the
+deadline actions null in both, and it cut serial fallbacks by 73--81\%.
 
 \begin{table}[t]
 \centering
 \begin{tabular}{lrr}
 \toprule
-segment & fast ($n{=}20$) & slow ($n{=}10$) \\
+policy & envelope on & envelope off \\
 \midrule
-deadline actions & $+1.05\%$ & $+3.02\%$ \\
-\textbf{probe} & $\mathbf{-13.14\%}$ & $\mathbf{-14.20\%}$ \\
-serial fallbacks & $-73\%$ & $-81\%$ \\
-video goodput & $+0.04\%$ & $-0.01\%$ \\
+static SM partition & $0.3011$ & $0.2415$ \\
+EDF & $0.2999$ & $0.2574$ \\
+step-matched pairing & $0.3011$ & $0.2415$ \\
+probe & $0.2619$ & $0.2353$ \\
 \bottomrule
 \end{tabular}
-\caption{Probe intervals \ci{-0.0530}{-0.0127} and
-\ci{-0.0604}{-0.0106}; both deadline intervals span zero.}
+\caption{Urgent SLO miss rate, 9 paired seeds. Every policy improves
+with the envelope off; all four intervals exclude zero.}
 \end{table}
 
-The probe carries the entire effect and the deadline actions carry none.
-More interesting is that the two states agree. Had the probe been the
-slow-state detector it was designed as, its benefit would concentrate in
-the slow state and vanish in the fast one. Instead it does the same
-thing in both: it drops a degrading pairing itself, before the envelope
-has to bail the round out with the whole die --- a cheap early
-correction standing in for an expensive late one.
+\textbf{Then we removed the envelope.} Every policy improved. And the
+probe's advantage over step-matched pairing went from $-13.01\%$,
+\ci{-0.0668}{-0.0132}, to $+0.41\%$, \ci{-0.0211}{+0.0256} --- an
+interval spanning zero with the point estimate on the wrong side.
+
+So the mechanism was identified correctly and its significance was
+backwards. The probe does cut serial fallbacks; those fallbacks are
+harmful; and they are harmful because they are ours. The envelope fired
+on drift measured as $|{\text{observed}/\text{expected}}-1|$, which
+treats a pairing arriving \emph{cheaper} than predicted as a reason to
+take the whole die serial. Correcting it to fire on over-run only removed
+half the firings, and removing it entirely was better still. The
+envelope's other branch, a fallback when the cost model has no entry for
+a pairing, never fired in any workload we ran, so it is untested rather
+than refuted.
+
+The best configuration we measured is the envelope off and no probe:
+step-matched pairing at $0.2276$ against $0.2286$ with the probe.
 
 \paragraph{Robustness.} Injecting predictor error into the belief the
 policy reads, and nowhere else, gives zero safety failures at $\pm20\%$
-across 50 cells, where a safety failure is defined in code as
-over-committing the die, charging from the cost model when a measurement
-existed, or charging a measurement taken at another quota. Under $+20\%$
-over-prediction the prediction-only policy degrades $23\%$ relative and
-the measuring one $4.6\%$.
+across 134 cells with the envelope both on and off, where a safety
+failure is defined in code as over-committing the die, charging from the
+cost model when a measurement existed, or charging a measurement taken at
+another quota.
 
 \section{A pre-registered negative}
 \label{sec:negative}
@@ -324,8 +332,14 @@ a unit test both say it should increase them. Under investigation.
 The claim this work set out to make --- that spatial partitioning raises
 utilisation by a fixed factor --- is false as stated, and the reason is
 interesting: the factor is not fixed. It is bistable, latched per
-process, and depends on whether the co-located tenants contend at all. A
-scheduler that measures its own steps rides that; one calibrated to a
-constant takes the draw.
+process, and depends on whether the co-located tenants contend at all.
+
+What survives is a hardware result and a method for getting it. What does
+not is our own scheduling contribution: the probe's measured value was
+the avoidance of an envelope we had added, and the envelope was a net
+cost. We report both because a scheduler that looks good against a
+runtime carrying one of your own defects looks good for the wrong
+reason, and the only way to find that out is to remove the defect and
+measure again.
 
 \end{document}

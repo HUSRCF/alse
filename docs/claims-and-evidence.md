@@ -61,25 +61,24 @@ CogVideoX-2b at 480x720x9 frames.
 | **Scope** | These two models at these workpoints. The split decides how the gain divides, not whether there is one. |
 | **Falsifier** | Any split where a side loses against its rotation share. |
 
-### 1.6 The probe is worth about 10%, where tenants contend
+### 1.6 Step-matched pairing carries the method
 
 | | |
 | --- | --- |
-| **Claim** | Under same-model co-location the measurement-driven probe reduces urgent SLO miss rate by about 13% relative, in **both** co-run states, at no cost to video goodput. |
-| **Evidence** | Three arms from one code path — pairing only, plus the deadline actions, plus the probe — paired by seed. Fast state: -13.14%, [-0.0530, -0.0127], n=20. Slow state: -14.20%, [-0.0604, -0.0106], n=10. Deadline actions null in both (+1.05% and +3.02%, both intervals spanning zero). |
-| **Mechanism** | Serial fallbacks fall 73% in the fast state and 81% in the slow one. The probe drops a degrading pairing itself, before the drift envelope has to bail the round out with the whole die. |
-| **Scope** | Same-model co-location. **Not** the mismatched workload — see 2.2. |
-| **Falsifier** | An effect concentrated in one state. That would restore the original "slow-state detector" account, which this refutes. |
-| **History** | Measured at -9.75% and -10.87% against an envelope that also fired when a pairing came in *cheaper* than predicted. That defect was fixed and the figures above are the 30-seed re-measurement. The number rose, which deserves scrutiny: over half the old fallbacks were the defect (5838 to 2725 for pairing alone), the envelope helps whichever arm it fires on, and pairing alone triggered it far more than the probe did — so removing the spurious help cost the baseline more than the method. |
+| **Claim** | On the workloads measured, what separates this scheduler from non-pairing baselines is the step-matched pairing itself. The probe adds nothing once a defect of ours is removed — see 3.4. |
+| **Evidence** | 405 cells: pairing beats FCFS by 6.5% (interval touching zero), static partition and EDF by about 3% (intervals excluding it), and FCFS by 17% at overload. Same-model, envelope off: step-matched 0.2276 against probing 0.2286, statistically identical over 12 paired seeds. |
+| **Scope** | Both workloads, this card. |
+| **Falsifier** | A workload where the probe separates from step-matched pairing with the envelope off. |
 
 ### 1.7 A wrong prediction meets a right measurement
 
 | | |
 | --- | --- |
-| **Claim** | Predictor error of ±20% causes no safety failure, and degradation under over-prediction is conservative — the measuring policy degrades 4.6% where the prediction-only one degrades 23%. |
-| **Evidence** | Error injected into the prediction the policy reads and nowhere else; a test asserts the observed side is unchanged at every error. Three safety invariants named in code and checked every round: over-committing the die, charging from the cost model when a measurement existed, charging a measurement taken at another quota. Zero failures across 50 cells at five error levels. Fast-state cells only, since the draw confounded the first reading. |
+| **Claim** | Predictor error of ±20% causes no safety failure. |
+| **Evidence** | Error injected into the prediction the policy reads and nowhere else; a test asserts the observed side is unchanged at every error. Three safety invariants named in code and checked every round: over-committing the die, charging from the cost model when a measurement existed, charging a measurement taken at another quota. Zero failures across 50 cells at five error levels, and zero again across 84 cells with the envelope both on and off. Fast-state cells only, since the draw confounded the first reading. |
 | **Scope** | Same-model, load 0.6, burst 4, n = 4–5 per level. |
-| **Falsifier** | Any of the three invariants breaking, or degradation that does not flatten with the probe. |
+| **Falsifier** | Any of the three invariants breaking. |
+| **Withdrawn from this claim** | The degradation comparison — 4.6% against 23% — was measured against the defective envelope and cannot be re-established from the re-run: `--require-state fast` admits a different set of seeds at each error level, and only 2 of 8 survived all five, so the across-level comparison is not paired. A sweep inside one process is running. |
 
 ### 1.8 The runtime holds its operational clauses
 
@@ -159,6 +158,32 @@ decimals in every episode of every split. The fit was real and it was
 fitting a variable that held one stale value per episode. See 5.
 
 ---
+
+### 3.4 That the dual-ledger probe is worth about 13%
+
+Measured at −13.14% and −14.20% with the drift envelope on. With the
+envelope off the probe does nothing: +0.41%, [−0.0211, +0.0256] over 12
+paired seeds, the interval spanning zero and the point estimate on the
+wrong side.
+
+The envelope is itself a net cost — turning it off improves every policy,
+all four intervals excluding zero — and it bought no measurable safety:
+zero safety failures with it on (36 cells) and off (48 cells). Its
+profile-missing branch never fired at all, because every pairing the
+policies formed had a table entry.
+
+So the probe's mechanism was correctly identified — it cuts serial
+fallbacks by 73–81% — and the significance was backwards. Those fallbacks
+are harmful, and they are harmful because they are ours. The probe is a
+workaround for a mechanism this project introduced.
+
+The best configuration measured is the envelope off and no probe.
+
+**Not refuted, untested:** the envelope's safety value. Only its drift
+branch has ever fired, and only on workloads where the cost model was
+accurate enough that firing was a mistake. A workload containing pairings
+the cost model has no entry for would test the other branch. This project
+does not currently have one.
 
 ## 4. Open
 
