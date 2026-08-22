@@ -1,0 +1,17 @@
+{
+  "schema_version": "burstserve.amd-state-draw/v1",
+  "drawn_co_run_state": {
+    "externality": 1.9049773386696378,
+    "per_side": {
+      "a": 1.900694456774998,
+      "b": 1.909260220564278
+    },
+    "state": "slow"
+  },
+  "required": "fast",
+  "started_unix": 1787245109.2266634,
+  "started_iso": "2026-08-21T00:58:29",
+  "cells_run": false,
+  "seed": 2,
+  "video_model": "sdxl"
+}

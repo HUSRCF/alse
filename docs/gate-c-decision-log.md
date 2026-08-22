@@ -3080,3 +3080,43 @@ pairing" has not been tested -- only the drift branch has, and only on
 workloads where the cost model was right enough that firing was a
 mistake. A workload with genuinely unmeasured pairings would test it.
 That is a design the project does not currently have.
+
+### 2026-08-22 -- predictor error, paired properly: being wrong in the safe direction helps
+
+Sweeping all five error levels **inside one process**, so the co-run state
+is identical across levels by construction. Ten seeds complete at every
+level, against two when the sweep ran across processes.
+
+| error | urgent miss | vs 0 | video goodput | vs 0 |
+| --- | --- | --- | --- | --- |
+| -0.2 | 0.2615 | -0.0019, spans zero | 2.2764 | spans zero |
+| -0.1 | 0.2657 | +0.0023, spans zero | 2.2762 | spans zero |
+| 0.0 | 0.2634 | baseline | 2.2767 | baseline |
+| +0.1 | 0.2266 | **-0.0369** [-0.0672, -0.0068] | 2.2895 | **+0.0128** [+0.0014, +0.0283] |
+| +0.2 | 0.2204 | **-0.0430** [-0.0812, -0.0086] | 2.2896 | **+0.0130** [+0.0015, +0.0288] |
+
+**Over-predicting step cost improves both metrics**, and both intervals
+exclude zero. A deliberately pessimistic cost model beats an accurate one
+here: urgent miss falls 16% relative at +20% error while video goodput
+rises 0.6%.
+
+Zero safety failures across 100 cells.
+
+So claim 1.7's second half does not merely fail to reproduce -- it points
+the other way. The earlier "prediction-only degrades 23%, measuring
+degrades 4.6%" was an artifact of the defective envelope, and with that
+removed the direction reverses.
+
+**This is the third negative about our own design**, and the most
+uncomfortable: the cost model's *accuracy* is not what makes the
+scheduler work. Weeks went into calibrating quota curves and externality
+tables, and on this workload a model that is 20% pessimistic does
+marginally better than the calibrated one. The plausible reason is that
+over-prediction makes the deadline-feasibility test fire more often, so
+deadline-critical requests get the die to themselves sooner -- but that
+is an account, not a measurement, and it is not offered as one.
+
+What this does establish, and it is what plan.md's clause actually asks
+for: the planner is insensitive to predictor error over +/-20% in the
+sense that matters -- no safety failure, and no degradation. It is
+robust; it is simply not robust *because* it is accurate.

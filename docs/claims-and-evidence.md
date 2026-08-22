@@ -78,7 +78,7 @@ CogVideoX-2b at 480x720x9 frames.
 | **Evidence** | Error injected into the prediction the policy reads and nowhere else; a test asserts the observed side is unchanged at every error. Three safety invariants named in code and checked every round: over-committing the die, charging from the cost model when a measurement existed, charging a measurement taken at another quota. Zero failures across 50 cells at five error levels, and zero again across 84 cells with the envelope both on and off. Fast-state cells only, since the draw confounded the first reading. |
 | **Scope** | Same-model, load 0.6, burst 4, n = 4–5 per level. |
 | **Falsifier** | Any of the three invariants breaking. |
-| **Withdrawn from this claim** | The degradation comparison — 4.6% against 23% — was measured against the defective envelope and cannot be re-established from the re-run: `--require-state fast` admits a different set of seeds at each error level, and only 2 of 8 survived all five, so the across-level comparison is not paired. A sweep inside one process is running. |
+| **Refuted, not merely withdrawn** | The degradation comparison — 4.6% against 23% — was an artifact of the defective envelope. Sweeping all five error levels inside one process, 10 seeds complete at every level, **over-prediction improves both metrics**: at +20% urgent miss falls 0.2634 → 0.2204, [-0.0812, -0.0086], and video goodput rises [+0.0015, +0.0288]. A 20%-pessimistic cost model beats the calibrated one here. See 3.5. |
 
 ### 1.8 The runtime holds its operational clauses
 
@@ -184,6 +184,16 @@ branch has ever fired, and only on workloads where the cost model was
 accurate enough that firing was a mistake. A workload containing pairings
 the cost model has no entry for would test the other branch. This project
 does not currently have one.
+
+### 3.5 That the cost model's accuracy is what makes the scheduler work
+
+Weeks went into calibrating quota curves and externality tables. On this
+workload a model biased 20% pessimistic beats the calibrated one on both
+metrics — urgent miss 0.2634 → 0.2204 and video goodput up 0.6%, both
+intervals excluding zero, 10 seeds paired inside one process.
+
+The planner is robust to ±20% predictor error, which is what plan.md's
+clause asks for. It is simply not robust *because* the model is accurate.
 
 ## 4. Open
 
