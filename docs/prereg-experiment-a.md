@@ -53,14 +53,16 @@ cells are commensurable with the 405 already measured: urgent = SDXL,
 8 steps; video = CogVideoX-2b, 30 steps; deadline base `burst`, slack
 1.5; 40 urgent requests per cell.
 
-    load   0.6, 0.9
+    load   0.6, 1.05
     burst  4
     seed   0, 1, 2, 3, 4
 
-Two loads, because the whole case for choosing a split at run time is
-that the best split moves with the offered load. If the best fixed split
-is the same at 0.6 and 0.9, a deployer picks it once and there is
-nothing left to choose.
+The two ends of the main grid's own load axis (0.6, 0.85, 1.05), so the
+cells are commensurable with it. Two loads, because the whole case for
+choosing a split at run time is that the best split moves with the
+offered load. If the best fixed split is the same at 0.6 as at 1.05 --
+where the offered load exceeds capacity and a wrong split should hurt
+most -- a deployer picks it once and there is nothing left to choose.
 
 ## Metrics and direction
 
@@ -116,3 +118,32 @@ one the main Pareto criterion used.
 * Both loads drawing the same co-run state in every seed, which would
   make the two conditions one condition wearing two labels. The drawn
   state is recorded per cell and will be reported.
+
+## The simulator is not a prediction of this
+
+`trace_sim.simulate` was run over these arms before the hardware
+campaign, to check the `fixed_split_16` == `static_even` identity
+end to end. It passed, byte for byte, in all 50 cells. Its miss rates
+should not be read as a forecast:
+
+    simulator, load 0.6, all five fixed splits   0.9018
+    hardware, load 0.6, static_even (75 cells)   0.3658
+
+The simulator was given service times of 0.87 s and 2.6 s, which the
+cell runner measures on the card instead of assuming, so the gap is
+partly an input error. But a factor of 2.5 on the primary metric is
+worth stating rather than quietly dropping: it is a fresh instance of
+withdrawal 3.5, where a more accurate cost model did not produce better
+decisions. Nothing in this pre-registration depends on a simulated
+number, and no simulated cell will be reported as a result.
+
+One simulated observation is worth checking against the hardware,
+because it would be a finding either way: all five fixed splits had
+*identical* urgent miss rates, to four decimals, in every seed, while
+their video goodput ranged over a factor of two. If that holds on the
+card it means the split cannot trade urgent latency for video
+throughput at all in this workload -- the urgent tenant makes its
+deadline when the video tenant is idle and misses when it is not,
+whatever slice it holds. That would settle verdict 1 by a different
+route than expected, and it is recorded here so it counts as a
+prediction rather than a rationalisation.
