@@ -3309,3 +3309,82 @@ listing processes.
 Deleted the single pilot cell from the first launch instead of moving it
 to `expA_pilot`. It predated the goodput fix and backed no claim, but
 the rule is to preserve raw runs.
+
+### 2026-08-25 -- the hardware's cost of pairing is 3.4%, and ours is 44%
+
+Experiment A's first backlog group, load 0.6, seed 0, ten policies in
+one process on a cell that drew the **fast** co-run state with
+externality 1.034:
+
+    policy                       miss    video   p99 s  fallbacks  urgent
+    step_matched_pairing       0.0000    1.391    3.76      0       40/40
+    slo_aware_partitioning     0.0000    1.389    3.87      0       40/40
+    oracle_shortest_remaining  0.0250    1.386    6.24      0       40/40
+    fixed_split_8              0.1750    1.323    8.96    301       40/40
+    fixed_split_4              0.2500    1.260   11.99    298       40/40
+    fixed_split_24             0.6250    1.093   14.84    301       40/40
+    fixed_split_28             0.8000    0.864   28.37    321       40/40
+    fixed_split_16             1.0000    1.238   75.67      0       14/40
+    deadline_aware             1.0000    1.235   75.08      0       14/40
+    exclusive_fcfs             1.0000    1.638   65.92      0       21/40
+
+Giving the urgent tenant 16 units is *six times worse* than giving it 8.
+A knob behaving non-monotonically is usually a defect, so I did not read
+the ranking. The tell is the fallback column: the four splits with about
+300 serial fallbacks each finished all 40 urgent requests, and the one
+with zero finished 14.
+
+    policies that pair     1.72 steps/round, 0.81 s/round, 2.14 steps/s
+    policies that do not   1.00 steps/round, 0.26 s/round, 3.84 steps/s
+
+    isolated step p99 at 32 units: urgent 0.113 s, video 0.521 s
+
+**The runtime advances every active request by exactly one step per
+round.** A round costs the maximum of the steps in it, not the sum --
+0.81 s measured against a video step of about 0.8 s at 16 units -- so
+the two streams genuinely overlap and the hardware is doing what claim
+1.5 says it does. What the round barrier does is rate-limit a tenant
+whose step is 0.113 s to the step rate of one whose step is 0.521 s. The
+fast tenant gets one step per 0.8 s round and wastes 78% of its
+opportunity.
+
+So the die-level penalty for co-locating these two tenants is 3.4% and
+the scheduler-level penalty is 44%, on the same cell, in the same
+process, at the same time.
+
+**Three things follow.**
+
+`step_matched_pairing` wins this group by declining to pair. It executes
+502 steps in 502 rounds -- one tenant at a time -- and gets zero misses
+with the highest video goodput but one. Its name has been accurate all
+along and the mechanism was never stated: pairing must be step-matched
+*because the runtime advances in rounds*, and a round is only as useful
+as its slowest member.
+
+`exclusive_fcfs` also runs one tenant at a time and misses everything,
+because a backlogged video tenant puts ten requests at t=0 and FCFS
+serves them all before any urgent request arrives at the head. Round
+robin between tenants is what matters, not exclusivity.
+
+And the fixed-split sweep is not measuring the split. It is ranking
+splits by whether they trip our drift envelope -- the same envelope
+claim 3.3 showed to be a net cost, here accidentally rescuing four of
+five splits from a worse defect in the same runtime. So A2 runs the
+identical design with `--drift-tolerance 1000000` and is queued behind
+A1 rather than replacing it. Both are reported. The amendment is dated
+and written before A2 started, because adding an arm after seeing a
+confounder is only distinguishable from choosing a criterion after
+seeing a result if the addition is declared first.
+
+**What this does not say.** One group, one seed, one load, one drawn
+state. It is a mechanism with arithmetic that closes -- 320 x 0.113 +
+182 x 0.521 = 128 s against a 131 s cell -- not a result. Nine more
+groups of A1 and twenty of A2 will say whether it holds.
+
+**What it would mean if it does.** Claim 1.5 is not wrong: mismatched
+tenants do partition almost for free, at the step level, and that is a
+property of gfx1201 measured by device span. But a round-based scheduler
+cannot harvest it, and every number this project has produced about
+partitioning policies was produced by one. The fix is per-tenant step
+pipelining -- letting a fast tenant run several steps inside one round
+-- which is a redesign and not a patch.
