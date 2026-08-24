@@ -40,7 +40,8 @@ CogVideoX-2b at 480x720x9 frames.
 | --- | --- |
 | **Claim** | Two tenants of the same model on disjoint 16+16 masks pay either 1.297x or 1.949x their solo step time. The state is drawn per process, never changes within one, and is identifiable from a single step. |
 | **Evidence** | Device-span instrument. Fast 1.287–1.303, slow 1.923–1.962, no overlap. 0 of 8 processes flipped across nine later episodes each, with fresh adapters and re-acquired streams every episode. First step against episode median: mean absolute error 0.00% over 72 episodes. Interposing a different mask pair never disturbed the state (16 of 16 checks). |
-| **Scope** | Same-model co-location, 16+16, 768. Mismatched pairings show no draw. |
+| **Scope** | Same-model co-location, 16+16, 768, **gfx1201 (RDNA4) only**. Mismatched pairings show no draw. |
+| **Cross-architecture** | **Absent on gfx90a (MI250X, CDNA2, 104 units).** Same instrument, same model, 52+52, 32 processes rotating across four GCDs: 1.2336, sd 0.0030, range 1.228–1.238, none above gfx1201's slow threshold. At the gfx1201 rate of 16.9%, 0 of 32 has probability 0.0027. The four GCDs differ deterministically by 0.6% with non-overlapping ranges, so the instrument resolves far less than a 50% bimodality and sensitivity does not explain the negative. |
 | **Falsifier** | A process observed in both states; a third cluster; a state that is not readable within a few steps. |
 
 ### 1.4 The draw rate is about one process in six, and unstable
@@ -258,14 +259,23 @@ measured. The instruments that now guard against it:
 
 ## 6. Threats to validity
 
-**Single SKU.** By decision on 2026-08-09. The mechanism claim will have
-been verified on exactly one mask implementation, AMD's
-`hipExtStreamCreateWithCUMask` on gfx1201, and nothing here rules out
-that the results depend on that implementation's queueing and
-arbitration. This is not a formality: the co-run bistability in 1.3 was
-found on a single card, so whether another vendor's scheduler behaves
-this way is a live question. No acceptance clause replaces cross-SKU
-agreement, because more cells on one card is not a substitute for it.
+**Single vendor, two architectures.** The single-SKU decision of
+2026-08-09 stood until 2026-08-25, when a second AMD machine made a
+cross-architecture check possible: MI250X, gfx90a, CDNA2, 104 units,
+against the R9700's gfx1201, RDNA4, 32 units.
+
+What that bought, and what it did not. The masking mechanism and the
+partitioning gain both carry over — masks install bit-exact on gfx90a and
+partitioning pays +5.6% against rotation there. The **bistability does
+not**: 32 processes at 1.2336 with sd 0.0030 and none slow, where
+gfx1201 gives two states 50% apart. So 1.3 is now a claim about RDNA4,
+measured against a counter-example rather than asserted of one card.
+
+Still open, and it is the same shape as before one architecture became
+two: no NVIDIA measurement exists. Whether the SM-mask path behaves like
+gfx1201 or like gfx90a is unknown, and two AMD architectures disagreeing
+with each other is a reason to expect the question to matter, not a
+reason to consider it settled.
 
 **One card, so comparisons are paired in time, not across cards.** The
 die warms 43 to 72.8 °C in three and a half minutes and solo step time

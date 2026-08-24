@@ -163,6 +163,17 @@ $p=0.025$ between the extremes --- and we report no predictor. Five were
 proposed and retracted: working set, power cap, uncontrollable
 bistability, launch stagger, and prior use of a full-die mask.
 
+\paragraph{It is RDNA4's, not AMD's.} On an MI250X (gfx90a, CDNA2, 104
+units) the same measurement --- same instrument, same model, the same
+half-and-half split at $52{+}52$, 32 processes rotating across four GCDs
+--- gives $1.2336$ with a standard deviation of $0.0030$ and nothing
+above the slow threshold. At the gfx1201 rate that has probability
+$0.0027$. The four GCDs do differ from one another, deterministically, by
+$0.6\%$ with non-overlapping ranges, so the instrument resolves far less
+than a $50\%$ bimodality on that machine. Partitioning still pays there,
+$+5.6\%$ against rotation. The mechanism generalises; the pathology does
+not.
+
 The consequence for a cost model is direct. Against rotation at
 $2\times108.9$\,ms, the fast state makes partitioning worth $+11.5\%$ and
 the slow state worth $-25.5\%$. A model with one externality per width
