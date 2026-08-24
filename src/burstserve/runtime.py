@@ -87,6 +87,7 @@ class Runtime:
                  predictor_error: float = 0.0,
                  externality_blind: bool = False,
                  charge_currency: str = "quota-seconds",
+                 enforce_disjoint: bool = True,
                  fallback_backoff_s: float = 1.0,
                  max_fallback_backoff_s: float = 60.0):
         self.policy = policy
@@ -126,6 +127,14 @@ class Runtime:
                                    "step-count"):
             raise ValueError(f"unknown currency {charge_currency!r}")
         self.charge_currency = charge_currency
+        # Off only for the unmasked baseline, where both tenants get the
+        # whole die on separate streams and the hardware arbitrates. That
+        # is the "use what already exists" arm a reviewer asks for, and
+        # it is not a partition, so the disjointness invariant that
+        # guards every other configuration would refuse it. Off here
+        # means the run is declaring it is not partitioning, not that the
+        # invariant was weakened.
+        self.enforce_disjoint = enforce_disjoint
         # plan.md: fall back to a serial action past 15% drift.
         self.drift_tolerance = drift_tolerance
         self.fallback_backoff_s = fallback_backoff_s
@@ -365,7 +374,7 @@ class Runtime:
             for index, left in enumerate(handles):
                 for right in handles[index + 1:]:
                     overlap |= left.installed_mask & right.installed_mask
-            if overlap:
+            if overlap and self.enforce_disjoint:
                 raise RuntimeError(
                     f"granted masks overlap on {hex(overlap)}; this is not "
                     f"a partition"
@@ -376,6 +385,7 @@ class Runtime:
                           for rid, st in streams.items()},
                 "units": {rid: st.units for rid, st in streams.items()},
                 "disjoint": overlap == 0,
+                "partitioning": self.enforce_disjoint,
             })
         for rid, units in active:
             if units < 1:

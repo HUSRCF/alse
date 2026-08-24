@@ -118,6 +118,13 @@ def main() -> int:
                              "1.02 and 1.05 with no draw in four processes. "
                              "The probe fires on the slow state, so a "
                              "mismatched workload cannot exercise it.")
+    parser.add_argument("--unmasked", action="store_true",
+                        help="baseline: both tenants get the whole die on "
+                             "separate streams and the hardware arbitrates. "
+                             "No CU masking at all -- what a deployer gets "
+                             "today from concurrent streams, and the arm "
+                             "that answers 'why not just use the primitives "
+                             "that already exist'.")
     parser.add_argument("--externality-blind", action="store_true",
                         help="ablation: the runtime believes a co-run costs "
                              "what a solo step costs, so the drift envelope "
@@ -196,6 +203,32 @@ def main() -> int:
     began_all_unix = time.time()
     models = {"urgent": "sdxl", "video": args.video_model}
     pool = MaskedStreamPool(harness.make_stream)
+    if args.unmasked:
+        # A distinct stream per slot, every one carrying the whole die.
+        # Keyed by offset rather than by mask: MaskedStreamPool dedupes on
+        # the mask and would hand both tenants the same stream, which
+        # serialises them instead of letting the hardware interleave --
+        # a different experiment entirely.
+        from burstserve.masked_streams import MaskedStream
+
+        class Unmasked(MaskedStreamPool):
+            def __init__(self, inner):
+                super().__init__(inner.factory,
+                                 maskable_units=inner.maskable_units)
+                self._by_offset = {}
+
+            def for_quota(self, units, *, offset=0):
+                if offset not in self._by_offset:
+                    handle, installed = self.factory(
+                        (1 << self.maskable_units) - 1)
+                    self._by_offset[offset] = MaskedStream(
+                        units=self.maskable_units,
+                        requested_mask=installed,
+                        installed_mask=installed, handle=handle)
+                    self.creations += 1
+                return self._by_offset[offset]
+
+        args.unmasked_pool = Unmasked(pool)
 
     pipelines, warm_adapters = {}, {}
     for tenant, model in models.items():
@@ -432,11 +465,18 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
 
     policy = (POLICY_FACTORIES[policy_name]() if policy_name
               in POLICY_FACTORIES else BASELINES[policy_name])
-    runtime = Runtime(policy, stream_pool=pool,
+    # The state probe, warm-up and isolated service all run on the
+    # masked pool: the drawn state is a property of the process and its
+    # mask pair, and measuring it on the unmasked arm too is what lets
+    # the two arms be compared at a fixed state. Only the cells
+    # themselves run unmasked.
+    runtime = Runtime(policy,
+                      stream_pool=getattr(args, "unmasked_pool", None) or pool,
                       drift_tolerance=args.drift_tolerance,
                       predictor_error=args.predictor_error,
                       externality_blind=args.externality_blind,
-                      charge_currency=args.charge_currency)
+                      charge_currency=args.charge_currency,
+                      enforce_disjoint=not args.unmasked)
     # Warm-up is residency, not a tenant's debt: on the card a first step
     # measured 1.855 s against a 0.157 s steady step, and charging it made
     # one tenant's ledger 10.8x the other's for identical work.
@@ -539,6 +579,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "drift_tolerance": args.drift_tolerance,
         "predictor_error": args.predictor_error,
         "externality_blind": args.externality_blind,
+        "unmasked": args.unmasked,
         "charge_currency": args.charge_currency,
         "spec": {"load": spec.load, "burst": spec.burst,
                  "deadline_slack": spec.deadline_slack,

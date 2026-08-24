@@ -3120,3 +3120,39 @@ What this does establish, and it is what plan.md's clause actually asks
 for: the planner is insensitive to predictor error over +/-20% in the
 sense that matters -- no safety failure, and no degradation. It is
 robust; it is simply not robust *because* it is accurate.
+
+### 2026-08-24 -- the arm that answers "why not just use what exists"
+
+Reviewers on a related submission with nearly our setting objected that
+the primitives already exist and the contribution should be built on top
+of them. For us the corresponding baseline is the obvious one we did not
+have: two tenants on two full-die streams, no CU masking, hardware
+arbitrating. Twelve seeds, mismatched workload -- plan.md's primary one,
+and where partitioning's advantage is largest, so the comparison is made
+where the claim is strongest rather than where it is comfortable.
+
+| arm | urgent miss | video steps/s | urgent p99 |
+| --- | --- | --- | --- |
+| time-slice, whole die in turn | 0.3519 | 0.5187 | 23.12 s |
+| **CU-mask partition** | **0.3065** | 0.5183 | **17.55 s** |
+| two full-die streams, no mask | 0.3398 | 0.5107 | 20.17 s |
+
+Paired over 12 seeds:
+
+    unmasked vs partition    miss +0.0333  [+0.0079, +0.0592]  +10.9%  *
+                             video -0.0075, also excluding zero
+    time-slice vs partition  miss +0.0454  [-0.0064, +0.1042]  +14.8%
+    unmasked vs time-slice   miss -0.0121  [-0.0891, +0.0581]  spans zero
+
+**Masking beats both alternatives, and the last line is the one that
+matters.** Two concurrent full-die streams are statistically
+indistinguishable from serialising the two tenants outright. Concurrency
+alone buys nothing here; the mask is what buys something.
+
+That is the answer to the objection, and it is an empirical one rather
+than an argument: the primitive that already exists does not solve the
+problem, measured on the workload where our method does best.
+
+Arms alternate per seed with the order flipped on odd seeds, because
+`--unmasked` is process-wide and the two cannot share a process; thermal
+drift is therefore shared rather than landing on one arm.

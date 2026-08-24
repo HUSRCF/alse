@@ -70,6 +70,16 @@ CogVideoX-2b at 480x720x9 frames.
 | **Scope** | Both workloads, this card. |
 | **Falsifier** | A workload where the probe separates from step-matched pairing with the envelope off. |
 
+### 1.6b Masking beats the primitives that already exist
+
+| | |
+| --- | --- |
+| **Claim** | Two tenants on two full-die streams, with the hardware arbitrating, are no better than serialising them. CU-mask partitioning beats both. |
+| **Evidence** | 12 seeds, mismatched workload, arms alternating per seed with the order flipped on odd seeds. Unmasked against partition: urgent miss +0.0333, [+0.0079, +0.0592], +10.9%, and video goodput also worse, both intervals excluding zero. Unmasked against time-slicing: -0.0121, [-0.0891, +0.0581], spanning zero. |
+| **Scope** | SDXL beside CogVideoX-2b, load 0.6, burst 4, this card. |
+| **Why it is here** | It is the "why not just use concurrent streams" arm, and it is measured on the workload where partitioning does best rather than where the comparison would flatter. |
+| **Falsifier** | A workload where unmasked concurrency matches masked partitioning. |
+
 ### 1.7 A wrong prediction meets a right measurement
 
 | | |
