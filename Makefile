@@ -15,7 +15,7 @@ export PYTHONPATH
 GRID := experiments/runs/matrix_20260809 experiments/runs/matrix_cover
 EXPA := experiments/runs/expA
 
-.PHONY: help smoke test grid expA expA-run campaign-gaps paper clean-scratch
+.PHONY: help smoke test grid expA expA-run campaign-gaps vram paper
 
 help:
 	@echo "no GPU needed:"
@@ -29,6 +29,7 @@ help:
 	@echo "on the card (gfx1201, refuses to start if one is already running):"
 	@echo "  make expA-run     experiment A: static split vs the scheduler (~7 h)"
 	@echo "  make campaign-gaps  the reviewer-gap campaigns (~12 h)"
+	@echo "  make vram         peak VRAM per residency regime (~5 min)"
 
 smoke:
 	$(PY) scripts/smoke.py
@@ -47,6 +48,10 @@ expA-run:
 
 campaign-gaps:
 	bash scripts/campaign_reviewer_gaps.sh
+
+vram:
+	$(PY) scripts/measure_vram_budget.py \
+	  --out experiments/runs/vram_budget/r9700.json
 
 # latexmk, not a paper/Makefile: paper/README.md records that
 # `kpsewhich acmart.cls` reported success while a sigconf document could
