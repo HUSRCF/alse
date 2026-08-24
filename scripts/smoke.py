@@ -52,25 +52,36 @@ def build(load: float, burst: int, seed: int, wanted: int, backlog: bool):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--urgent-count", type=int, default=20)
-    ap.add_argument("--seeds", type=int, default=2)
+    ap.add_argument("--urgent-count", type=int, default=40)
+    ap.add_argument("--seeds", type=int, default=3)
     args = ap.parse_args()
 
     policies = sorted(set(BASELINES) | set(POLICY_FACTORIES))
     failures: list[str] = []
     digests: dict[tuple, bytes] = {}
+    # Under arrivals the video tenant is a Poisson process with a mean of
+    # about two requests per cell, so a seed with none is a property of
+    # the trace and not a fault -- 27 of the 405 grid cells had exactly
+    # that. It is only a fault if *no* seed produces one, because then
+    # nothing here ever exercised co-tenancy.
+    arrivals_with_video = 0
 
     for backlog in (False, True):
         for seed in range(args.seeds):
             spec, trace = build(0.6, 4, seed, args.urgent_count, backlog)
             urgent = [r for r in trace.requests if r.tenant == "urgent"]
             video = [r for r in trace.requests if r.tenant == "video"]
-            if not urgent or not video:
-                failures.append(f"trace has no {'urgent' if not urgent else 'video'}"
-                                f" requests (backlog={backlog}, seed={seed})")
+            if not urgent:
+                failures.append(f"trace has no urgent requests "
+                                f"(backlog={backlog}, seed={seed})")
+                continue
+            if backlog and not video:
+                failures.append("backlog produced no video requests")
                 continue
             if backlog and not all(r.arrival_s == 0.0 for r in video):
                 failures.append("backlog video requests do not all arrive at 0")
+            if not backlog and video:
+                arrivals_with_video += 1
             for name in policies:
                 policy = (POLICY_FACTORIES[name]() if name in POLICY_FACTORIES
                           else BASELINES[name])
@@ -102,8 +113,16 @@ def main() -> int:
         if peer is not None and peer != value:
             failures.append(f"fixed_split_16 != static_even at {key[1:]}")
 
+    if not arrivals_with_video:
+        failures.append(f"no arrival-driven seed under {args.seeds} produced a "
+                        "video request, so co-tenancy was never exercised "
+                        "outside the backlog regime; raise --seeds or "
+                        "--urgent-count")
+
     print(f"{len(policies)} policies x {args.seeds} seeds x 2 regimes = "
-          f"{len(digests)} simulations")
+          f"{len(digests)} simulations "
+          f"({arrivals_with_video}/{args.seeds} arrival seeds had a video "
+          f"tenant)")
     for name in policies:
         print(f"  {name}")
     if failures:
