@@ -3388,3 +3388,49 @@ cannot harvest it, and every number this project has produced about
 partitioning policies was produced by one. The fix is per-tenant step
 pipelining -- letting a fast tenant run several steps inside one round
 -- which is a redesign and not a patch.
+
+### 2026-08-25 -- two mechanisms, and only one of them is the round barrier
+
+Seed 0 of experiment A finished in all four (regime, load) cells, and it
+corrects the reading written a few hours earlier. "Step-matched pairing
+wins by declining to pair" is true in the backlog regime and false in
+the arrivals one.
+
+    arrivals 0.6   fixed_split_16  0.38 steps/round  3.33 steps/s  miss 0.900
+                   step_matched    0.31 steps/round  3.48 steps/s  miss 0.375
+    backlog  0.6   fixed_split_16  1.73 steps/round  2.14 steps/s  miss 1.000
+                   step_matched    1.00 steps/round  3.84 steps/s  miss 0.000
+
+Under arrivals the throughput gap is 4%, not 44%, and the miss rate
+still falls from 0.900 to 0.375. So the win there is not the barrier.
+
+**The width mechanism.** The urgent deadline is
+1.5 x 0.905 x 4 = 5.4 s from arrival and a burst is four requests served
+serially by one adapter. At 32 units that is 4 x 0.9 = 3.6 s and the
+last request makes it; at 16 units it is 4 x 1.8 = 7.2 s and the last
+two cannot. Halving a latency-critical tenant's width blows a burst
+deadline whatever the co-run penalty is, and the co-run penalty here was
+1.034.
+
+**The barrier mechanism.** Separate, and it only appears when the
+tenants genuinely coexist. Under arrivals they are both runnable 26% of
+the horizon, and the barrier is worth 4%; under backlog they always are,
+and it is worth 44%.
+
+Conflating them would have made the round barrier carry an argument that
+the width argument was carrying, and the fix for one is not the fix for
+the other. Pipelining addresses the barrier. Nothing about pipelining
+helps a burst of four requests served serially at half width -- that
+needs either the whole die or intra-burst concurrency, and the runtime
+offers one request per tenant at a time by design.
+
+Two more things this seed says, both about what the experiment can
+resolve. `fixed_split_16` takes zero serial fallbacks in all four cells
+while the other four splits take 233 to 334, so the envelope confound is
+not a property of one condition and A2 is necessary rather than
+supplementary. And under arrivals at load 1.05 every policy lands
+between 0.875 and 0.900: that cell is saturated and no ordering can be
+read from it, which is the same defect the main grid has and the reason
+the backlog regime was built.
+
+One seed. Nine groups of A1 and twenty of A2 remain.
