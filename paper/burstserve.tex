@@ -281,6 +281,20 @@ while a spurious probe still costs a good pairing. The pairing itself
 does win: FCFS by $6.5\%$, static partitioning and EDF by about $3\%$,
 and at overload FCFS by $17\%$.
 
+\textbf{How much of the grid could separate anything.} ``45 paired
+configurations'' overstates the evidence, so we say what it is. The
+probe and step-matched pairing produce \emph{identical} miss rates in 42
+of the 45; three differ, all in the same direction. A bootstrap resample
+that draws none of the three has probability $(42/45)^{45}=4.5\%$, above
+$2.5\%$, so the interval's lower bound is zero as arithmetic and cannot
+be read as significance --- the grid shows the probe does not help, not
+that it hurts. The comparisons above are wider: pairing differs from
+FCFS in 21 configurations, from static partitioning in 16, from EDF in
+17. Two tenants are both runnable for only $26.1\%$ of the horizon at
+load $0.6$ and $44.9\%$ at $1.05$, and three of the 45 configurations
+draw no video tenant at all, so most of this grid could not have
+separated any two partitioning policies whatever they did.
+
 We state this as a negative because it was registered as one. The
 comparison target was fixed by rule --- best baseline mean, computed not
 chosen --- because the same method beats FCFS by $30\%$, the strongest

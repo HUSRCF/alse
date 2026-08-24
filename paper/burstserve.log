@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.6.17)  24 AUG 2026 11:23
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.6.17)  24 AUG 2026 12:11
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1058,10 +1058,13 @@ LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
 LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
 (Font)              scaled to size 5.5pt on input line 251.
 LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/n' will be
-(Font)              scaled to size 9.0pt on input line 290.
+(Font)              scaled to size 9.0pt on input line 297.
 LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/n' will be
-(Font)              scaled to size 7.0pt on input line 290.
+(Font)              scaled to size 7.0pt on input line 297.
 [2.2]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+
 
 Package balance Warning: You have called \balance in second column
 (balance)                Columns might not be balanced.
@@ -1080,11 +1083,11 @@ Package rerunfilecheck Info: File `burstserve.out' has not changed.
 (rerunfilecheck)             Checksum: C9F62DDBB072042F74194918C1CE25DA;1860.
  ) 
 Here is how much of TeX's memory you used:
- 21080 strings out of 469114
- 342716 string characters out of 5458032
- 829927 words of memory out of 5000000
+ 21085 strings out of 469114
+ 342863 string characters out of 5458032
+ 830736 words of memory out of 5000000
  49249 multiletter control sequences out of 15000+600000
- 748877 words of font info for 293 fonts, out of 8000000 for 9000
+ 749430 words of font info for 296 fonts, out of 8000000 for 9000
  197 hyphenation exceptions out of 8191
  89i,12n,131p,1007b,608s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/inconsolata/In
@@ -1098,10 +1101,10 @@ data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/libertine/LinLiber
 tineTI.pfb></data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/newtx
 /txmiaX.pfb></data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/type1/public/newt
 x/txsys.pfb>
-Output written on burstserve.pdf (3 pages, 413306 bytes).
+Output written on burstserve.pdf (3 pages, 414898 bytes).
 PDF statistics:
  146 PDF objects out of 1000 (max. 8388607)
  117 compressed objects within 2 object streams
  26 named destinations out of 1000 (max. 500000)
- 52321 words of extra memory for PDF output out of 61914 (max. 10000000)
+ 54369 words of extra memory for PDF output out of 61914 (max. 10000000)
 

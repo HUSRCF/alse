@@ -384,6 +384,8 @@ INPUT /data/zhuoxu/tools/texlive/2026/texmf-dist/tex/generic/stringenc/se-pdfdoc
 INPUT /data/zhuoxu/tools/texlive/2026/texmf-dist/tex/generic/stringenc/se-utf8.def
 INPUT /data/zhuoxu/tools/texlive/2026/texmf-dist/tex/generic/stringenc/se-utf8.def
 INPUT /data/zhuoxu/tools/texlive/2026/texmf-dist/tex/generic/stringenc/se-utf8.def
+INPUT /data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/vf/public/libertine/LinLibertineT-tlf-ot1.vf
+INPUT /data/zhuoxu/tools/texlive/2026/texmf-dist/fonts/tfm/public/libertine/LinLibertineT-tlf-ot1--base.tfm
 INPUT burstserve.aux
 INPUT ./burstserve.out
 INPUT ./burstserve.out
