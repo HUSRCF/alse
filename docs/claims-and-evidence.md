@@ -137,17 +137,65 @@ Experiment A (`docs/prereg-experiment-a.md`) measures the same question
 with the video tenant backlogged, where the decision is live for the
 whole horizon.
 
-### 2.2 The probe is slightly harmful on the mismatched workload
+### 2.2 The probe does not help, and the grid cannot show it hurts
 
-+0.56% worse than the strongest baseline over the whole grid, +1.01% on
-the coverage cells alone, with the interval excluding zero on the wrong
-side. Small, and not noise.
+**Corrected 2026-08-25.** This section previously read "+0.56% worse ...
+with the interval excluding zero on the wrong side. Small, and not
+noise." The interval does not exclude zero, and it cannot: its lower
+bound is pinned at exactly zero by the shape of the data, not by the
+size of the effect.
 
-It follows from 1.5: mismatched pairings cost 1.02–1.06, so there is
-nothing for a contention manager to manage, but a spurious fire still
-costs a good pairing. **The probe's value depends on whether the
-co-located tenants contend**, and plan.md's primary workload pairs
-tenants that do not.
+Of the 45 paired configurations, the probe and step-matched pairing
+produce **identical miss rates in 42**. Three differ, all in the same
+direction: +0.0455, +0.0263, +0.0417. The mean difference is +0.0025
+(+0.56% relative), and the bootstrap 95% interval is [+0.0000, +0.0056]
+at every resampling seed tried. A resample of 45 configurations draws
+none of the three non-zero ones with probability (42/45)^45 = 4.48%,
+which is more than 2.5%, so the 2.5th percentile is exactly zero as a
+matter of arithmetic. No amount of resampling moves it.
+
+What the grid supports: the probe **does not help**, and its three
+non-zero differences all point the wrong way — a sign test on three of
+three is p = 0.125 one-sided, which is not significance. What it does
+not support: that the probe hurts.
+
+The same pinning applies to the sticky variant: 2 of 45 configurations
+differ, P(miss all) = 12.9%.
+
+The mechanism argued from 1.5 still stands as a mechanism -- mismatched
+pairings cost 1.02–1.06, so there is nothing for a contention manager to
+manage, while a spurious fire still costs a good pairing -- but it is now
+an explanation for an absence of benefit rather than for a measured
+harm.
+
+### 2.2b The grid resolves three behaviours, not nine
+
+Counting paired configurations where two policies give exactly the same
+miss rate, out of 45:
+
+| | vs step-matched pairing |
+| --- | --- |
+| sticky probing | 43 identical |
+| probing | 42 identical |
+| slo-aware | 40 identical |
+| measured-pairs-only | 29 identical |
+| static even | 29 identical |
+| deadline-aware | 28 identical |
+| exclusive FCFS | 24 identical |
+| oracle | 7 identical |
+
+`static_even`, `measured_pairs_only` and `deadline_aware` agree with each
+other in 42–43 of 45. The four pairing policies agree with each other in
+39–43 of 45. So the nine policies are three distinguishable behaviours
+plus an oracle, and any comparison inside a group rests on a handful of
+configurations however many cells were run.
+
+This is what makes the comparisons that do survive worth stating:
+step-matched pairing against exclusive FCFS differs in 21 configurations
+(−6.98%, [−0.0757, −0.0006]), against static-even in 16 (−3.23%,
+[−0.0256, −0.0059]), against deadline-aware in 17 and against
+measured-pairs-only in 16 (both −3.76%, intervals excluding zero). Those
+intervals can exclude zero; the within-family ones structurally cannot.
 
 ---
 
