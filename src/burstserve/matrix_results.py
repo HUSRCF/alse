@@ -41,6 +41,16 @@ BASELINE_POLICIES = (
     "deadline_aware",
     "step_matched_pairing",
     "measured_pairs_only",
+    # A split chosen once at deployment time is a baseline: it contains no
+    # decision made at run time, so anything an adaptive policy wins over
+    # it is what the scheduling actually bought. Adding them here makes
+    # ``strongest_baseline`` pick the best fixed split by rule, which is
+    # the comparison the method has to survive.
+    "fixed_split_4",
+    "fixed_split_8",
+    "fixed_split_16",
+    "fixed_split_24",
+    "fixed_split_28",
 )
 METHOD_POLICIES = (
     "slo_aware_partitioning",

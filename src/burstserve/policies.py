@@ -454,9 +454,66 @@ def make_sticky_probing_partitioning(*, tolerance: float = 1.6,
 # Stateful policies are built per run rather than shared, so they are kept
 # out of BASELINES -- tests iterate that dict, and a policy carrying a
 # verdict from one simulation into the next would be a silent coupling.
+def make_fixed_split(urgent_units: int):
+    """A static partition of the die: the urgent tenant always gets
+    ``urgent_units``, the video tenant the rest.
+
+    This is the baseline that decides whether the scheduler has a
+    contribution at all. Every adaptive policy in this file chooses a
+    split at run time; if a split chosen once at deployment time matches
+    them, then the measured benefit belongs to spatial partitioning and
+    not to any decision we make about it, and the honest claim is
+    "partition the die" rather than "schedule the partition".
+
+    Two details keep the comparison from being rigged in our favour:
+
+    * With one tenant runnable the lone request gets the whole die. A
+      strict partition that idled the absent tenant's slice would be a
+      strawman -- it would lose to everything, and it is not what anyone
+      deploys.
+    * ``make_fixed_split(16)`` is exactly ``static_even``, including on
+      same-tenant pairs, which it handles by falling back to the even
+      split. The sweep therefore contains the known baseline as a special
+      case, so a disagreement between them at 16 is a bug and not a
+      result.
+    """
+    if not 0 < urgent_units < 32:
+        raise ValueError("a split has to leave both tenants something")
+
+    def fixed_split(states: Sequence[RequestState], units: int,
+                    now: float) -> dict[int, int]:
+        if not states:
+            return {}
+        if len(states) == 1:
+            return {states[0].request.request_id: units}
+        left, right = states[0], states[1]
+        if left.request.tenant == right.request.tenant:
+            share = units // 2
+            return {left.request.request_id: share,
+                    right.request.request_id: share}
+        # Scaled, so the knob means the same fraction of whatever die the
+        # runtime was built with rather than 32 units specifically.
+        share = max(1, min(units - 1, round(urgent_units * units / 32)))
+        if left.request.tenant == "urgent":
+            return {left.request.request_id: share,
+                    right.request.request_id: units - share}
+        return {left.request.request_id: units - share,
+                right.request.request_id: share}
+
+    fixed_split.__name__ = f"fixed_split_{urgent_units}"
+    return fixed_split
+
+
 POLICY_FACTORIES = {
     "sticky_probing_partitioning": make_sticky_probing_partitioning,
 }
+
+# The five splits the pairing table was measured at. Anything else would
+# make the simulator interpolate an externality, and the measured ones
+# span 1.002x to 1.063x, so an interpolation is not a small error.
+FIXED_SPLITS = (4, 8, 16, 24, 28)
+for _u in FIXED_SPLITS:
+    POLICY_FACTORIES[f"fixed_split_{_u}"] = (lambda u=_u: make_fixed_split(u))
 
 
 BASELINES["deadline_aware"] = deadline_aware
