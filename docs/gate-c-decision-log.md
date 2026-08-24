@@ -3156,3 +3156,64 @@ problem, measured on the workload where our method does best.
 Arms alternate per seed with the order flipped on odd seeds, because
 `--unmasked` is process-wide and the two cannot share a process; thermal
 drift is therefore shared rather than landing on one arm.
+
+### 2026-08-25 -- cross-architecture: the bistability is gfx1201's, not AMD's
+
+A second AMD machine became available -- DiamondHill, 8x MI250X
+(**gfx90a**, CDNA2, 104 compute units per GCD), against the R9700's
+gfx1201 (RDNA4, 32 maskable units). Different architecture, different
+unit count, same masking API. This is the measurement that our first
+threat to validity has been asking for since the single-SKU decision.
+
+``hipExtStreamCreateWithCUMask`` installs exactly on gfx90a: five mask
+patterns -- low half, high half, quarter, full die, a single bit --
+every one read back bit-identical. Checked before anything else, because
+a runtime that accepts the call and quietly hands over the whole device
+produces an unusually *low* co-run penalty, which reads as good news.
+
+Self-paired SDXL at 52+52, the same half-and-half split, same span
+instrument, same model, 32 processes, one at a time, rotating across
+GCD 4-7:
+
+    externality   mean 1.2336   sd 0.0030   range 1.228-1.238
+    processes above gfx1201's slow threshold (1.57):  0 of 32
+    overlap 0.977-0.982
+    partitioning +5.6% against rotation
+
+**There is no bistability on gfx90a.** Not "none drawn" -- the spread is
+0.003, which is flat. On gfx1201 the same measurement gives 1.297 or
+1.949 with 27 of 160 processes slow. At that rate, 0 of 32 has
+probability 0.0025; even at the lowest single campaign rate observed
+(8.3%) it is 0.06.
+
+**A control appeared that was not designed for.** The four GCDs differ
+systematically and deterministically:
+
+    GCD 4  1.2293  (1.228-1.231)     GCD 6  1.2351  (1.233-1.237)
+    GCD 5  1.2370  (1.236-1.238)     GCD 7  1.2330  (1.231-1.234)
+
+GCD 4 and GCD 5 do not overlap. So the instrument resolves a 0.6%
+device-to-device difference on this machine, and saw no trace of a 50%
+bimodality. Sensitivity is not the explanation for the negative.
+
+**What this changes.** Claim 1.3's scope narrows and its status
+strengthens: the bistability is a property of gfx1201, measured on two
+architectures rather than asserted of one. The single-SKU threat to
+validity is no longer "unknown whether this generalises" but "measured,
+and it does not" -- which is a better sentence than the one it replaces,
+and a worse one for anybody who wanted the effect to be universal.
+
+It also sharpens the open question. Five candidate predictors of the
+draw have failed; a sixth now exists that is not a predictor but a
+boundary: whatever produces it is present in RDNA4's scheduler and
+absent from CDNA2's. That is a much smaller search space than "something
+about GPUs".
+
+Partitioning still pays on gfx90a, +5.6% against rotation, against
++11.5% in gfx1201's fast state -- so the mechanism generalises even
+though its pathology does not.
+
+Environment note, since it is a variable and not a detail: diffusers is
+0.40.0 on DiamondHill against 0.39.0 on X570. SDXL's denoising path is
+unchanged between them, but the comparison is not perfectly matched and
+that is recorded rather than assumed away.

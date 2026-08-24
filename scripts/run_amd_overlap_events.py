@@ -199,6 +199,12 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--split", default="16+16")
     parser.add_argument("--episodes", type=int, default=5)
+    parser.add_argument("--maskable-units", type=int, default=32,
+                        help="units on this die: 32 on gfx1201 (R9700), "
+                             "104 on gfx90a (MI250X). The full-die solo and "
+                             "the warm-up widths are taken from it, so a "
+                             "cross-architecture run needs only this and "
+                             "--split changed.")
     parser.add_argument("--models", default="sdxl,cogvideox-2b",
                         help="the two tenants; sdxl,sdxl measures the "
                              "self-paired case the latch campaign used")
@@ -220,7 +226,8 @@ def main() -> int:
 
     units = [int(u) for u in args.split.split("+")]
     models = [m.strip() for m in args.models.split(",")]
-    pool = MaskedStreamPool(harness.make_stream)
+    pool = MaskedStreamPool(harness.make_stream,
+                            maskable_units=args.maskable_units)
 
     # Keyed by side, not by model: a self-paired run needs two adapters
     # of the same model, and one adapter cannot hold two requests'
@@ -242,7 +249,7 @@ def main() -> int:
     # 0 of 30 has probability 0.0005, so the two cannot both be sampling
     # the same thing.
     widths = ([units[0], units[1]] if args.no_warm_full_die
-              else [units[0], units[1], 32])
+              else [units[0], units[1], args.maskable_units])
     for index in range(2):
         for width in sorted(set(widths)):
             harness.warm(adapters[index], pool, width, args)
@@ -258,12 +265,14 @@ def main() -> int:
         if args.no_warm_full_die:
             solo_full[index] = None
         else:
-            full = solo_span(adapters[index], pool, 32, args, torch)
+            full = solo_span(adapters[index], pool,
+                             args.maskable_units, args, torch)
             solo_full[index] = statistics.median(full) / 1000.0
         full_txt = ("skipped" if solo_full[index] is None
                     else f"{solo_full[index] * 1000:8.1f} ms")
-        print(f"  solo {model:13s} {units[index]:2d}u: "
-              f"{solo[index] * 1000:8.1f} ms   32u: {full_txt}", flush=True)
+        print(f"  solo {model:13s} {units[index]:3d}u: "
+              f"{solo[index] * 1000:8.1f} ms   "
+              f"{args.maskable_units:3d}u: {full_txt}", flush=True)
 
     rows = []
     for index in range(1, args.episodes + 1):
