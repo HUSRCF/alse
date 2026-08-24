@@ -11,6 +11,15 @@ set -u
 cd /home/husrcf/Code/alse
 source ~/anaconda3/bin/activate 2>/dev/null
 
+# Refuse to start on top of another run. The pattern is the cell
+# runner's filename, which never appears in this script's own command
+# line: a guard written inline in an ssh command matched the ssh command
+# itself and refused to start anything at all.
+if pgrep -f "run_amd_matrix_cell[.]py" > /dev/null; then
+  echo "REFUSING: a cell runner is already on this card"
+  exit 1
+fi
+
 R=experiments/runs/expA
 mkdir -p $R
 
