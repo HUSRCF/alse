@@ -12,6 +12,15 @@
 # that prints regardless of what failed is not a check.
 set -u
 cd /home/husrcf/Code/alse
+
+# Resumable. A group is skipped when its outputs are already on disk, so
+# an interrupted run picks up where it stopped instead of repeating
+# hours of completed cells. The check counts files rather than looking
+# for a marker: a marker would be written by the same run that is being
+# resumed, which is no evidence that the cells exist.
+done_group () {  # $1 = directory, $2 = filename prefix, $3 = expected count
+  [ "$(ls "$1/$2"*.json 2>/dev/null | wc -l)" -ge "$3" ]
+}
 source ~/anaconda3/bin/activate 2>/dev/null
 
 R=experiments/runs
@@ -32,6 +41,7 @@ mkdir -p $R/unmasked_base
 for seed in 0 1 2 3 4 5 6 7 8 9 10 11; do
   if [ $((seed % 2)) -eq 0 ]; then order="masked unmasked"; else order="unmasked masked"; fi
   for arm in $order; do
+    if done_group "$R/unmasked_base" "cell_${arm}_s${seed}_" 1; then continue; fi
     if [ "$arm" = unmasked ]; then
       FLAGS="--unmasked"; POLS="step_matched_pairing"
     else
@@ -56,10 +66,12 @@ for seed in 0 1 2 3 4; do
   for burst in 2 4 8; do
     # Rotate the policy order per group, as the main grid does: a fixed
     # order across groups confounds position with policy.
+    G=$((G+1))
+    if done_group "$R/load03" "cell_l0.3_b${burst}_s${seed}_" 9; then continue; fi
     ORDER=$(python3 -c "
 import sys
 p='$POLS'.split(',')
-g=$G % len(p)
+g=$((G-1)) % len(p)
 print(','.join(p[g:]+p[:g]))")
     timeout 3600 python scripts/run_amd_matrix_cell.py \
       --policies "$ORDER" --load 0.3 --burst "$burst" \
@@ -68,7 +80,6 @@ print(','.join(p[g:]+p[:g]))")
       --out "$R/load03/cell_l0.3_b${burst}_s${seed}_POLICY.json" \
       > "/tmp/l03_${burst}_${seed}.log" 2>&1
     grep -E "urgent [0-9]+/" "/tmp/l03_${burst}_${seed}.log" | tail -1
-    G=$((G+1))
   done
 done
 echo "=== 2 load0.3: $(ls $R/load03/*.json 2>/dev/null | wc -l) files ==="
@@ -80,16 +91,17 @@ echo "=== 2 load0.3: $(ls $R/load03/*.json 2>/dev/null | wc -l) files ==="
 mkdir -p $R/urgent30
 G=0
 for seed in 0 1 2 3 4; do
+  G=$((G+1))
+  if done_group "$R/urgent30" "cell_s${seed}_" 9; then continue; fi
   ORDER=$(python3 -c "
 p='$POLS'.split(',')
-g=$G % len(p)
+g=$((G-1)) % len(p)
 print(','.join(p[g:]+p[:g]))")
   timeout 5400 python scripts/run_amd_matrix_cell.py \
     --policies "$ORDER" --urgent-steps 30 $COMMON --seed "$seed" \
     --out "$R/urgent30/cell_s${seed}_POLICY.json" \
     > "/tmp/u30_${seed}.log" 2>&1
   grep -E "urgent [0-9]+/" "/tmp/u30_${seed}.log" | tail -1
-  G=$((G+1))
 done
 echo "=== 3 urgent30: $(ls $R/urgent30/*.json 2>/dev/null | wc -l) files ==="
 echo "=== all done ==="
