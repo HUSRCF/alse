@@ -178,3 +178,10 @@ deadline when the video tenant is idle and misses when it is not,
 whatever slice it holds. That would settle verdict 1 by a different
 route than expected, and it is recorded here so it counts as a
 prediction rather than a rationalisation.
+
+The prediction is about the **arrivals** regime only. The simulator ran
+before the backlog regime existed, on the grid's own trace, so the
+arrivals cells are the ones that can confirm or refute it. The first
+backlog cells already separate the splits -- 0.2500 for `fixed_split_4`
+against 0.1750 for `fixed_split_8` at load 0.6, seed 0 -- and that is
+not evidence against a prediction made about a different workload.
