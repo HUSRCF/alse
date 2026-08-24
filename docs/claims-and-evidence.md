@@ -122,6 +122,21 @@ Registered before the coverage cells ran and honoured: the overload
 result is reported as a fact about overload and does not convert the
 frozen-subset failure into a pass.
 
+**How much of the grid could have separated the policies at all.** The
+two tenants are both runnable for 26.1% of the horizon at load 0.6,
+37.1% at 0.85 and 44.9% at 1.05 -- computed over all 405 cells from the
+video tenant's request count, its measured isolated service time and the
+cell horizon, not assumed. For the remaining time one tenant holds the
+whole die and every partitioning policy issues the same grant, so the
+grid tests the split decision on between a quarter and a half of its own
+timeline. That does not rescue the claim -- a method that needs a
+friendlier workload has to be measured on one and say so -- but it does
+bound what this grid can be read as having settled, and it is the most
+likely reason the nine policies sit inside 0.34 to 0.39 of each other.
+Experiment A (`docs/prereg-experiment-a.md`) measures the same question
+with the video tenant backlogged, where the decision is live for the
+whole horizon.
+
 ### 2.2 The probe is slightly harmful on the mismatched workload
 
 +0.56% worse than the strongest baseline over the whole grid, +1.01% on
