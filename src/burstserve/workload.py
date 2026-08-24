@@ -29,6 +29,7 @@ is about goodput under real arrivals.
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 
@@ -99,7 +100,8 @@ class CellSpec:
 
 def build_trace(spec: CellSpec, *, urgent_service_s: float,
                 video_service_s: float, urgent_isolated_latency_p99_s: float,
-                video_share: float = 0.5) -> Trace:
+                video_share: float = 0.5,
+                video_backlog: bool = False) -> Trace:
     """The arrival trace for one cell.
 
     ``urgent_service_s`` and ``video_service_s`` are isolated service
@@ -113,6 +115,17 @@ def build_trace(spec: CellSpec, *, urgent_service_s: float,
     0.5 each tenant offers half the die's exclusive capacity, so together
     they offer ``spec.load``; the scheduler's job is what happens when
     that is more than one die.
+
+    ``video_backlog`` replaces the video tenant's arrivals with a standing
+    queue: enough requests at t=0 to cover the horizon, so the tenant is
+    never idle. Under Poisson arrivals the two tenants are both runnable
+    for only 26% of the horizon at load 0.6 and 45% at 1.05 -- measured
+    across the 405-cell grid -- and for the rest of the time every
+    partitioning policy behaves identically because there is nothing to
+    partition. A question about *choosing* a split cannot be answered on
+    a timeline that is three-quarters no-op. A backlogged batch tenant is
+    also the setting spatial partitioning exists for: latency-critical
+    work colocated with throughput work that always has more to do.
     """
     if urgent_service_s <= 0 or video_service_s <= 0:
         raise ValueError("service times must be positive")
@@ -153,17 +166,30 @@ def build_trace(spec: CellSpec, *, urgent_service_s: float,
 
     # Video: Poisson, one at a time, no deadline. Its SLO is stall, which
     # is a property of the schedule rather than of the request.
-    video_rate = spec.load * video_share / video_service_s
-    now = 0.0
-    while True:
-        now += rng.expovariate(video_rate)
-        if now >= spec.horizon_s:
-            break
-        requests.append(Request(
-            request_id=next_id, tenant="video", model=spec.video_model,
-            arrival_s=now, steps=spec.video_steps,
-        ))
-        next_id += 1
+    if video_backlog:
+        # Enough to outlast the horizon even if the tenant never shares
+        # the die, plus two so a rounding error cannot let it drain. The
+        # registry offers one request per tenant at a time, so a queue
+        # here is a continuously runnable tenant and not concurrency.
+        count = int(math.ceil(spec.horizon_s / video_service_s)) + 2
+        for _ in range(count):
+            requests.append(Request(
+                request_id=next_id, tenant="video", model=spec.video_model,
+                arrival_s=0.0, steps=spec.video_steps,
+            ))
+            next_id += 1
+    else:
+        video_rate = spec.load * video_share / video_service_s
+        now = 0.0
+        while True:
+            now += rng.expovariate(video_rate)
+            if now >= spec.horizon_s:
+                break
+            requests.append(Request(
+                request_id=next_id, tenant="video", model=spec.video_model,
+                arrival_s=now, steps=spec.video_steps,
+            ))
+            next_id += 1
 
     requests.sort(key=lambda r: (r.arrival_s, r.request_id))
     # Re-number in arrival order. Ids are used as tie-breaks by more than

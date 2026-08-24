@@ -64,6 +64,37 @@ offered load. If the best fixed split is the same at 0.6 as at 1.05 --
 where the offered load exceeds capacity and a wrong split should hurt
 most -- a deployer picks it once and there is nothing left to choose.
 
+## Two workload regimes
+
+The 405-cell grid's trace has both tenants runnable for only part of the
+horizon: 26.1% at load 0.6, 37.1% at 0.85, 44.9% at 1.05, measured
+across all 405 cells rather than assumed. For the rest of the time one
+tenant holds the whole die and every partitioning policy behaves
+identically. A question about *choosing* a split cannot be settled on a
+timeline that is three-quarters no-op -- it divides every effect by four
+before asking whether it is significant, and it is the most likely
+reason the nine policies in the grid sit within 0.34 to 0.39 of each
+other.
+
+So the experiment runs two regimes:
+
+* **arrivals** -- the grid's own trace, unchanged. Commensurable with
+  the 405 cells, and the weaker test of the question.
+* **backlog** -- the video tenant has a standing queue and is never
+  idle, so the split decision is live for the whole horizon. This is
+  also the setting spatial partitioning exists for: latency-critical
+  work colocated with throughput work that always has more to do.
+
+Backlog cells stop 10 s after the last urgent arrival rather than the
+default 120 s. Goodput is steps per second of actual run, and a tenant
+that never drains would otherwise spend half the cell running solo,
+diluting the contention the regime was built to create.
+
+The verdicts below are evaluated in each regime separately. If they
+disagree, that disagreement is the result, and it is reported as "the
+scheduler's value depends on how often the tenants actually coexist"
+rather than by choosing the regime that flatters us.
+
 ## Metrics and direction
 
 Primary: urgent deadline miss rate, lower is better.

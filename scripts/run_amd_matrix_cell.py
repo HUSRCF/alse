@@ -185,6 +185,14 @@ def main() -> int:
     parser.add_argument("--video-steps", type=int, default=30)
     parser.add_argument("--urgent-count", type=int, default=40,
                         help="expected urgent requests; sizes the horizon")
+    parser.add_argument("--video-backlog", action="store_true",
+                        help="the video tenant has a standing queue instead "
+                             "of Poisson arrivals, so it is never idle. "
+                             "Under arrivals the two tenants are both "
+                             "runnable for 26%% of the horizon at load 0.6 "
+                             "and 45%% at 1.05, and a question about "
+                             "choosing a split cannot be answered on a "
+                             "timeline that is three-quarters no-op.")
     parser.add_argument("--height", type=int, default=768)
     parser.add_argument("--width", type=int, default=768)
     parser.add_argument("--video-height", type=int, default=480)
@@ -459,7 +467,8 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
                         # needing 0.87 s alone is unmeetable by
                         # construction, and the first run reported miss
                         # rate 1.0 because of exactly that.
-                        urgent_isolated_latency_p99_s=service["urgent"])
+                        urgent_isolated_latency_p99_s=service["urgent"],
+                        video_backlog=args.video_backlog)
     print(f"cell {spec.cell_id}: horizon {horizon:.0f} s, "
           f"{len(trace.requests)} requests", flush=True)
 
@@ -559,12 +568,23 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
     misses = [1 for r, done in urgent
               if done is None or (r.deadline_s is not None
                                   and done > r.deadline_s)]
-    video_steps_done = sum(
-        runtime.retired.get(r.request_id, {}).get("steps_done", 0)
-        for r, _ in video)
-    urgent_steps_done = sum(
-        runtime.retired.get(r.request_id, {}).get("steps_done", 0)
-        for r, _ in urgent)
+    def steps_of(request_id: int) -> int:
+        """Steps this request actually ran, finished or not.
+
+        ``retired`` holds only requests that completed. Every cell of the
+        405-cell grid ended with nothing outstanding, so reading retired
+        alone was exact there -- but a backlogged tenant never drains,
+        and counting only what retired would have charged its goodput
+        with the steps of the request it was in the middle of. The live
+        executor carries the same counter.
+        """
+        if request_id in runtime.retired:
+            return runtime.retired[request_id].get("steps_done", 0)
+        executor = runtime.executors.get(request_id)
+        return getattr(executor, "steps_done", 0) if executor else 0
+
+    video_steps_done = sum(steps_of(r.request_id) for r, _ in video)
+    urgent_steps_done = sum(steps_of(r.request_id) for r, _ in urgent)
 
     payload = {
         "schema_version": "burstserve.amd-matrix-cell/v1",
@@ -585,7 +605,11 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
                  "deadline_slack": spec.deadline_slack,
                  "deadline_base": spec.deadline_base, "seed": spec.seed,
                  "horizon_s": horizon, "urgent_steps": args.urgent_steps,
-                 "video_steps": args.video_steps},
+                 "video_steps": args.video_steps,
+                 # Recorded, because the two regimes are not commensurable
+                 # and a cell that does not say which one it is cannot be
+                 # placed in either table.
+                 "video_backlog": bool(args.video_backlog)},
         "one_adapter_per_tenant": True,
         "identical_seeds_within_tenant": True,
         "isolated_service_s": service,
