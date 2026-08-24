@@ -185,3 +185,39 @@ arrivals cells are the ones that can confirm or refute it. The first
 backlog cells already separate the splits -- 0.2500 for `fixed_split_4`
 against 0.1750 for `fixed_split_8` at load 0.6, seed 0 -- and that is
 not evidence against a prediction made about a different workload.
+
+## Amendment, 2026-08-25, after A1's first group and before A2 ran
+
+A1's first backlog group (load 0.6, seed 0) showed the fixed-split
+sweep is not measuring the split. Four of the five splits fall back to
+serial about 300 times per cell; only 16+16 pairs continuously, and it
+is the *worst* policy in the group -- 14 of 40 urgent requests finished
+against 40 of 40 for every arm that fell back. The sweep is therefore
+ranking splits by whether they trip our drift envelope, which claim 3.3
+already established is a net cost.
+
+The mechanism, measured in the same group:
+
+    policies that pair    1.72 steps per round, 0.81 s per round, 2.14 steps/s
+    policies that do not  1.00 steps per round, 0.26 s per round, 3.84 steps/s
+
+    drawn co-run state on that cell: fast, externality 1.034
+
+The runtime advances every active request by exactly one step per
+round, and the round costs the maximum of the steps in it -- 0.81 s
+against a video step of about 0.8 s at 16 units, so the streams do
+overlap and the hardware is doing its job. Pairing a tenant whose step
+is 0.113 s with one whose step is 0.521 s rate-limits the fast tenant to
+the slow one's step rate. **The hardware's cost of pairing here is
+3.4%; the scheduler's is 44%.**
+
+So A2 runs the identical design with `--drift-tolerance 1000000`, the
+envelope-off configuration that is this project's best known one and
+that `envelope_v2` already used. A1 runs to completion under this
+pre-registration and both are reported; neither replaces the other.
+
+Adding an arm after seeing a confounder is not the same as choosing a
+criterion after seeing a result. The distinction is only worth anything
+if the added arm is declared before it runs, which is what this dated
+note is. The three verdicts are unchanged and are evaluated separately
+in A1 and A2, in each regime.
