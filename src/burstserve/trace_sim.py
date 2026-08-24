@@ -1029,6 +1029,19 @@ def simulate(
             # even when it outlasts the quantum -- truncating instead
             # deadlocks any configuration whose step exceeds the quantum,
             # which a 16+16 split does at 0.299 s against 0.25.
+            #
+            # This is not the runtime's rule, and the difference went
+            # unstated until 2026-08-25. The runtime advances every
+            # active request by exactly one step per round; this advances
+            # by however many whole steps fit the quantum. At 0.25 s the
+            # two agree everywhere except SDXL at 24 and 32 units, where
+            # this gives two steps and the runtime gives one -- so the
+            # simulator has been slightly more generous to a fast tenant
+            # holding a wide quota. Gate C froze a policy against this
+            # loop and the runtime executes it under the other rule.
+            # Recorded rather than reconciled: changing the simulator
+            # would move a frozen comparison, and the runtime's rule is
+            # the one now under measurement.
             affordable = max(1, int(quantum_s // step_cost))
             remaining = state.request.steps - state.steps_done
             taken = min(affordable, remaining)

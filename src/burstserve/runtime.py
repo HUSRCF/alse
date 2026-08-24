@@ -59,6 +59,12 @@ class RoundRecord:
     quota_seconds_by_tenant: dict[str, float]
     resident_models: tuple[str, ...]
     weight_bytes_moved: int = 0
+    # Steps each granted request ran this round. One per request is the
+    # barrier behaviour; more than one means the request was pipelined
+    # inside a peer's longer step. Recorded because a round is no longer
+    # a step and every rate derived from round counts would otherwise be
+    # wrong in a way nothing else would show.
+    steps_run: dict[int, int] = field(default_factory=dict)
     notes: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -89,8 +95,17 @@ class Runtime:
                  charge_currency: str = "quota-seconds",
                  enforce_disjoint: bool = True,
                  fallback_backoff_s: float = 1.0,
-                 max_fallback_backoff_s: float = 60.0):
+                 max_fallback_backoff_s: float = 60.0,
+                 max_steps_per_round: int = 1):
         self.policy = policy
+        # How many steps one request may run inside a round. 1 is the
+        # behaviour every number in this project was produced under, and
+        # it is the default so that turning pipelining on is an arm to be
+        # measured rather than a silent redefinition of every past
+        # result. See ``_step_budget`` for what it costs to leave at 1.
+        if max_steps_per_round < 1:
+            raise ValueError("a round has to run at least one step")
+        self.max_steps_per_round = max_steps_per_round
         # Optional so the loop stays testable without a GPU. When present,
         # each granted request runs on a stream carrying its own CU mask,
         # and the masks of a co-running pair are constructed disjoint
@@ -326,6 +341,38 @@ class Runtime:
         state.observed_at_units = getattr(executor, "last_step_units", None)
         return state
 
+    def _step_budget(self, active, predicted) -> dict[int, int]:
+        """How many steps each granted request runs inside this round.
+
+        The grants run on disjoint masks and their streams overlap, so a
+        round costs the maximum of the steps in it, not their sum. One
+        step per request therefore hands the round's whole duration to
+        its slowest member and lets the others idle for the difference.
+        Measured on 2026-08-25, urgent 0.113 s beside video 0.521 s: the
+        pairing policies ran 1.72 steps per 0.81 s round for 2.14
+        steps/s, against 1.00 steps per 0.26 s round and 3.84 steps/s for
+        the same policies when they declined to pair -- a 44% cost, on a
+        cell whose measured hardware co-run penalty was 3.4%.
+
+        The ratio comes from the predicted step costs, which is what the
+        scheduler is allowed to know. It floors rather than rounds, so a
+        request never overshoots its peer's step on a belief that was
+        optimistic, and it is capped, so a belief that is wrong by an
+        order of magnitude costs a bounded number of steps rather than a
+        round that never ends. With no belief for some member it batches
+        nothing: guessing here would charge real steps against an invented
+        ratio.
+        """
+        if self.max_steps_per_round <= 1 or len(active) < 2:
+            return {rid: 1 for rid, _ in active}
+        costs = {rid: predicted.get(rid) for rid, _ in active}
+        if any(not cost or cost <= 0 for cost in costs.values()):
+            return {rid: 1 for rid, _ in active}
+        slowest = max(costs.values())
+        return {rid: max(1, min(self.max_steps_per_round,
+                                int(slowest / cost)))
+                for rid, cost in costs.items()}
+
     def tick(self, now_s: float) -> RoundRecord:
         """One decision and its execution."""
         offered = self.registry.ready(now_s)
@@ -356,6 +403,8 @@ class Runtime:
         stale_charges: set[int] = set()
 
         active = sorted(granted.items())
+        budgets = self._step_budget(active, predicted)
+        steps_run: dict[int, int] = {}
 
         # Lay the granted quotas out across the die before running any of
         # them, so a pair gets disjoint masks by construction. Assigning
@@ -403,92 +452,105 @@ class Runtime:
             stream = streams.get(rid)
             if stream is not None and hasattr(executor.adapter, "stream"):
                 executor.adapter.stream = stream.handle
-            more = executor.run_step(quota_units=units)
+            # One step per request per round is a barrier: the grants run
+            # on disjoint masks and their streams overlap, so a round costs
+            # the maximum of its steps and not their sum. Advancing every
+            # request by exactly one step therefore rate-limits a tenant
+            # whose step is short to the step rate of one whose step is
+            # long. Measured on 2026-08-25: 0.113 s beside 0.521 s, 0.81 s
+            # per round to deliver one 0.2 s step, 2.14 steps/s against
+            # 3.84 for the same policies not pairing -- a 44% scheduler
+            # cost on a cell whose hardware co-run penalty was 3.4%.
+            for _ in range(budgets.get(rid, 1)):
+                more = executor.run_step(quota_units=units)
+                steps_run[rid] = steps_run.get(rid, 0) + 1
 
-            # What the step actually cost. An adapter on hardware reports
-            # its own device time; only a simulated adapter falls back to
-            # the cost model.
-            #
-            # The fallback must never be preferred. Charging from the
-            # model would make predicted and observed the same number, so
-            # prediction_error would read zero forever and the dual
-            # ledger would be one ledger written twice -- and admission
-            # control and the debt model both read the difference.
-            measured = getattr(executor.adapter, "last_step_seconds", None)
-            # A measurement taken at a different quota is not a
-            # measurement of this step. Adapters that report the width
-            # alongside the time are checked against it here rather than
-            # trusted: the reading is deferred by one step and only lands
-            # when the previous step's events have retired, so on hardware
-            # a re-granted request read the old width's cost for a whole
-            # run -- 107 ms for a 16-unit step, which is the 32-unit cost.
-            # The adapters drain on a width change now; this is the second
-            # line, because the ledger is the thing that must not be
-            # quietly wrong. Adapters that report no width are unaffected.
-            measured_units = getattr(executor.adapter, "last_step_units",
-                                     None)
-            if (measured is not None and measured_units is not None
-                    and measured_units != units):
-                measured = None
-                stale_charges.add(rid)
-            if measured is None:
-                factor = 1.0
-                if peer is not None:
-                    try:
-                        factor = externality(units, peer, queued.model)
-                    except Exception:
-                        factor = 1.0
-                measured = (QuotaCostModel.for_model(queued.model)
-                            .step_seconds(units) * factor)
-                charged_from = "model"
-            else:
-                charged_from = "measurement"
-            spent = measured
-            executor.last_step_seconds = spent
-            executor.last_step_units = units
-            observed[rid] = spent
-            charge_sources.add(charged_from)
+                # What the step actually cost. An adapter on hardware reports
+                # its own device time; only a simulated adapter falls back to
+                # the cost model.
+                #
+                # The fallback must never be preferred. Charging from the
+                # model would make predicted and observed the same number, so
+                # prediction_error would read zero forever and the dual
+                # ledger would be one ledger written twice -- and admission
+                # control and the debt model both read the difference.
+                measured = getattr(executor.adapter, "last_step_seconds", None)
+                # A measurement taken at a different quota is not a
+                # measurement of this step. Adapters that report the width
+                # alongside the time are checked against it here rather than
+                # trusted: the reading is deferred by one step and only lands
+                # when the previous step's events have retired, so on hardware
+                # a re-granted request read the old width's cost for a whole
+                # run -- 107 ms for a 16-unit step, which is the 32-unit cost.
+                # The adapters drain on a width change now; this is the second
+                # line, because the ledger is the thing that must not be
+                # quietly wrong. Adapters that report no width are unaffected.
+                measured_units = getattr(executor.adapter, "last_step_units",
+                                         None)
+                if (measured is not None and measured_units is not None
+                        and measured_units != units):
+                    measured = None
+                    stale_charges.add(rid)
+                if measured is None:
+                    factor = 1.0
+                    if peer is not None:
+                        try:
+                            factor = externality(units, peer, queued.model)
+                        except Exception:
+                            factor = 1.0
+                    measured = (QuotaCostModel.for_model(queued.model)
+                                .step_seconds(units) * factor)
+                    charged_from = "model"
+                else:
+                    charged_from = "measurement"
+                spent = measured
+                executor.last_step_seconds = spent
+                executor.last_step_units = units
+                observed[rid] = spent
+                charge_sources.add(charged_from)
 
-            # The accounting currency, and the fairness claim rests on
-            # which one this is. units x seconds says a tenant holding 8
-            # units for a second has not consumed what one holding 24
-            # did; wall-seconds says they have; step-count says a cheap
-            # step and an expensive one are the same. The alternatives
-            # exist to be measured, not offered.
-            if self.charge_currency == "wall-seconds":
-                charge = spent
-            elif self.charge_currency == "step-count":
-                charge = 1.0
-            else:
-                charge = units * spent
-            self.quota_seconds_by_tenant[queued.tenant] = (
-                self.quota_seconds_by_tenant.get(queued.tenant, 0.0)
-                + charge
-            )
-            # Always units x seconds, whatever the currency. The charge
-            # above is what the policy is shown and therefore what it
-            # equalises; this is what fairness is scored on. Keeping only
-            # the first would make every currency perfectly fair in its
-            # own units, which is exactly the question the ablation asks.
-            self.die_seconds_by_tenant[queued.tenant] = (
-                self.die_seconds_by_tenant.get(queued.tenant, 0.0)
-                + units * spent
-            )
-            self.service_seconds_by_tenant[queued.tenant] = (
-                self.service_seconds_by_tenant.get(queued.tenant, 0.0) + spent
-            )
-            # Residency is charged once per model, not per request: a
-            # burst of the same model after the first pays no weight
-            # bytes, which is the property week 7-8 has to demonstrate.
-            if queued.model not in self.resident_models:
-                self.resident_models.add(queued.model)
-                self.weight_bytes_moved += MODEL_WEIGHT_BYTES.get(
-                    queued.model, 0
+                # The accounting currency, and the fairness claim rests on
+                # which one this is. units x seconds says a tenant holding 8
+                # units for a second has not consumed what one holding 24
+                # did; wall-seconds says they have; step-count says a cheap
+                # step and an expensive one are the same. The alternatives
+                # exist to be measured, not offered.
+                if self.charge_currency == "wall-seconds":
+                    charge = spent
+                elif self.charge_currency == "step-count":
+                    charge = 1.0
+                else:
+                    charge = units * spent
+                self.quota_seconds_by_tenant[queued.tenant] = (
+                    self.quota_seconds_by_tenant.get(queued.tenant, 0.0)
+                    + charge
                 )
-            if not more:
-                executor.finalize()
-                queue.finish(rid)
-                self.retire(rid)
+                # Always units x seconds, whatever the currency. The charge
+                # above is what the policy is shown and therefore what it
+                # equalises; this is what fairness is scored on. Keeping only
+                # the first would make every currency perfectly fair in its
+                # own units, which is exactly the question the ablation asks.
+                self.die_seconds_by_tenant[queued.tenant] = (
+                    self.die_seconds_by_tenant.get(queued.tenant, 0.0)
+                    + units * spent
+                )
+                self.service_seconds_by_tenant[queued.tenant] = (
+                    self.service_seconds_by_tenant.get(queued.tenant, 0.0)
+                    + spent
+                )
+                # Residency is charged once per model, not per request: a
+                # burst of the same model after the first pays no weight
+                # bytes, which is the property week 7-8 has to demonstrate.
+                if queued.model not in self.resident_models:
+                    self.resident_models.add(queued.model)
+                    self.weight_bytes_moved += MODEL_WEIGHT_BYTES.get(
+                        queued.model, 0
+                    )
+                if not more:
+                    executor.finalize()
+                    queue.finish(rid)
+                    self.retire(rid)
+                    break
 
         # Every unfinished request returns to waiting at the round
         # boundary, whether it ran or not, so the next round decides
@@ -567,6 +629,7 @@ class Runtime:
             quota_seconds_by_tenant=dict(self.quota_seconds_by_tenant),
             resident_models=tuple(sorted(self.resident_models)),
             weight_bytes_moved=self.weight_bytes_moved,
+            steps_run=dict(steps_run),
             notes={"charged_from": sorted(charge_sources),
                    "stale_quota_measurements": sorted(stale_charges),
                    "serial_fallback": fallback_reason,
