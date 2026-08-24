@@ -3217,3 +3217,95 @@ Environment note, since it is a variable and not a detail: diffusers is
 0.40.0 on DiamondHill against 0.39.0 on X570. SDXL's denoising path is
 unchanged between them, but the comparison is not perfectly matched and
 that is recorded rather than assumed away.
+
+### 2026-08-25 -- the grid resolves three behaviours, and one negative was overstated
+
+Asked what to do after four Weakly Rejects, the honest answer was that
+the scheduler side is entirely negative and the measurement side is
+entirely positive. The reviewer's first question about the measurement
+side is one we have never answered: **is choosing the split at run time
+worth anything, against a split chosen once at deployment time?** Every
+partitioning policy in `policies.py` chooses at run time; none has ever
+been compared against a fixed one. So experiment A was pre-registered
+(`docs/prereg-experiment-a.md`) with its criterion, direction and all
+three verdicts fixed before a cell ran, and `make_fixed_split(N)` was
+added -- with `make_fixed_split(16)` tested as an identity against
+`static_even`, so the sweep contains the known baseline as a special
+case and disagreement anywhere is a wiring fault rather than a result.
+
+**The grid tests the split decision on a quarter of its own timeline.**
+Computed from every one of the 405 cells rather than assumed: the two
+tenants are both runnable for 26.1% of the horizon at load 0.6, 37.1% at
+0.85, 44.9% at 1.05. For the rest one tenant holds the whole die and
+every partitioning policy issues the same grant. Worse, 27 of the 405
+cells -- three of the 45 configurations -- have **no video tenant at
+all**, because its arrivals are Poisson with a mean near two.
+
+Excluding those three configurations moves the primary negative from
++0.56% to +0.57%. So 2.1 stands unchanged, and the dilution is not
+where I expected to find it.
+
+**Where it actually is.** Counting paired configurations whose miss
+rates are exactly equal, out of 45:
+
+    probing vs step-matched            42 identical
+    sticky probing vs step-matched     43
+    slo-aware vs step-matched          40
+    static_even vs measured_pairs      43
+    deadline_aware vs static_even      42
+    exclusive_fcfs vs everything    ~21 differ
+    oracle vs everything            ~38 differ
+
+Nine policies are three distinguishable behaviours plus an oracle.
+
+**And one stated negative was overstated.** 2.2 read "+0.56% worse ...
+with the interval excluding zero on the wrong side. Small, and not
+noise." The interval is [+0.0000, +0.0056] and its lower bound is
+exactly zero at every bootstrap seed tried -- because only 3 of the 45
+differences are non-zero, and a resample drawing none of them has
+probability (42/45)^45 = 4.48%, which is above 2.5%. The percentile is
+arithmetic. What the grid supports is that the probe **does not help**;
+three of three non-zero differences point the wrong way, which is
+p = 0.125 one-sided and is not significance. Corrected.
+
+The comparisons that survive are the wide ones: step-matched pairing
+against exclusive FCFS differs in 21 configurations, against static-even
+in 16, against deadline-aware in 17, against measured-pairs-only in 16,
+all with intervals that genuinely exclude zero. `summarise_grid.py` now
+prints the pinning probability for every row and marks it PINNED when it
+exceeds 0.025, so no interval can be read as significance it cannot
+carry.
+
+**Experiment A therefore runs two regimes.** The grid's own arrival
+trace, commensurable with the 405 cells; and a **backlogged** video
+tenant with a standing queue, so the split decision is live for the
+whole horizon. That is also the setting spatial partitioning exists for.
+Building the second regime turned up two latent defects: video goodput
+summed steps only over `runtime.retired`, which was exact on a grid
+where every cell drained but would have lost a backlogged tenant's
+in-flight request; and goodput is per second of actual run, so the
+default 120 s drain grace would have left a never-draining cell running
+video solo for half its length.
+
+First backlog cells, load 0.6 seed 0: `fixed_split_4` misses 0.2500 and
+`fixed_split_8` misses 0.1750, with video goodput 1.260 against 1.323.
+The splits separate, and `fixed_split_4` is *dominated* rather than
+trading -- starving the urgent tenant lengthens its queue, so the video
+tenant spends more time at 28 units instead of owning all 32.
+
+**Two process notes.** The simulator was run first, with no GPU, and its
+miss rates are recorded in the pre-registration as not-a-forecast:
+0.9018 simulated against 0.3658 measured for the same policy at the same
+load. It did its job -- it caught the identity end to end -- and its
+numbers are not evidence.
+
+And a kill was confirmed from the same shell that issued it. `pkill`
+reported the campaign stopped; a fresh connection later found the cell
+runner still alive and the card at 100%. The check passed by
+construction, which is this log's most repeated defect, and the
+correction is that a stop is verified from a separate connection
+listing processes.
+
+Deleted the single pilot cell from the first launch instead of moving it
+to `expA_pilot`. It predated the goodput fix and backed no claim, but
+the rule is to preserve raw runs.
