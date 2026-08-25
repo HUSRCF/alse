@@ -135,7 +135,11 @@ bound what this grid can be read as having settled, and it is the most
 likely reason the nine policies sit inside 0.34 to 0.39 of each other.
 Experiment A (`docs/prereg-experiment-a.md`) measures the same question
 with the video tenant backlogged, where the decision is live for the
-whole horizon.
+whole horizon. It has since run: see 2.3. With the tenants coexisting
+for the whole horizon the policies separate by a factor of five on miss
+rate rather than sitting inside 0.34 to 0.39, which confirms that this
+grid's compression is a property of its workload and not of the
+policies.
 
 ### 2.2 The probe does not help, and the grid cannot show it hurts
 
@@ -196,6 +200,70 @@ step-matched pairing against exclusive FCFS differs in 21 configurations
 [−0.0256, −0.0059]), against deadline-aware in 17 and against
 measured-pairs-only in 16 (both −3.76%, intervals excluding zero). Those
 intervals can exclude zero; the within-family ones structurally cannot.
+
+---
+
+### 2.3 Experiment A: the scheduler beats every fixed split, and clears the pre-registered bar in one of four evaluations
+
+| **Claim** | Choosing the split at run time is worth a large amount when the tenants genuinely coexist. It is not established that it beats a split chosen once, in those words. |
+| --- | --- |
+| **Evidence** | 400 hardware cells, pre-registered in `docs/prereg-experiment-a.md` before any ran. Four evaluations (2 campaigns x 2 regimes), verdicts 1, 1, **3**, 1. |
+
+A1 ran with this project's drift envelope on (tolerance 0.15), A2 with
+it off (1e6) after A1's first group showed the fixed-split sweep was
+ranking splits by whether they trip the envelope. Both were run to
+completion under the same pre-registration; neither replaces the other.
+
+    A1 arrivals   1. no contribution        miss CI crosses zero
+    A1 backlog    1. no contribution        miss -39.4%, video -6.5%
+    A2 arrivals   3. SCHEDULING CONTRIBUTION  miss -22.0%, video +6.3%
+    A2 backlog    1. no contribution        miss -60.1%, video -5.5%
+
+`step_matched_pairing` is the best adaptive arm in all four by the
+pre-registered rule, and it has the lowest miss rate of every non-oracle
+arm in all twenty groups. The direction never reverses. In backlog with
+the envelope off it is 0.1898 against 0.9909 for the best fixed split at
+load 0.6, and the fixed splits do not merely run late: `fixed_split_28`
+finishes 2.6 of 40 urgent requests at load 1.05 where
+`step_matched_pairing` finishes all 40. An unfinished request counts as
+a miss and the denominator is admitted requests, so that is the
+measurement rather than a scoring artefact.
+
+**What blocks verdict 3 is video goodput, not miss rate.** Both backlog
+rows have miss-rate intervals far from zero and fail on the -5% video
+bound at -6.5% and -5.5%. The bound is a point-estimate rule, both point
+estimates fail it, and it stands. Both video intervals cross zero
+(A2's is [-0.1626, +0.0086]), so the data does not establish the video
+loss either -- it establishes that the trade cannot be called free at
+ten pairs.
+
+**Three assumptions in the design that the data refutes.** The best
+fixed split does not move with load, so `static-oracle` collapses onto
+`static-deploy` in three of four and verdict 2 has no target anywhere.
+`exclusive_fcfs`, pre-registered as the floor, beats every fixed split
+under arrivals at load 0.6 in both campaigns -- static partitioning is
+worse than no partitioning in the regime commensurable with the 405-cell
+grid. And the simulator's recorded prediction that all five splits would
+share one miss rate under arrivals is refuted, with spreads of 0.1850,
+0.1062, 0.1283 and 0.0233.
+
+**The weakest joint, stated rather than left to a reviewer.** Against
+`exclusive_fcfs` -- not a pre-registered comparison -- the arrivals win
+is -13.6% [-0.2086, +0.0173] in A1 and -15.9% [-0.2182, +0.0050] in A2:
+it does not exclude zero. The single verdict-3 result was measured
+against a comparator set that excludes the arm which performs best in
+that regime. Under backlog the same comparison is -56.9% / -58.7% on
+miss at a cost of 25% of video goodput.
+
+**Coverage.** All twenty groups drew the `fast` co-run state. The base
+rate over 1024 recorded cells is 923 fast to 101 slow, so twenty in a
+row is unremarkable at p = 0.12; the cost is coverage, not validity.
+Experiment A measures the fast state only. Every cell is `safe: true`
+with no safety failures, cell durations vary 0.8-1.7% between arms so
+the goodput denominator is not doing the work, and the pre-registered
+`fixed_split_16 == static_even` in-cell wiring check was vacuous --
+`static_even` was not one of the ten arms, so the condition could not
+fire, and the identity is covered only by unit test.
 
 ---
 

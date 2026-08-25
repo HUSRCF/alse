@@ -3434,3 +3434,118 @@ read from it, which is the same defect the main grid has and the reason
 the backlog regime was built.
 
 One seed. Nine groups of A1 and twenty of A2 remain.
+
+### 2026-08-25 -- Experiment A landed: four pre-registered evaluations, one clears the bar
+
+A1 (drift envelope on, tolerance 0.15) and A2 (envelope off, tolerance
+1e6) both completed: 200 cells each, 400 total, 10 policies x 2 regimes
+x 2 loads x 5 seeds. Every cell reports `safe: true` with an empty
+`safety_failures`; every cell admitted every request it was given; the
+urgent denominator is constant inside each (regime, load, seed) group.
+The code that ran is `139b944^` -- the runtime *before* the
+`max_steps_per_round` flag -- and the other four files are byte-identical
+to this branch, checked by sha256 on both machines. A1 and A2 are
+therefore evidence about the runtime as it stands, not about the fix.
+
+The pre-registered verdicts, evaluated separately in each campaign and
+each regime as the amendment requires:
+
+    A1 arrivals   1. no scheduling contribution   CI crosses zero
+    A1 backlog    1. no scheduling contribution   miss -39.4%, video -6.5%
+    A2 arrivals   3. SCHEDULING CONTRIBUTION      miss -22.0%, video +6.3%
+    A2 backlog    1. no scheduling contribution   miss -60.1%, video -5.5%
+
+`M` is `step_matched_pairing` in all four, chosen by the pre-registered
+rule. The three verdicts disagree across campaigns and across regimes,
+and the pre-registration says that disagreement is the result.
+
+**What is consistent.** `step_matched_pairing` has the lowest miss rate
+of every non-oracle arm in all four evaluations, at both loads, in every
+one of the twenty groups. The direction never reverses. In backlog the
+margin is not marginal: 0.1898 against 0.9909 for the best fixed split
+at load 0.6 with the envelope off, and the fixed splits are not merely
+late -- `fixed_split_28` *finishes 2.6 of 40 urgent requests* at load
+1.05 while `step_matched_pairing` finishes all of them. Miss rate counts
+an unfinished request as missed and divides by admitted requests, so
+that gap is the measurement, not an artefact of scoring.
+
+**What blocks verdict 3, and it is not the miss rate.** In both backlog
+rows the miss-rate interval excludes zero by a wide margin and the video
+goodput cost is what fails: -6.5% (A1) and -5.5% (A2) against a bound of
+-5%. The bound is a point-estimate rule and both point estimates fail
+it. Both video intervals cross zero -- A2's is [-0.1626, +0.0086] -- so
+the data does not establish the video loss either; it establishes that
+we cannot claim the trade is free at n = 10 pairs. The rule as written
+says no, and it stays no.
+
+**Three things the design assumed that the data refutes.**
+
+*The best fixed split does not move with load.* `fixed_split_8` is the
+best split at 0.6 and at 1.05 in three of the four evaluations, so
+`static-oracle` collapses onto `static-deploy` and the two comparators
+are one comparator. The fourth (A2 backlog) reports "moves: True" only
+because all five splits miss exactly 1.0000 at load 1.05 and `min()`
+broke the tie by iteration order. Re-running that row with the other
+tied arm as the oracle gives video -12.7% instead of -5.5%, still
+verdict 1, so the tie-break does not decide the verdict -- but it does
+mean verdict 2 has no target anywhere in this experiment. Whatever
+`step_matched_pairing` is doing, it is not auto-tuning the split to the
+offered load, because there is nothing to tune to.
+
+*`exclusive_fcfs` is not a floor.* The pre-registration lists it as
+"floor: no partitioning at all". Under arrivals at load 0.6 it beats
+every one of the five fixed splits, in both campaigns. Static
+partitioning is worse than not partitioning at all in the regime that is
+commensurable with the 405-cell grid. Against that arm -- **not a
+pre-registered comparison, and reported here because it is the question
+a reviewer asks next** -- `step_matched_pairing` gains -13.6% (A1) and
+-15.9% (A2) under arrivals with intervals that cross zero
+([-0.2086, +0.0173] and [-0.2182, +0.0050]), and -56.9% / -58.7% under
+backlog at a cost of 25% of video goodput. So the single verdict-3
+result was measured against a comparator set that excludes the arm which
+actually performs best in that regime, and against that arm the same win
+is not established at ten pairs. That is the weakest joint in the
+result and it is stated here rather than left for someone else to find.
+
+*The simulator's recorded prediction is refuted.* It predicted all five
+fixed splits would share one miss rate to four decimals under arrivals.
+The hardware spread is 0.1850 and 0.1062 in A1 and 0.1283 and 0.0233 in
+A2. Recorded as a prediction before the run, so it counts as a failed
+one: the split does trade urgent latency for video throughput, and the
+simulator did not know it.
+
+**Two invalidity conditions, handled.**
+
+All twenty groups drew the `fast` co-run state. Read literally -- "both
+loads drawing the same co-run state in every seed" -- the condition
+fires. The substantive reading is narrower: historically the draw is
+923 fast to 101 slow over 1024 recorded cells, so twenty fast in a row
+has probability about 0.12 and is unremarkable. What it costs is
+coverage, not validity: Experiment A measures the fast state only, the
+two loads still differ by offered load, and every claim above is
+conditional on the 90% case. The slow state is unmeasured here.
+
+The `fixed_split_16 == static_even` in-cell wiring check did not happen.
+The pre-registration says the identity "doubles as a wiring check inside
+every cell", but `static_even` was not one of the ten arms, so there was
+nothing to compare against and the condition could not fire. It is
+vacuous as run. The identity is covered by `tests/test_fixed_split.py`
+at the function level only. Stated as a gap; not repaired after the
+fact.
+
+**Fairness of the goodput denominator.** Video goodput is steps per
+second of cell run, so a policy that runs a longer cell would be flattered
+or penalised by the denominator alone. Across the twenty backlog groups
+the cell durations span 0.8% to 1.7% between the fastest and slowest arm.
+The denominator is not doing the work.
+
+**What this does to the shape of the paper.** Not "the scheduler is
+decoration" -- it beats every fixed split everywhere, and in backlog it
+is the difference between finishing the urgent work and not. Not
+"beats static partitioning" either, in those words, because one of four
+pre-registered evaluations cleared the bar and the strongest arm in that
+regime was outside the comparator set. The defensible sentence is that
+run-time choice is worth a large amount when the tenants genuinely
+coexist, that the cost is video throughput at a scale this experiment
+could not bound below 5%, and that under the grid's own arrival pattern
+the question is not settled at five seeds.
