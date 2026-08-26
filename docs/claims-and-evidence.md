@@ -408,6 +408,18 @@ gfx1201 or like gfx90a is unknown, and two AMD architectures disagreeing
 with each other is a reason to expect the question to matter, not a
 reason to consider it settled.
 
+On **2026-08-26** the single-SKU decision was extended to Gate B as well,
+which until then had still read that Gate B-AMD supplemented rather than
+replaced it. So there is now no acceptance clause anywhere that requires
+an NVIDIA measurement, and this paragraph is the only place the gap is
+recorded. That is the intended destination — cross-SKU consistency is a
+piece of evidence, not a box, and more cells on the same card cannot
+supply it — but it is worth being explicit that the requirement was
+withdrawn rather than met. The narrow reading was kept: `G={1,4,8,16}`,
+pinned/pageable, NUMA, PCIe direction and the compute/HBM/PCIe probe
+co-runners are in Gate B's text for reasons unrelated to vendor, and they
+remain open rather than travelling out with the SKU clause.
+
 **One card, so comparisons are paired in time, not across cards.** The
 die warms 43 to 72.8 °C in three and a half minutes and solo step time
 rises 5% with it. Arms are interleaved within a process and the isolated

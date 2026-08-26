@@ -5,15 +5,21 @@
 - Last updated: 2026-08-26
 - **阶段验收（2026-08-26，第 3–4 周最后一天）**：requirement alignment 报告
   `docs/alignment-weeks-3-4.md`，sha256
-  `e97c67943964c8cf50150f0cbf59e322aa52dafe4ee2e65c9dd6c630b8c9806b`。
-  18 行：exact 9 / approximate 4 / missing 4 / not_applicable 1。
+  `c5283204b1d7d3bec3e3f972d6ca8fd0c7eb4d1e0d64ca5aa026b9ece79e6eb7`。
+  18 行：exact 9 / approximate 4 / missing 3 / not_applicable 2
+  （2026-08-26 单 SKU 延伸至 Gate B 之后；延伸前为 missing 4 / n_a 1）。
   **Gate B-AMD 未通过**——SDXL 与 CogVideoX-2b 均为 10 条中 9 条 PASS、
   `accepted: false`，唯一失败项同为
   `cold_model_predicts_transfer_and_framework_separately`
   （SDXL：transfer 4.08% / total 7.36% 过，**framework 88.5% 不过**；
   CogVideoX-2b：**transfer 83.9% / total 67.3% 均不过，framework 从未独立标定**）。
   下方 2026-08-03 的 Gate B-AMD 段落是当时的记录，未删改；以本行与报告为准。
-- **待用户决定（2026-08-26 新增）**：2026-08-09 的单 SKU 决定写进了 Gate A
+- **已决定（2026-08-26，用户）**：单 SKU 决定延伸至 Gate B，Gate B-AMD 即
+  唯一的 Gate B（条文见本文「验收 Gate B-AMD」段的 2026-08-26 修订）。
+  **只撤销「须在第二个/NVIDIA SKU 上重做」这一层**；Gate B 原文中与厂商无关
+  的三条——、pinned/pageable 与 NUMA/PCIe 方向、compute/HBM/PCIe
+  probe co-runner——Gate B-AMD 未复述，**仍有效且仍未满足，继续记 missing**。
+  以下为该决定作出前的记录，保留：2026-08-09 的单 SKU 决定写进了 Gate A
   条文（当前 338–341 行，以引文为准：「下列 AMD 条文即唯一的 Gate A」），**但没有写进
   Gate B**——当前 384 行仍为「Gate B-AMD（2026-08-02 新增，补充而非替代上面的
   Gate B）」，而该措辞早于单 SKU 决定一周。按现行文本，Gate B 的 NVIDIA
@@ -381,10 +387,33 @@ $$
 - cold-model 预测严格使用缺失字节和实测带宽。
 - 每个 profile 都带硬件、驱动、CUDA、Torch、模型 revision 和 schema version。
 
-验收 Gate B-AMD（2026-08-02 新增，**补充而非替代上面的 Gate B**）：
+验收 Gate B-AMD（2026-08-02 新增；**2026-08-26 由用户决定把单 SKU 决定
+延伸至本门，自此为唯一的 Gate B**）：
 
 单卡 `gfx1201`（R9700，32 个可掩码单元）。上面的 Gate B 条文以 4090 的 SM
-计数写成，继续对 NVIDIA 侧完整有效；AMD 侧按下列平行条文验收。
+计数写成。
+
+> **2026-08-26 修订（用户决定，与 2026-08-09 的单 SKU 决定同源）**：
+> 上面 Gate B 条文中**依赖 SKU 的部分**——4090 的 SM quota 列表
+> `{16,32,…,128}`、CUDA 版本 provenance、以 NVIDIA PCIe 计数器为取证手段的
+> 条目——不再是交付前置；其已取得的证据（Gate A0 编队等）保留在库中作为
+> NVIDIA 侧历史记录，不再计入未完成项。原措辞「补充而非替代上面的 Gate B」
+> 作废，Gate B-AMD 即唯一的 Gate B。
+>
+> **本修订只撤销「必须在第二个/NVIDIA SKU 上重做」这一层，不撤销与厂商
+> 无关的测量轴。** 下列三项写在 Gate B 原文里、但与用哪家的卡无关，
+> Gate B-AMD 的平行条文只是没有复述它们，**故仍然有效且仍未满足**，
+> 记为 `missing` 而非随本修订一并消失：
+>
+> 1. `G={1,4,8,16}`。当前 sweep 的 batch 1 与 2 是 `canonical` 与
+>    `saturation_probe` 两个**角色**，不是 G 曲线上的两个点。
+> 2. pinned/pageable、local/remote NUMA、单向/双向 PCIe。其中 PCIe 方向
+>    在 R9700 上无可用计数器（2026-08-03 实测），另两项可测而未测。
+> 3. compute、HBM、PCIe 三种 probe co-runner。当前 probe 角色是同模型的
+>    放大实例，只用于饱和判据，不能把竞争归因到三者之一。
+>
+> 撤销的是覆盖面而非缺陷：跨 SKU 一致性本身是一项证据，不能由同一张卡上的
+> 更多 cell 补足，已按 2026-08-09 的措辞写入 threat-to-validity。
 
 - quota 列表用 `{4,8,12,16,20,24,28,32}` **个可掩码单元**，不是 SM 计数。
   每个 cell 以独立进程加 `ROC_GLOBAL_CU_MASK` 固定配额——该路径已实测穿透

@@ -17,8 +17,8 @@ inconvenient.
 | --- | --- |
 | exact | 9 |
 | approximate | 4 |
-| missing | 4 |
-| not_applicable | 1 |
+| missing | 3 |
+| not_applicable | 2 |
 | **total rows** | **18** |
 
 **Gate B-AMD is not accepted.** Both models stand at 9 of 10 clauses,
@@ -26,25 +26,44 @@ failing the same one. **Gate B (NVIDIA wording) is untouched and, as the
 plan currently reads, still in force.** Neither is claimed as passed
 anywhere in this report.
 
-## The governance finding, first because it decides two rows
+## The governance finding, and what the user decided about it
 
 The 2026-08-09 single-SKU decision was written into **Gate A's** text:
-`plan.md` (currently line 338-341; cite the quotation, not the number, since it drifts) says the AMD clauses are thereafter "唯一的 Gate A" and
+`plan.md` (currently line 338-341; cite the quotation, not the number,
+since it drifts) says the AMD clauses are thereafter "唯一的 Gate A" and
 the NVIDIA-worded originals are kept as historical record and no longer
 count as incomplete.
 
-**No equivalent amendment was made to Gate B.** `plan.md` (currently line 384) still reads
-"Gate B-AMD（2026-08-02 新增，**补充而非替代上面的 Gate B**）", and
-2026-08-02 predates the single-SKU decision by a week. So as the plan
-reads today, Gate B's NVIDIA clauses -- four models on a 4090, SM quotas
-`{16..128}`, `G={1,4,8,16}`, pinned/pageable, NUMA and PCIe direction --
-remain in force and are entirely unmet.
+No equivalent amendment had been made to Gate B, whose text still read as
+of 2026-08-02 that Gate B-AMD "补充而非替代上面的 Gate B" -- a week before
+the single-SKU decision existed. This report raised that as the user's
+decision to make rather than resolving it.
 
-This is not resolved here. Rewriting a requirement to match what was
-built is the failure mode this protocol exists to prevent, and the
-single-SKU decision was the user's, so extending it to Gate B is theirs
-too. Recorded as an open decision, and the two rows it governs are
-scored against the text as written.
+**Decided 2026-08-26: the user extended the single-SKU decision to Gate
+B.** `plan.md` is amended accordingly and Gate B-AMD is now the only
+Gate B.
+
+The amendment is applied narrowly, and the narrowness is the point.
+What it withdraws is the requirement to redo the work on a second or
+NVIDIA SKU: the 4090 SM quota list `{16..128}`, CUDA-version provenance,
+and the clauses whose forensic means is an NVIDIA PCIe counter. What it
+does **not** withdraw are three requirements written in Gate B's text
+that have nothing to do with whose card is used, and which Gate B-AMD's
+parallel clauses simply never restated:
+
+* `G={1,4,8,16}`,
+* pinned/pageable, local/remote NUMA, uni/bidirectional PCIe,
+* the compute / HBM / PCIe probe co-runners.
+
+Reading "single SKU" as discharging those would use a decision about
+vendor coverage to delete three measurement axes, which is the same
+move -- rewriting a requirement to match what was built -- that raising
+the question was meant to avoid. They stay `missing`.
+
+What the amendment costs is coverage, not correctness, and the cost was
+already written down: cross-SKU consistency is itself a piece of
+evidence and cannot be made up with more cells on the same card. It sits
+in threats to validity, per the 2026-08-09 wording, not in acceptance.
 
 ## 实现 rows
 
@@ -64,7 +83,7 @@ scored against the text as written.
 
 | Requirement | Implementation | Evidence | Alignment | Carry-over |
 | --- | --- | --- | --- | --- |
-| Gate B (NVIDIA wording): 4090 SM quotas, four models, MAPE and PCIe clauses | none on the NVIDIA line beyond Gate A0 | `gate_a0_4090_v2_seed1_fleet5_20260731.json` is Gate **A0**, not Gate B. No 4090 profile sweep exists | **missing** | See the governance finding. Either the 2026-08-09 single-SKU decision is extended to Gate B's text by the user, or Gate B stays open. Not resolved by this report and not rewritten by it |
+| Gate B (NVIDIA wording): 4090 SM quotas and the SKU-dependent clauses | none on the NVIDIA line beyond Gate A0 | `gate_a0_4090_v2_seed1_fleet5_20260731.json` is Gate **A0**, not Gate B. No 4090 profile sweep exists and none is now required | **not_applicable** | Withdrawn 2026-08-26 by the user's extension of the single-SKU decision; the NVIDIA evidence already taken is kept as historical record. Only the SKU-dependent layer is withdrawn -- the three vendor-neutral axes above remain `missing`. Cross-SKU consistency moves to threats to validity, not to acceptance |
 | Gate B-AMD, SDXL | `gate_b_amd_verdict_sdxl_final.json` | **9 of 10 PASS**, `accepted: false`. Sole failure `cold_model_predicts_transfer_and_framework_separately`: transfer 4.08% PASS, total 7.36% PASS, **framework 88.5% FAIL** against a 10% threshold | **approximate** | The 2026-08-04 tightening is doing exactly what it was written for: the total error (7.36%) would have passed the original single-number clause while the independently calibrated framework term is off by a factor of nine. Deferred to the runtime stage by decision; must be `exact` before any cold-start claim |
 | Gate B-AMD, CogVideoX-2b | `gate_b_amd_verdict_cogvideox2b_20260808.json` | **9 of 10 PASS**, `accepted: false`. Sole failure is the same clause and it fails harder: transfer **83.9%**, total **67.3%**, framework **never calibrated (null)** | **approximate** | Worse than SDXL and differently: for SDXL the hardware term is right and the implementation term is wrong; here the transfer term itself is wrong, so the 6.94 GB / 2643-tensor reasoning does not carry to a 13.77 GB model. Same carry-over |
 | Gate B-AMD co-run must prove real temporal overlap; stream form requires mask-penetration evidence | `run_amd_inproc_corun.py --share-weights` | clause `corun_is_two_disjointly_masked_workers` PASS, form `streams`, externality a +27.2% / b +31.4%, overlap 111.1 s = 92.5% of the window; prerequisite `stream_mask_penetration_20260807.json` ratios 0.9900 / 0.9887 / 0.9847 / 0.9739 at 4/8/16/32 units | **exact** | The clause was amended 2026-08-08 to admit the stream form **with** penetration evidence, after the two-process form was shown impossible on this card (57 GB needed, 34.2 GB available). Evidence without penetration data is NOT_MEASURED, and that gate was verified with a forged leaking-penetration record |
@@ -95,8 +114,10 @@ Forbidden until the corresponding row is `exact`:
 * any claim attributing contention to compute, HBM or PCIe
   specifically. The probe co-runners that would separate them were not
   built.
-* any statement that "Gate B passes" or "Gate B-AMD passes". Neither
-  does. Both models sit at 9 of 10 with `accepted: false`.
+* any statement that "Gate B passes". After the 2026-08-26 amendment
+  Gate B *is* Gate B-AMD, and Gate B-AMD does not pass: both models sit
+  at 9 of 10 with `accepted: false`. The amendment changed which clauses
+  apply; it did not turn a failing clause into a passing one.
 
 ## A note on the calendar
 
