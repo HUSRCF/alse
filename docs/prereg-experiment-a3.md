@@ -188,3 +188,24 @@ about 84% power at 20 pairs and 96% at 30. That estimate is optimistic
 rationale rather than a promise. Thirty groups is about 3.7 hours of
 card time at A2's measured 7.3 minutes per four-arm group. The verdict
 is whatever lands at 30.
+
+## Note, 2026-08-26, written after the campaign and before the analysis
+
+A3's design describes `exclusive_fcfs` as "no partitioning at all", the
+wording inherited from Experiment A's pre-registration. That wording is
+wrong about what the arm is, and the error was found by reading the code
+on the day A3 completed, not by the result.
+
+`TenantRegistry.ready` returns one candidate per tenant in `self._order`
+and `Runtime.tick` ends with `registry.rotate()`, so the request
+`exclusive_fcfs` hands the whole die to alternates between tenants every
+round. It is **whole-die time-slicing between tenants**. It is neither
+first-come-first-served nor priority.
+
+Nothing about the campaign or the verdicts changes: the arm that ran is
+the arm that was pre-registered, and the criterion, the direction and the
+three verdicts are untouched. What changes is the English sentence the
+verdict licenses. A3's verdict 1 means "run-time choice beats whole-die
+time-slicing", not "beats not partitioning at all". Strict priority is
+pre-registered separately in `docs/prereg-priority-baseline.md` and has
+not been run.

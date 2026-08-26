@@ -71,7 +71,13 @@ def trace_properties(directory: Path) -> dict:
             return spans
 
         ub, vb = busy(urgent, iso["urgent"]), busy(video, iso["video"])
-        horizon = max(max(e for _, e in ub), max(e for _, e in vb))
+        # A cell can have no video tenant at all -- 27 of the 405-cell
+        # grid did. That is real data about the trace, so it enters the
+        # predictor set with a coexistence of zero rather than being
+        # dropped, which would select the configurations that had a
+        # tenant to coexist with.
+        ends = [e for _, e in ub] + [e for _, e in vb]
+        horizon = max(ends) if ends else 0.0
         overlap = sum(max(0.0, min(b, e) - max(a, c))
                       for a, b in ub for c, e in vb)
         out[(spec_d["load"], spec_d["seed"])] = {

@@ -100,6 +100,37 @@ CogVideoX-2b at 480x720x9 frames.
 | **Scope** | This runtime on this card. |
 | **Not claimed** | That Jain depends on the accounting currency — see 3.1. |
 
+### 1.9 Choosing the split at run time beats whole-die time-slicing, and the best fixed split
+
+| | |
+| --- | --- |
+| **Claim** | Under the grid's own Poisson arrivals, a policy that chooses the split each round beats both whole-die time-slicing between tenants and the best split chosen once, on urgent miss rate, at no cost in video goodput. |
+| **Evidence** | Experiment A3, pre-registered in `docs/prereg-priority-baseline.md`'s sibling `docs/prereg-experiment-a3.md` before it ran. 120 cells on 15 seeds disjoint from Experiment A's, envelope off, 30 paired configurations. Against `exclusive_fcfs`: miss **-0.0687, [-0.1361, -0.0161]**, -14.9%, and separately at each load, [-0.1857, -0.0014] at 0.6 and [-0.1526, -0.0049] at 1.05. Video goodput -0.1%, [-0.0026, +0.0016]. Against `fixed_split_8`: **-0.1061, [-0.1837, -0.0415]** — an independent replication of A2/arrivals on disjoint seeds. |
+| **Scope** | Poisson arrivals, SDXL beside CogVideoX-2b, loads 0.6 and 1.05, burst 4, `fast` co-run state, this card. |
+| **What the comparator is** | `exclusive_fcfs` is **whole-die time-slicing between tenants**, not first-come-first-served and not priority: the registry rotates every round. Read 1.9 as "beats time-slicing", which is what was measured. **Strict priority — the whole die to the deadline-carrying tenant whenever it has work — is not measured anywhere in this project yet.** See the decision-log entry of 2026-08-26 and `docs/prereg-priority-baseline.md`. |
+| **Falsifier** | `exclusive_priority` matching or beating this on the same cells. |
+
+**The effect is asymmetric in magnitude, not in frequency, and that is the
+finding.** Of the 30 paired configurations, 13 favour the adaptive policy,
+8 favour time-slicing and 9 are exactly identical. The sign test over the
+21 non-tied pairs is 13 to 8, p = 0.383 — nothing. What makes the interval
+exclude zero is the size of the two sides:
+
+    wins    13 configs, worst-case -0.7500, median -0.0909, total -2.2775
+    losses   8 configs, worst-case **+0.0455**, median +0.0185, total +0.2151
+
+**No loss exceeds 4.6 points; five wins exceed 10 points and two exceed 60.**
+So choosing the split at run time is close to free when it is wrong and
+occasionally decisive when it is right. Reporting this as a mean would
+hide the shape that matters, and reporting the sign test alone would
+throw the result away.
+
+The pre-registered predictors, all four reported: urgent request count
++0.484, video request count -0.450, horizon -0.086, coexistence fraction
++0.126, at n = 30. None is claimed. Coexistence — this project's own
+explanation for the 405-cell grid's compression — moved from -0.012 at
+n = 10 to +0.126 at n = 30 and explains nothing at either.
+
 ---
 
 ## 2. Negative results
@@ -287,10 +318,23 @@ well above 0.025, so the 2.5th percentile is zero as arithmetic rather
 than as an effect size.
 
 This is 2.1 replicated on the workload 2.1 nominated as its own escape
-route -- +0.56% there, +0.3% to +1.7% here -- and it is the answer to
-"is there a confirmed benefit" for the probe and SLO-aware layer
-specifically: no, and now measured twice under conditions chosen to
-favour it.
+route -- +0.56% there, +0.3% to +1.7% here.
+
+**Corrected 2026-08-26 by A3, which reversed the sign.** On 15 disjoint
+seeds and 30 paired configurations the method is nominally *better* than
+its ablation: -0.0057, [-0.0182, +0.0033], the interval crossing zero.
+The correct reading is not "the method is worse" and never was: **26 of
+those 30 configurations are exactly identical**, and the mean is decided
+by four cells -- two where the method is better by 0.117 and two where it
+is worse by about 0.03. Across Experiment A and A3 together the two
+policies are indistinguishable and the sign of the nominal difference is
+set by a handful of cells, which is 2.2b's finding arriving again.
+
+So the answer to "is there a confirmed benefit" for the probe and
+SLO-aware layer specifically is: **no confirmed benefit, and no confirmed
+harm either.** It has never been shown to add anything, in five
+evaluations across two workload regimes, and the honest description is
+that it is the same behaviour as its ablation almost everywhere.
 
 **Coverage.** All twenty groups drew the `fast` co-run state. The base
 rate over 1024 recorded cells is 923 fast to 101 slow, so twenty in a

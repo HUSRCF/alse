@@ -3621,3 +3621,63 @@ are swapped -- which is the defect, pinned so it cannot be conflated
 again. Adding it to `BASELINE_POLICIES` changes no existing number: the
 405 cells and Experiment A's cells do not contain that policy, and
 `strongest_baseline` ranks only policies present.
+
+### 2026-08-26 -- A3 lands verdict 1, and two things it does not mean
+
+120 cells, 30 groups, 15 seeds disjoint from Experiment A's, arrivals
+only, envelope off, all safe with no safety failures, every group drew
+`fast`. The tree that ran them is byte-identical to the one that ran A1
+and A2 -- the sha256 manifest differs by one file, the A3 analyser, which
+the runtime does not import.
+
+**The pre-registered verdict is 1: run-time choice beats the comparator.**
+`step_matched_pairing` against `exclusive_fcfs`, miss rate
+-0.0687 [-0.1361, -0.0161], -14.9%, and the interval excludes zero
+separately at each load. Video goodput is -0.1%, [-0.0026, +0.0016] --
+not a trade, a wash. Against `fixed_split_8` it is
+-0.1061 [-0.1837, -0.0415], which replicates A2/arrivals' verdict 3 on
+disjoint seeds.
+
+**The shape is asymmetric in magnitude, not frequency, and that is the
+result.** 13 wins, 8 losses, 9 exact ties; the sign test is 13-to-8,
+p = 0.383, which on its own says nothing. What excludes zero is that the
+worst loss is **+0.0455** while five wins exceed 10 points and two exceed
+60. Choosing at run time is nearly free when it is wrong and occasionally
+decisive when it is right. A2's n = 10 saw the same shape and could not
+resolve it; n = 30 can.
+
+**First thing it does not mean.** The comparator is not the floor. Read
+on the same day: `exclusive_fcfs` is whole-die time-slicing between
+tenants, because the registry rotates every round. A3's pre-registration
+inherited Experiment A's "no partitioning at all" wording for it, and
+that wording is wrong about the arm. The campaign and the verdict stand
+-- the arm that ran is the arm that was declared -- but the sentence it
+licenses is "beats whole-die time-slicing", not "beats not partitioning".
+`exclusive_priority` is implemented and pre-registered and has not run.
+Until it does, 1.9 is a claim against time-slicing and says so.
+
+**Second thing it does not mean: M flipped, and the flip is the point.**
+The pre-registration said that if the choice of `M` between
+`step_matched_pairing` and `slo_aware_partitioning` reversed it would be
+reported rather than hidden. It reversed. In A3 the declared METHOD is
+nominally *better* than its ablation by -0.0057, [-0.0182, +0.0033],
+where in all four of Experiment A's evaluations it was worse by +0.3% to
++1.7%.
+
+This corrects a framing given earlier the same day -- "worse in all four,
+never better" -- which was accurate about Experiment A and wrong as a
+description of the two policies. **26 of A3's 30 configurations are
+exactly identical.** The mean is decided by four cells: two where the
+method is better by 0.117 and two where it is worse by about 0.03. The
+right conclusion across all five evaluations is not that the method is
+worse but that the two are indistinguishable and the nominal ordering is
+set by a handful of cells -- 2.2b's finding, arriving for the third time.
+No confirmed benefit and no confirmed harm.
+
+**Where this leaves the shape of the paper.** Established, with intervals
+excluding zero: partitioning beats rotation and both tenants gain (1.5);
+masking beats two unmasked full-die streams (1.6b); run-time choice beats
+whole-die time-slicing and the best fixed split, at no cost in video
+goodput (1.9). Not established: that the probe and SLO-aware layer add
+anything over step-matched pairing (2.2, 2.3). Unmeasured, and the one
+that decides whether any of this needs masks: strict priority.
