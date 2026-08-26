@@ -105,7 +105,7 @@ CogVideoX-2b at 480x720x9 frames.
 | | |
 | --- | --- |
 | **Claim** | Under the grid's own Poisson arrivals, a policy that chooses the split each round beats both whole-die time-slicing between tenants and the best split chosen once, on urgent miss rate, at no cost in video goodput. |
-| **Evidence** | Experiment A3, pre-registered in `docs/prereg-priority-baseline.md`'s sibling `docs/prereg-experiment-a3.md` before it ran. 120 cells on 15 seeds disjoint from Experiment A's, envelope off, 30 paired configurations. Against `exclusive_fcfs`: miss **-0.0687, [-0.1361, -0.0161]**, -14.9%, and separately at each load, [-0.1857, -0.0014] at 0.6 and [-0.1526, -0.0049] at 1.05. Video goodput -0.1%, [-0.0026, +0.0016]. Against `fixed_split_8`: **-0.1061, [-0.1837, -0.0415]** — an independent replication of A2/arrivals on disjoint seeds. |
+| **Evidence** | Experiment A3, pre-registered before it ran. 120 cells on 15 seeds disjoint from Experiment A's, envelope off. Intervals are the **cluster bootstrap over the 15 seeds**, not over the 30 cells — see the note below. Against `exclusive_fcfs`: miss **-0.0687, [-0.1521, -0.0044]**, -14.9%. Against `fixed_split_8`: **-0.1061, [-0.2040, -0.0276]**, and video goodput **+0.0495, [+0.0257, +0.0774]**. Video against `exclusive_fcfs` is -0.1%, [-0.0030, +0.0014] — a wash, not a trade. |
 | **Scope** | Poisson arrivals, SDXL beside CogVideoX-2b, loads 0.6 and 1.05, burst 4, `fast` co-run state, this card. |
 | **What the comparator is** | `exclusive_fcfs` is **whole-die time-slicing between tenants**, not first-come-first-served and not priority: the registry rotates every round. Read 1.9 as "beats time-slicing", which is what was measured. **Strict priority — the whole die to the deadline-carrying tenant whenever it has work — is not measured anywhere in this project yet.** See the decision-log entry of 2026-08-26 and `docs/prereg-priority-baseline.md`. |
 | **Falsifier** | `exclusive_priority` matching or beating this on the same cells. |
@@ -124,6 +124,21 @@ So choosing the split at run time is close to free when it is wrong and
 occasionally decisive when it is right. Reporting this as a mean would
 hide the shape that matters, and reporting the sign test alone would
 throw the result away.
+
+**The independent unit is the seed, not the cell, and this was found by
+an outside review rather than by us.** `build_trace` seeds its generator
+with `spec.seed` alone; the load enters only as a rate. So one seed at
+load 0.6 and at load 1.05 is *the same arrival sequence rescaled in
+time*. Verified rather than assumed: the ratio of inter-burst gaps
+between the two loads is constant to within 1e-9 at every seed checked.
+The 30 "paired configurations" are 15 independent traces measured at two
+rates.
+
+Every paired interval in this project is affected. 1.9 survives the
+correction and is quoted above at the cluster bootstrap: the upper bound
+moves from -0.0161 to **-0.0044**, so the margin is real but roughly
+three and a half times thinner than the cell bootstrap implied. What did
+not survive is Experiment A's verdict 3 -- see 2.3.
 
 The pre-registered predictors, all four reported: urgent request count
 +0.484, video request count -0.450, horizon -0.086, coexistence fraction
@@ -255,8 +270,25 @@ completion under the same pre-registration; neither replaces the other.
 
     A1 arrivals   1. no contribution        miss CI crosses zero
     A1 backlog    1. no contribution        miss -39.4%, video -6.5%
-    A2 arrivals   3. SCHEDULING CONTRIBUTION  miss -22.0%, video +6.3%
+    A2 arrivals   1. no contribution        corrected -- see below
     A2 backlog    1. no contribution        miss -60.1%, video -5.5%
+
+**Corrected 2026-08-27. A2/arrivals was reported as verdict 3 and is
+not.** Its interval was computed over 10 cells treated as 10 independent
+units. They are 5: `build_trace` seeds on `spec.seed` alone, so the two
+loads at one seed are the same arrival sequence rescaled in time, and the
+ratio of their inter-burst gaps is constant to 1e-9. Under the cluster
+bootstrap over those 5 seeds the interval is **[-0.3342, +0.0044]** where
+the cell bootstrap gave [-0.2814, -0.0120]. It crosses zero. **All four
+of Experiment A's evaluations are verdict 1.** The backlog rows are
+unaffected -- [-0.4283, -0.1450] and [-0.7708, -0.4158] still exclude
+zero -- and they fail on video anyway.
+
+The defect was found by an outside review of the code, not by us, and not
+by any check this project had in place. A3, built as an independent
+replication precisely because A's ten pairs were thin, carries 15 seeds
+and survives the same correction. The claim that stands is 1.9's, on A3's
+evidence, and not A's.
 
 `step_matched_pairing` is the best adaptive arm in all four by the
 pre-registered rule, and it has the lowest miss rate of every non-oracle
@@ -417,6 +449,67 @@ intervals excluding zero, 10 seeds paired inside one process.
 
 The planner is robust to ±20% predictor error, which is what plan.md's
 clause asks for. It is simply not robust *because* the model is accurate.
+
+### 3.6 That adaptive spatial partitioning beats prioritising the urgent tenant
+
+**Withdrawn 2026-08-27 by Experiment P, under the verdict pre-registered
+in `docs/prereg-priority-baseline.md` before it ran.**
+
+`exclusive_priority` -- the whole die to the deadline-carrying tenant
+whenever it has work, no partitioning ever -- beats `step_matched_pairing`
+on urgent miss rate in both regimes, with intervals that exclude zero
+under the cluster bootstrap over seeds:
+
+    arrivals   step_matched - priority   +0.2808  (+134.0%)  [+0.1000, +0.4958]
+    backlog    step_matched - priority   +0.1808  ( +84.5%)  [+0.0417, +0.3200]
+
+Per cell: priority is better in 15 of 20, tied in 3, worse in 2. Means
+0.2096 against 0.4905 under arrivals and 0.2141 against 0.3949 under
+backlog. 80 cells, all safe, all groups drew `fast`.
+
+**Under arrivals it dominates rather than trades.** Video goodput is
+0.498 at load 0.6 for every arm to three decimals, and the paired
+difference favours the scheduler by +0.4% -- a rounding artefact, not a
+purchase. Jain on tenant die-seconds is 0.8827 against 0.8830, and the
+paired interval crosses zero in both regimes. So the urgent tenant is
+served far better at no cost in throughput and no cost in fairness.
+
+**The fairness defence was named in advance and is not available.** The
+pre-registration said that if fairness were reached for afterwards it
+would have to be stated as a different claim, and recorded the
+expectation that priority would starve the batch tenant. It does not, on
+this workload: the urgent tenant occupies about a third of the horizon,
+so the batch tenant gets the whole die -- at full width -- for the rest.
+
+**What the scheduler does buy, and what it costs.** In backlog only, the
+scheduler gets +6.7% video goodput, [+0.0058, +0.1724]. It pays +84.5%
+urgent miss for it. Against plan.md's own bar -- a 20% *reduction* in
+miss for no more than 5% of video -- that is a failure by a wide margin
+in the wrong direction.
+
+**The prediction, and how it did.** The pre-registration predicted
+`exclusive_priority` "far below every arm measured so far in the arrivals
+regime -- below 0.15 at load 0.6". Measured: **0.1608**. The substantive
+half is right and larger than predicted -- 0.1608 against 0.3788 for
+`step_matched_pairing` in the same cells, and below the 0.2002 the
+*oracle* reached in A2's comparable cells. The stated threshold is
+**missed by 0.011**, so the prediction as written is not met and is
+recorded as not met.
+
+**What this does not withdraw.** 1.1-1.6b are mechanism results and are
+untouched: masks are exact, partitioning costs 1.00-1.06 per side, all
+five splits Pareto-dominate rotation, and masked partitioning beats two
+unmasked full-die streams. 1.9 remains true as stated -- run-time choice
+does beat whole-die time-slicing and the best fixed split -- and is no
+longer interesting, because a policy with no partitioning at all beats
+both.
+
+**What it does not settle.** The scheduler it refutes had an action space
+of exactly two grants, `{16+16, 32+0}`, and ran on a runtime whose round
+barrier costs 44% where the hardware costs 3.4%. Neither defect is a
+property of spatial partitioning. This withdraws the claim for the
+scheduler that was built, not for the idea.
+
 
 ## 4. Open
 

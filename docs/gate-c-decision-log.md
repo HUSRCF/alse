@@ -3681,3 +3681,73 @@ whole-die time-slicing and the best fixed split, at no cost in video
 goodput (1.9). Not established: that the probe and SLO-aware layer add
 anything over step-matched pairing (2.2, 2.3). Unmeasured, and the one
 that decides whether any of this needs masks: strict priority.
+
+### 2026-08-27 -- an outside review found two defects we had no check for, and Experiment P landed verdict 3
+
+An external review of the code and documents raised nine points. Two were
+checkable and both were right; one of them overturns a result we had
+already reported.
+
+**1. The independent unit is the seed, not the cell.** `build_trace` does
+`random.Random(spec.seed)` and the load enters only as a rate, so one
+seed at load 0.6 and at load 1.05 is *the same arrival sequence rescaled
+in time*. Verified rather than conceded: the ratio of inter-burst gaps
+between the two loads is constant to within 1e-9 at every seed checked --
+1.7716, 1.7531, 1.7478. Every paired interval in this project has half
+the independent units it claimed.
+
+Recomputed with a cluster bootstrap over seeds:
+
+    A3   vs exclusive_fcfs   cell [-0.1361,-0.0161]  cluster [-0.1521,-0.0044]  survives
+    A3   vs fixed_split_8    cell [-0.1837,-0.0415]  cluster [-0.2040,-0.0276]  survives
+    A2/arrivals vs fixed_8   cell [-0.2814,-0.0120]  cluster [-0.3342,+0.0044]  DOES NOT
+
+**Experiment A's verdict 3 is withdrawn.** All four of its evaluations are
+verdict 1. The one positive result it produced was an artefact of
+treating ten cells as ten independent units when they are five. A3
+survives because it was built with 15 seeds precisely because A's ten
+pairs were thin -- so the replication did its job, including on a defect
+neither campaign knew about.
+
+**2. The adaptive policies have two actions, not five.**
+`step_matched_pairing` returns `{first: half, second: units - half}` or
+`{behind: units}`; `deadline_aware` the same pair. The action space is
+`{16+16, 32+0}`. Meanwhile 1.5 measures five splits, every one of which
+Pareto-dominates rotation, and the *most asymmetric* gives the largest
+urgent gain -- 4+28 is +71.4%. The policy never issues the grant its own
+hardware evidence says is best. Nothing measured here has tested dynamic
+quota selection; it has tested switching between an even split and
+exclusive.
+
+**3. And Gate A's line in CLAUDE.md was false.** It read "`missing`. No
+masked kernel has run", copied from the stale 2026-07-30 alignment row,
+which was about the NVIDIA wording. Gate A-AMD passed all clauses on
+2026-08-02 with 192 masked cells, and the single-SKU decision made it the
+only Gate A. Fixed.
+
+**Experiment P landed the same day, and it is verdict 3.** Priority is
+better:
+
+    arrivals  step_matched - exclusive_priority  +0.2808 (+134.0%)  [+0.1000, +0.4958]
+    backlog   step_matched - exclusive_priority  +0.1808 ( +84.5%)  [+0.0417, +0.3200]
+
+Better in 15 of 20 cells, tied in 3. Under arrivals it dominates rather
+than trades: video goodput 0.498 for every arm to three decimals, Jain
+0.8827 against 0.8830 with the paired interval crossing zero. The
+fairness defence written down before the run is not available -- the
+urgent tenant occupies about a third of the horizon, so the batch tenant
+holds the whole die at full width for the rest.
+
+The pre-registered prediction was "below 0.15 at arrivals load 0.6".
+Measured 0.1608 -- **the threshold is missed by 0.011** and the
+prediction as written is not met, though the substance is right and
+larger than predicted: 0.1608 against 0.3788 for the scheduler in the
+same cells.
+
+**What this leaves.** The mechanism results stand and are untouched.
+The scheduling claim is withdrawn (3.6) for the scheduler that was
+built -- a two-action policy on a runtime whose round barrier costs 44%
+where the hardware costs 3.4%. Both defects are named, neither is a
+property of spatial partitioning, and neither has been measured. The next
+experiment is not a bigger grid; it is the two-by-two that separates
+them.

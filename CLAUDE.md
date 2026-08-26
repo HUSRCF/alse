@@ -30,12 +30,21 @@ When adding an arm, read what the arm does rather than what it is called.
 | 1.5 | Partitioning two mismatched tenants costs 1.00–1.06 per side and **both** gain against rotation (4+28: +71.4% / +1.4%) | `docs/claims-and-evidence.md` |
 | 1.6b | Masked partitioning beats two **unmasked** full-die streams: urgent miss +0.0333 [+0.0079, +0.0592] against it | `experiments/runs/unmasked_base`, 36 cells |
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
-| 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687 [−0.1361, −0.0161], video −0.1% | Experiment A3, `experiments/runs/expA3`, 120 cells |
+| 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
 losses, 9 exact ties, sign test p = 0.383 — but the worst loss is +0.046
 while five wins exceed 10 points and two exceed 60. Nearly free when
 wrong, occasionally decisive when right. Report the shape, not the mean.
+
+**The independent unit is the seed, not the cell.** `build_trace` seeds
+its generator with `spec.seed` alone, so one seed at load 0.6 and at load
+1.05 is *the same arrival sequence rescaled in time* — verified, the
+inter-burst gap ratio is constant to 1e-9. Every paired comparison in
+this project therefore has half the independent units it appears to.
+1.9's interval above is the cluster bootstrap over 15 seeds; the naive
+cell bootstrap gives [-0.1361, -0.0161] and is too tight. Experiment A's
+verdict 3 did **not** survive this correction — see 2.3.
 
 ### Not established
 
@@ -44,6 +53,15 @@ wrong, occasionally decisive when right. Report the shape, not the mean.
   20% improvement. Its hedge — that the grid is three-quarters no-op —
   was closed by Experiment A rather than cashed: on the backlog workload
   it nominated, the answer is the same.
+* **The adaptive policies have two actions, not five.**
+  `step_matched_pairing` returns `{first: 16, second: 16}` or
+  `{one: 32}`, and `deadline_aware` the same pair. The action space is
+  `{16+16, 32+0}`. Meanwhile 1.5 measures **five** splits, all of which
+  Pareto-dominate rotation, with the most asymmetric giving the largest
+  urgent gain (4+28: +71.4%). **The policy never issues the grant the
+  hardware evidence says is best.** Nothing measured so far tests dynamic
+  quota selection; it tests switching between an even split and
+  exclusive.
 * **2.2 / 2.3** The probe and SLO-aware layer add nothing over
   step-matched pairing. Across five evaluations they are
   **indistinguishable**: 26 of A3's 30 configurations are exactly
@@ -51,17 +69,35 @@ wrong, occasionally decisive when right. Report the shape, not the mean.
   confirmed harm. Do not write "the method beats" or "the method loses";
   both have been wrong here.
 
-### Unmeasured, and it decides whether any of this needs masks
+### Withdrawn 2026-08-27: the scheduling claim, by the floor that was missing
 
-**Strict priority** (`exclusive_priority`: whole die to the
-deadline-carrying tenant whenever it has work). Pre-registered with a
-mechanism-based prediction in `docs/prereg-priority-baseline.md`;
-Experiment P was launched 2026-08-26. Until it lands, every headline
-comparison in this project is against a set that omits the floor.
+**Strict priority beats the scheduler.** `exclusive_priority` — whole die
+to the deadline-carrying tenant whenever it has work, no partitioning
+ever — beats `step_matched_pairing` on urgent miss by **+134%** under
+arrivals and **+84.5%** under backlog, intervals excluding zero under the
+seed cluster bootstrap. Better in 15 of 20 cells, tied in 3. Under
+arrivals it **dominates**: identical video goodput, identical Jain. The
+fairness defence was named in the pre-registration before the run and is
+not available. See 3.6.
+
+**Read this correctly.** The refuted scheduler has an action space of
+exactly two grants and ran under a round barrier costing 44% where the
+hardware costs 3.4%. Neither is a property of spatial partitioning. 3.6
+withdraws the claim for the scheduler that was built, not for the idea —
+and the two defects are named, cheap to fix, and unmeasured.
 
 ## Gates
 
-* **Gate A** — `missing`. No masked kernel has run.
+* **Gate A** — **accepted**, and it is Gate A-AMD. All clauses passed
+  2026-08-02 (`plan.md` decision `gate-a-amd-passed`); the single-SKU
+  decision of 2026-08-09 made the AMD clauses the only Gate A. 192 masked
+  cells, all 32 mask bits mapped, 10,000 action switches with readback,
+  latent byte-identical to an unswitched reference — see 1.1. The
+  NVIDIA-worded Gate A is historical record and does not count as
+  incomplete.
+  *(Corrected 2026-08-27: this line previously read "`missing`. No masked
+  kernel has run", copied from the stale 2026-07-30 alignment row, which
+  was about the NVIDIA wording. It was false in both halves.)*
 * **Gate B / Gate B-AMD** — **not accepted**. Both models sit at 9 of 10
   with `accepted: false`, failing the same clause,
   `cold_model_predicts_transfer_and_framework_separately`. SDXL: transfer
@@ -77,7 +113,7 @@ comparison in this project is against a set that omits the floor.
 
 The plan's calendar and the work have diverged in both directions: Gate C
 is done early, hardware runtime experiments from weeks 9–12 have been
-running for weeks, and Gate A has not moved. A stage label is not a claim
+running for weeks, and Gate B has not closed. A stage label is not a claim
 about what was gated when.
 
 ## Where evidence lives
