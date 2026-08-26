@@ -135,11 +135,19 @@ bound what this grid can be read as having settled, and it is the most
 likely reason the nine policies sit inside 0.34 to 0.39 of each other.
 Experiment A (`docs/prereg-experiment-a.md`) measures the same question
 with the video tenant backlogged, where the decision is live for the
-whole horizon. It has since run: see 2.3. With the tenants coexisting
-for the whole horizon the policies separate by a factor of five on miss
-rate rather than sitting inside 0.34 to 0.39, which confirms that this
-grid's compression is a property of its workload and not of the
-policies.
+whole horizon. It has since run, and it closes this hedge rather than
+cashing it. Two things came back, and only the first is good news.
+
+With the tenants coexisting for the whole horizon the policies do
+separate by a factor of five on miss rate instead of sitting inside 0.34
+to 0.39, so the compression really was a property of this grid's
+workload. But **the method still does not beat the strongest baseline
+there.** By the same declared rule, in all four of Experiment A's
+evaluations the strongest baseline is `step_matched_pairing` and
+`slo_aware_partitioning` is worse than it by +0.3%, +0.4%, +1.3% and
++1.7%. The friendlier workload was the stated reason to expect a
+different answer, it was measured, and the answer is the same one. 2.1
+stands, and no longer stands with an outstanding excuse. See 2.3.
 
 ### 2.2 The probe does not help, and the grid cannot show it hurts
 
@@ -254,6 +262,35 @@ it does not exclude zero. The single verdict-3 result was measured
 against a comparator set that excludes the arm which performs best in
 that regime. Under backlog the same comparison is -56.9% / -58.7% on
 miss at a cost of 25% of video goodput.
+
+**The comparison the declared rule actually asks for.** Everything above
+compares `step_matched_pairing` against the fixed splits, because that is
+what the pre-registration fixed. But `matrix_results.BASELINE_POLICIES`
+declares `step_matched_pairing` a **baseline** and the method to be
+`slo_aware_partitioning`, `probing_partitioning` and
+`sticky_probing_partitioning`. Under that declaration `strongest_baseline`
+returns `step_matched_pairing` in all four evaluations, and the method
+against it is:
+
+    A1 arrivals   +0.3%  [+0.0000, +0.0050]   9 of 10 identical
+    A1 backlog    +0.4%  [-0.0058, +0.0092]   7 of 10 identical
+    A2 arrivals   +1.7%  [+0.0000, +0.0217]   8 of 10 identical
+    A2 backlog    +1.3%  [+0.0000, +0.0125]   8 of 10 identical
+
+Worse in all four, never better. Of the forty paired configurations
+thirty-two are **exactly identical**, and of the eight that differ the
+method is worse in seven; a sign test on those eight is p = 0.070. Three
+of the four lower bounds are exactly `+0.0000` for the reason 2.2 was
+corrected for: with 8 or 9 of 10 differences equal to zero, a bootstrap
+resample draws no non-zero difference with probability 0.107 to 0.349,
+well above 0.025, so the 2.5th percentile is zero as arithmetic rather
+than as an effect size.
+
+This is 2.1 replicated on the workload 2.1 nominated as its own escape
+route -- +0.56% there, +0.3% to +1.7% here -- and it is the answer to
+"is there a confirmed benefit" for the probe and SLO-aware layer
+specifically: no, and now measured twice under conditions chosen to
+favour it.
 
 **Coverage.** All twenty groups drew the `fast` co-run state. The base
 rate over 1024 recorded cells is 923 fast to 101 slow, so twenty in a
