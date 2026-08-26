@@ -12,7 +12,7 @@ load is defined against a request running alone on the whole die, and the
 urgent deadline is a multiple of the isolated p99. Both come from a
 warm-up pass in this process, so a cell's load axis means the same thing
 on a cold card and a hot one -- the die warms 30 C over a few minutes and
-solo step time rises 5% with it.
+solo step time rises 5%% with it.
 
 **Arrival time is wall time.** The trace is built from measured service
 times, so its clock and the card's are the same clock; a request is
@@ -145,8 +145,20 @@ def main() -> int:
     parser.add_argument("--predictor-error", type=float, default=0.0,
                         help="multiply every prediction the policy sees by "
                              "1+e, leaving the ledger's measurements alone. "
-                             "plan.md week 15: no safety failure at +/-10%, "
-                             "conservative degradation at +/-20%.")
+                             "plan.md week 15: no safety failure at +/-10%%, "
+                             "conservative degradation at +/-20%%.")
+    parser.add_argument("--max-steps-per-round", type=int, default=1,
+                        help="how many steps a granted request may run "
+                             "inside one round. The default of 1 is the "
+                             "round barrier every campaign before "
+                             "2026-08-27 ran under: a round costs the "
+                             "maximum of its steps, so pairing a 0.113 s "
+                             "step beside a 0.521 s one rate-limits the "
+                             "fast tenant to the slow one's step rate -- "
+                             "measured at 44%% where the hardware co-run "
+                             "penalty on the same cell was 3.4%%. Above 1 "
+                             "the fast request runs floor(slowest/its own) "
+                             "steps, capped here.")
     parser.add_argument("--drift-tolerance", type=float, default=0.15,
                         help="the runtime's serial-fallback threshold. The "
                              "campaign found it firing for static_even, "
@@ -160,12 +172,12 @@ def main() -> int:
                              "instead of once per group. Off by default: "
                              "the deadline comes from that measurement, so "
                              "per-policy measurement hands the first arm a "
-                             "colder card and a 2.4% tighter deadline.")
+                             "colder card and a 2.4%% tighter deadline.")
     parser.add_argument("--policies", default="",
                         help="comma-separated policies run back to back in "
                              "one process. This is how a group is run, not "
                              "a convenience: the die warms 30 C over a few "
-                             "minutes and solo step time rises 5% with it, "
+                             "minutes and solo step time rises 5%% with it, "
                              "so running one arm to completion and then the "
                              "next puts the whole drift on one of them. "
                              "Interleaving inside a group pairs them in "
@@ -485,6 +497,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
                       predictor_error=args.predictor_error,
                       externality_blind=args.externality_blind,
                       charge_currency=args.charge_currency,
+                      max_steps_per_round=args.max_steps_per_round,
                       enforce_disjoint=not args.unmasked)
     # Warm-up is residency, not a tenant's debt: on the card a first step
     # measured 1.855 s against a 0.157 s steady step, and charging it made
@@ -597,6 +610,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "cell": spec.cell_id,
         "policy": policy_name,
         "drift_tolerance": args.drift_tolerance,
+        "max_steps_per_round": args.max_steps_per_round,
         "predictor_error": args.predictor_error,
         "externality_blind": args.externality_blind,
         "unmasked": args.unmasked,

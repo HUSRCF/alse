@@ -88,6 +88,64 @@ def exclusive_priority(states: Sequence[RequestState], units: int,
     return {target.request.request_id: units}
 
 
+def deadline_quota(states: Sequence[RequestState], units: int,
+                   now: float,
+                   splits: Sequence[int] = (4, 8, 16, 24, 28)) -> dict[int, int]:
+    """Give the latency-critical tenant the *smallest* quota that still
+    makes its deadline, and everything else to the batch tenant.
+
+    The action space this project actually measured. 1.5 sweeps five
+    splits on the mismatched workload and every one of them
+    Pareto-dominates rotation, with the most asymmetric giving the
+    largest urgent gain: 4+28 is +71.4% urgent against +1.4% video.
+    ``step_matched_pairing`` and ``deadline_aware`` cannot issue any of
+    them -- both return either an even split or the whole die, an action
+    space of exactly two -- so nothing measured before this policy tested
+    dynamic quota selection at all. It tested switching between 16+16 and
+    32+0.
+
+    The rule is deadline-driven rather than throughput-driven because the
+    metric is a deadline: the smallest quota that still makes it is the
+    one that leaves the most die for the tenant with no deadline, and a
+    larger quota buys the critical tenant nothing it can be scored on.
+    Predictions, never true costs, so the choice degrades with the
+    predictor like every other decision here.
+
+    When no split makes the deadline the whole die goes to the critical
+    tenant -- the same rescue ``deadline_aware`` performs, reached after
+    five candidates instead of one.
+    """
+    if not states:
+        return {}
+    if len(states) == 1:
+        return {states[0].request.request_id: units}
+
+    critical = [s for s in states if s.request.deadline_s is not None]
+    if not critical:
+        return static_even(states, units, now)
+    target = min(critical,
+                 key=lambda s: (s.request.deadline_s, s.request.request_id))
+    others = [s for s in states if s.request.request_id
+              != target.request.request_id]
+    if not others:
+        return {target.request.request_id: units}
+    peer = others[0]
+
+    left = target.request.deadline_s - now
+    remaining = target.request.steps - target.steps_done
+
+    def believed(state: RequestState, quota: int) -> float:
+        per_step = state.predicted_step_seconds.get(quota)
+        return float("inf") if per_step is None else per_step
+
+    for split in sorted(splits):
+        quota = max(1, min(units - 1, round(split * units / 32)))
+        if remaining * believed(target, quota) <= left:
+            return {target.request.request_id: quota,
+                    peer.request.request_id: units - quota}
+    return {target.request.request_id: units}
+
+
 def measured_pairs_only(states: Sequence[RequestState], units: int,
                         now: float) -> dict[int, int]:
     """Prefer splits the externality table actually covers.
@@ -547,6 +605,7 @@ for _u in FIXED_SPLITS:
 
 
 BASELINES["deadline_aware"] = deadline_aware
+BASELINES["deadline_quota"] = deadline_quota
 BASELINES["exclusive_priority"] = exclusive_priority
 BASELINES["probing_partitioning"] = probing_partitioning
 BASELINES["step_matched_pairing"] = step_matched_pairing

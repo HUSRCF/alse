@@ -58,6 +58,10 @@ BASELINE_POLICIES = (
     "fixed_split_28",
 )
 METHOD_POLICIES = (
+    # Dynamic quota selection over the five measured splits. Added
+    # 2026-08-27: it is the first policy in this project that can issue
+    # an asymmetric grant, so it is a method rather than a baseline.
+    "deadline_quota",
     "slo_aware_partitioning",
     "probing_partitioning",
     "sticky_probing_partitioning",
