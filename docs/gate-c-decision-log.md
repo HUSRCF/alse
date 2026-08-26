@@ -3549,3 +3549,75 @@ run-time choice is worth a large amount when the tenants genuinely
 coexist, that the cost is video throughput at a scale this experiment
 could not bound below 5%, and that under the grid's own arrival pattern
 the question is not settled at five seeds.
+
+### 2026-08-26 -- the floor was not a floor, and nobody had run the obvious policy
+
+Asked what the nature of the problem is -- whether the method simply
+loses to the simplest heuristic -- and the answer turned out to be worse
+than the question. No measurement in this project shows the method losing
+to the simplest heuristic, because **the simplest heuristic has never
+been run.**
+
+`exclusive_fcfs` has been read as "no partitioning at all" in the
+405-cell grid, in Experiment A's pre-registration (where it is written
+down as "floor: no partitioning at all"), and in A3's. Reading the code:
+`TenantRegistry.ready` returns one candidate per tenant in `self._order`,
+and `Runtime.tick` ends with `self.registry.rotate()`, so `states[0]` --
+the request `exclusive_fcfs` hands the whole die to -- alternates between
+tenants every round. It is whole-die **time-slicing between tenants**.
+Its docstring says exactly that. The name says otherwise, and the name is
+what three comparator sets were reasoned about.
+
+So "give the urgent tenant the whole die whenever it has work" is in no
+comparator set anywhere in this project. `deadline_aware` is not it: it
+defaults to `static_even` and goes exclusive only for a request that
+misses while sharing and makes it while exclusive, evaluated one request
+at a time, so it cannot see that a burst of four needs the die for 3.6 s.
+
+**The arithmetic that makes this urgent.** The deadline is
+`1.5 x 0.905 x 4 = 5.43 s` and every member of a burst carries that same
+absolute deadline. The runtime offers one request per tenant per round,
+so a burst of four is serial whatever the policy: `4 x 0.905 = 3.62 s` at
+the full die, **inside the deadline with 1.81 s to spare**. Under
+rotation the urgent tenant gets about every other round, roughly 7.2 s,
+and the last two members cannot make it. Measured across the ten arrivals
+configurations, bursts arrive with median gaps of 2.67 to 16.10 s against
+a 3.62 s serial burst, so at load 0.6 they mostly do not queue.
+
+That is a mechanism which predicts a strict-priority policy lands far
+below every arm measured -- below 0.15 at arrivals load 0.6, against
+0.4097 for `step_matched_pairing` and 0.2002 for the *oracle*. Recorded
+as a prediction in `docs/prereg-priority-baseline.md` before running,
+because this project's predictions have been wrong in instructive ways
+before.
+
+**Why this is the nature of the problem rather than one more arm.** The
+margin has shrunk every time a simpler comparator was added, in a
+straight line:
+
+    vs FCFS (405 cells)                 6.5%, interval touching zero
+    vs static partition and EDF          ~3%, intervals excluding zero
+    vs the method's own ablation        the METHOD is 0.56% WORSE
+    vs the best fixed split (A2 arr)    -22.0%, interval excluding zero
+    vs exclusive_fcfs (A2 arrivals)     -15.9%, interval crossing zero
+
+Each simpler opponent took more of the margin than the last, and the
+simplest one of all was never on the list. A result that behaves this way
+under added comparators is usually not a small effect waiting for more
+seeds; it is an effect attributable to the comparator set.
+
+**What this does not touch.** 1.5 and 1.6b are mechanism results measured
+without a deadline metric -- partitioning costs 1.00-1.06 per side and
+both tenants gain against rotation; masked partitioning beats two
+unmasked full-die streams with intervals excluding zero. A priority
+policy winning on miss rate says nothing about either. What it threatens
+is only the claim that *choosing a split at run time* buys anything on
+the SLO metric.
+
+`exclusive_priority` is implemented, registered as a **baseline** rather
+than a method, and held by nine unit tests including one that asserts
+`exclusive_fcfs` gives the opposite answer when the two runnable requests
+are swapped -- which is the defect, pinned so it cannot be conflated
+again. Adding it to `BASELINE_POLICIES` changes no existing number: the
+405 cells and Experiment A's cells do not contain that policy, and
+`strongest_baseline` ranks only policies present.

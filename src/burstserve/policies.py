@@ -58,6 +58,36 @@ def static_even(states: Sequence[RequestState], units: int,
     }
 
 
+def exclusive_priority(states: Sequence[RequestState], units: int,
+                       now: float) -> dict[int, int]:
+    """Whole die to the latency-critical tenant whenever it has work.
+
+    The heuristic anyone would write first for a latency-critical tenant
+    beside a batch one, and the one this project's comparator set never
+    contained. ``exclusive_fcfs`` is not it: the registry rotates every
+    round, so that policy is whole-die time-slicing *between* tenants and
+    hands the die to the batch tenant every other round.
+
+    No partitioning at all. If spatial partitioning is worth anything on
+    the SLO metric, it has to beat this -- and if it does not, the
+    scheduling claim reduces to "prioritise the urgent tenant", which
+    needs no masks.
+
+    Latency-critical is read as "carries a deadline" rather than as a
+    tenant name, and EDF breaks ties inside that class. Making it a name
+    check would let the policy work only on this workload's labels.
+    """
+    if not states:
+        return {}
+    critical = [s for s in states if s.request.deadline_s is not None]
+    if critical:
+        target = min(critical,
+                     key=lambda s: (s.request.deadline_s, s.request.request_id))
+    else:
+        target = states[0]
+    return {target.request.request_id: units}
+
+
 def measured_pairs_only(states: Sequence[RequestState], units: int,
                         now: float) -> dict[int, int]:
     """Prefer splits the externality table actually covers.
@@ -517,6 +547,7 @@ for _u in FIXED_SPLITS:
 
 
 BASELINES["deadline_aware"] = deadline_aware
+BASELINES["exclusive_priority"] = exclusive_priority
 BASELINES["probing_partitioning"] = probing_partitioning
 BASELINES["step_matched_pairing"] = step_matched_pairing
 BASELINES["slo_aware_partitioning"] = slo_aware_partitioning

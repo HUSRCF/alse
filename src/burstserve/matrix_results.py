@@ -37,6 +37,11 @@ from typing import Iterable, Sequence
 # an ablation even when it looks like a plausible baseline.
 BASELINE_POLICIES = (
     "exclusive_fcfs",
+    # Strict priority on the whole die. Added 2026-08-26 after noticing
+    # that ``exclusive_fcfs`` rotates and is therefore time-slicing, not
+    # priority, so the obvious production heuristic was in no comparator
+    # set anywhere in this project.
+    "exclusive_priority",
     "static_even",
     "deadline_aware",
     "step_matched_pairing",
