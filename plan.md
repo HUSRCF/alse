@@ -2,7 +2,25 @@
 
 ## 执行状态
 
-- Last updated: 2026-08-03
+- Last updated: 2026-08-26
+- **阶段验收（2026-08-26，第 3–4 周最后一天）**：requirement alignment 报告
+  `docs/alignment-weeks-3-4.md`，sha256
+  `e97c67943964c8cf50150f0cbf59e322aa52dafe4ee2e65c9dd6c630b8c9806b`。
+  18 行：exact 9 / approximate 4 / missing 4 / not_applicable 1。
+  **Gate B-AMD 未通过**——SDXL 与 CogVideoX-2b 均为 10 条中 9 条 PASS、
+  `accepted: false`，唯一失败项同为
+  `cold_model_predicts_transfer_and_framework_separately`
+  （SDXL：transfer 4.08% / total 7.36% 过，**framework 88.5% 不过**；
+  CogVideoX-2b：**transfer 83.9% / total 67.3% 均不过，framework 从未独立标定**）。
+  下方 2026-08-03 的 Gate B-AMD 段落是当时的记录，未删改；以本行与报告为准。
+- **待用户决定（2026-08-26 新增）**：2026-08-09 的单 SKU 决定写进了 Gate A
+  条文（当前 338–341 行，以引文为准：「下列 AMD 条文即唯一的 Gate A」），**但没有写进
+  Gate B**——当前 384 行仍为「Gate B-AMD（2026-08-02 新增，补充而非替代上面的
+  Gate B）」，而该措辞早于单 SKU 决定一周。按现行文本，Gate B 的 NVIDIA
+  条文（4090、四个模型、SM quota {16..128}、G={1,4,8,16}、pinned/pageable、
+  NUMA、PCIe 方向）仍然有效且**全部未满足**。是否把单 SKU 决定同样延伸到
+  Gate B 是用户的决定，本报告不代为改写要求——「不事后改写」正是本协议要
+  防的失效模式。在该决定作出前，Gate B（NVIDIA）记为 `missing`。
 - Current phase: **第 3–4 周——Gate B profiling（AMD 线）**;Gate A-AMD 已于
   2026-08-02 全条通过。
   **主推进平台自 2026-08-02 起转为 AMD**（`husrcf@X570`，Radeon AI PRO
