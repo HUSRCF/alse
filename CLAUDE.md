@@ -103,6 +103,18 @@ die, not how it is divided.** In backlog neither adaptive policy
 partitions at all; they differ from priority only in picking by
 accumulated deficit rather than by deadline.
 
+**Corrected the same day: the 2x2's pipelining cap was set from the wrong
+ratio.** It was 8, justified from 16+16's 4.6x. The asymmetric splits
+reach 12.6x (24+8) and 25.8x (28+4). With the barrier on, **no split can
+meet the 5.34 s burst deadline at all** -- 17.7 s to 99.7 s for a 32-step
+burst. With it off and a cap of 12, `24+8` finishes in **4.7 s, inside
+the deadline**; at the cap of 8 it takes 6.3 s and misses. The
+`step_matched_pairing` result is unaffected (it never pairs), but the
+six-action barrier-off cell was not properly tested. And
+`deadline_quota`'s rule is backwards under pipelining: a *larger* urgent
+quota buys more steps per round, so the burst finishes fastest at 24+8,
+not 4+28.
+
 ## Gates
 
 * **Gate A** — **accepted**, and it is Gate A-AMD. All clauses passed

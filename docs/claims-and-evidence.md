@@ -582,10 +582,38 @@ gets the die, not how it is divided**: `step_matched_pairing` picks by
 accumulated deficit and `exclusive_priority` picks by deadline, and in
 backlog neither of them partitions at all.
 
-**What it does not claim.** `deadline_quota` is one rule over six
-actions, and a bad one for a diagnosed reason. That a better six-action
-rule exists is not excluded -- it would need its own pre-registration and
-its own seeds. What has changed is where the burden sits.
+**Corrected 2026-08-27, the same day, and the correction is ours.** The
+pre-registration set the pipelining cap at 8 and justified it as "the
+0.521/0.113 ratio floors to 4, so the cap does not bind". That ratio is
+**16+16's**. Across the asymmetric splits the step-time ratio is much
+larger, from the cost model that ran:
+
+    split   urgent step   video step   ratio   round    burst of 32 steps
+    4+28        0.521        0.552      1.1    0.552          17.7 s
+    8+24        0.269        0.608      2.3    0.608          19.5 s
+    16+16       0.158        0.805      5.1    0.805          25.8 s
+    24+8        0.125        1.574     12.6    1.574          50.4 s
+    28+4        0.121        3.116     25.8    3.116          99.7 s
+
+Against a 5.34 s burst deadline, **no split can meet it while the barrier
+is on** -- that is arithmetic, not scheduling. With the barrier off and an
+adequate cap, `24+8` runs 12 urgent steps per round and finishes the
+burst in **4.7 s, inside the deadline**. At the cap of 8 it runs 8 and
+takes 6.3 s, outside it. **So the cap chosen for this experiment is
+precisely what prevented the one split that could have worked.**
+
+What this costs the verdict: the `step_matched_pairing` conclusion is
+untouched, because that policy never pairs and is barrier-free either
+way. The **six-action, barrier-off cell was not properly tested**, so
+verdict 3's second clause is not established for it. Reported here rather
+than left for a reader to derive from the cost table.
+
+**And `deadline_quota`'s rule is wrong in a way this reveals.** It picks
+the *smallest* quota that makes the deadline. Under pipelining the
+opposite is right: a larger urgent quota makes urgent's step short
+relative to video's, which buys more steps per round. The burst finishes
+fastest at `24+8`, not at `4+28`. A policy built on this arithmetic has
+never been run.
 
 
 ## 4. Open

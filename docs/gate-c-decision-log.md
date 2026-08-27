@@ -3812,3 +3812,60 @@ The honest caveat, stated so it is not used as an escape: `deadline_quota`
 is one rule over six actions and a bad one for a diagnosed reason. A
 better six-action rule is not excluded and would need its own
 pre-registration. What has changed is where the burden sits.
+
+### 2026-08-27 -- the 2x2's cap was set from the wrong ratio, and it is the ratio that decides everything
+
+Found while working out where the boundary between partitioning and
+priority lies, hours after reporting the 2x2. It is our error, it is
+quantified, and it costs one of the four cells.
+
+The pre-registration set `--max-steps-per-round 8` and justified it:
+"the cap of 8 does not bind at the measured ratio: the 0.521/0.113 ratio
+floors to 4." **That ratio is 16+16's.** The cost model that ran gives:
+
+    split   urgent step   video step   ratio   round    burst of 32 steps
+    4+28        0.521        0.552      1.1    0.552          17.7 s
+    8+24        0.269        0.608      2.3    0.608          19.5 s
+    16+16       0.158        0.805      5.1    0.805          25.8 s
+    24+8        0.125        1.574     12.6    1.574          50.4 s
+    28+4        0.121        3.116     25.8    3.116          99.7 s
+
+Two things fall out of that table and neither was visible before.
+
+**With the barrier on, no split can meet the burst deadline.** It is
+5.34 s and the cheapest partitioned burst is 17.7 s. Only 32+0 makes it,
+at 3.7 s. So under the round barrier spatial partitioning is not a bad
+choice for this workload -- it is arithmetically incapable, and every
+campaign this project has run before today was under that barrier. That
+reframes 2.1, 2.3 and 3.6: they measured a mechanism that could not have
+won.
+
+**With the barrier off, the cap decides which split works.** Pipelining
+gives a request `floor(slowest/its own)` steps per round, so at 24+8 it
+runs 12 and the burst finishes in 4.7 s -- **inside the deadline**. At our
+cap of 8 it runs 8 and takes 6.3 s -- outside. The cap chosen for the
+experiment is exactly what prevented the one split that could have
+worked.
+
+**And the policy's rule is backwards.** `deadline_quota` picks the
+smallest quota that makes the deadline. Under pipelining a *larger*
+urgent quota is better: it shortens urgent's step relative to video's and
+buys more steps per round. Ordered by burst completion the splits go
+24+8 (4.7 s), 16+16 (5.6 s), 28+4 (6.2 s), 8+24 (9.7 s), 4+28 (17.7 s).
+`deadline_quota` searches that list from the wrong end.
+
+What survives: `step_matched_pairing` never pairs, is barrier-free either
+way, and still loses to priority by 83-140%. That conclusion is
+untouched. What does not survive: verdict 3's second clause for the
+six-action barrier-off cell, which was not properly tested.
+
+**Where the boundary is, from the same arithmetic.** Over a burst period
+T, priority gives the batch tenant `32 x (T - 3.71)` unit-seconds and a
+`24+8` partition gives it `8 x T`. Partitioning wins when `T < 4.95 s`.
+Measured inter-burst gaps are a median of 6.79 s at load 0.6 and about
+3.9 s at load 1.05. **So the prediction is that partitioning loses at 0.6
+and wins at 1.05** -- and it has never been tested, because no policy
+here issues a persistent 24+8 and the barrier made it impossible anyway.
+
+That is a computable, falsifiable boundary rather than a verdict, and it
+is what the next pre-registration should be about.
