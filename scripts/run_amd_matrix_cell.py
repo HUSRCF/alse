@@ -55,6 +55,35 @@ from burstserve.workload import (                               # noqa: E402
 import run_amd_mismatched_corun as harness                      # noqa: E402
 
 
+def _grant_shapes(ledger) -> dict:
+    """How many rounds issued each grant shape, as "24+8" style keys.
+
+    Experiment 2x2 could not tell whether its six-action policy ever
+    issued an asymmetric grant, because nothing recorded the grants and
+    the whole question was whether it reached 24+8. Counted, not inferred
+    from the policy's name.
+    """
+    out: dict[str, int] = {}
+    for record in ledger:
+        if not record.granted:
+            continue
+        key = "+".join(str(u) for u in sorted(record.granted.values(),
+                                              reverse=True))
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
+def _urgent_units(ledger, tenant_of: dict) -> dict:
+    """How many rounds gave the deadline-carrying tenant each width."""
+    out: dict[str, int] = {}
+    for record in ledger:
+        for rid, units in (record.granted or {}).items():
+            if tenant_of.get(rid) != "urgent":
+                continue
+            out[str(units)] = out.get(str(units), 0) + 1
+    return out
+
+
 def isolated_service(adapter, pool, steps, args, torch):
     """Whole-request service on the whole die, and the step p99.
 
@@ -663,6 +692,17 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "safe": not safety,
         "ledger": {
             "rounds": rounds,
+            # What the policy actually granted, counted rather than
+            # inferred from its name. Experiment 2x2 could not tell
+            # whether a six-action policy ever issued an asymmetric grant
+            # because nothing recorded the grants, and the whole question
+            # was whether it reached 24+8. Two views: the shape of each
+            # round's grant, and the width the deadline-carrying tenant
+            # received.
+            "grant_shapes": _grant_shapes(runtime.ledger),
+            "urgent_units_histogram": _urgent_units(
+                runtime.ledger, {rid: req.tenant
+                                 for rid, (req, _) in admitted.items()}),
             "decision_p99_s": runtime.decision_p99_seconds(),
             "quota_seconds_by_tenant": runtime.quota_seconds_by_tenant,
             "jain": (

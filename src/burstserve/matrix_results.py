@@ -62,6 +62,7 @@ METHOD_POLICIES = (
     # 2026-08-27: it is the first policy in this project that can issue
     # an asymmetric grant, so it is a method rather than a baseline.
     "deadline_quota",
+    "pipelined_quota",
     "slo_aware_partitioning",
     "probing_partitioning",
     "sticky_probing_partitioning",

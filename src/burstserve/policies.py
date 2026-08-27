@@ -146,6 +146,71 @@ def deadline_quota(states: Sequence[RequestState], units: int,
     return {target.request.request_id: units}
 
 
+def make_pipelined_quota(cap: int = 16,
+                         splits: Sequence[int] = (4, 8, 16, 24, 28)):
+    """Smallest quota that makes the deadline *under pipelining*.
+
+    ``deadline_quota`` asked whether ``remaining x own_step <= left`` and
+    that question ignores the peer entirely. A round is paced by its
+    slowest member, so an urgent request at 16 units beside video at 16
+    advances one step per 0.805 s round, not per its own 0.158 s: a
+    32-step burst takes 25.8 s, not the 5.06 s the old rule believed, and
+    it believed 16+16 feasible against a 5.34 s deadline. That is the
+    same confusion as 3.7's -- die-seconds are not what a deadline is paid
+    in -- wearing a different hat.
+
+    Here feasibility is computed the way the round actually runs. With
+    ``max_steps_per_round`` above one a request runs
+    ``floor(peer_step / own_step)`` steps per round, capped, so the burst
+    takes ``ceil(remaining / budget) x max(own_step, peer_step)``. On the
+    measured cost model against a 5.34 s deadline that makes **24+8 the
+    only feasible split** -- 3 rounds of 1.574 s, 4.7 s -- where 16+16
+    needs 5.6 s and 8+24 needs 9.7 s.
+
+    ``cap`` must equal the runtime's ``max_steps_per_round``. A policy
+    reasoning about a budget the runtime will not grant is predicting
+    someone else's scheduler.
+    """
+    if cap < 1:
+        raise ValueError("a round has to run at least one step")
+
+    def pipelined_quota(states, units, now) -> dict[int, int]:
+        if not states:
+            return {}
+        if len(states) == 1:
+            return {states[0].request.request_id: units}
+        critical = [s for s in states if s.request.deadline_s is not None]
+        if not critical:
+            return static_even(states, units, now)
+        target = min(critical, key=lambda s: (s.request.deadline_s,
+                                              s.request.request_id))
+        others = [s for s in states
+                  if s.request.request_id != target.request.request_id]
+        if not others:
+            return {target.request.request_id: units}
+        peer = others[0]
+
+        left = target.request.deadline_s - now
+        remaining = max(1, target.request.steps - target.steps_done)
+
+        for split in sorted(splits):
+            mine = max(1, min(units - 1, round(split * units / 32)))
+            theirs = units - mine
+            own = target.predicted_step_seconds.get(mine)
+            other = peer.predicted_step_seconds.get(theirs)
+            if not own or not other or own <= 0 or other <= 0:
+                continue
+            budget = max(1, min(cap, int(other / own)))
+            rounds = -(-remaining // budget)          # ceil
+            if rounds * max(own, other) <= left:
+                return {target.request.request_id: mine,
+                        peer.request.request_id: theirs}
+        return {target.request.request_id: units}
+
+    pipelined_quota.__name__ = f"pipelined_quota_{cap}"
+    return pipelined_quota
+
+
 def measured_pairs_only(states: Sequence[RequestState], units: int,
                         now: float) -> dict[int, int]:
     """Prefer splits the externality table actually covers.
@@ -606,6 +671,7 @@ for _u in FIXED_SPLITS:
 
 BASELINES["deadline_aware"] = deadline_aware
 BASELINES["deadline_quota"] = deadline_quota
+BASELINES["pipelined_quota"] = make_pipelined_quota(16)
 BASELINES["exclusive_priority"] = exclusive_priority
 BASELINES["probing_partitioning"] = probing_partitioning
 BASELINES["step_matched_pairing"] = step_matched_pairing

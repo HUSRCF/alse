@@ -115,6 +115,29 @@ six-action barrier-off cell was not properly tested. And
 quota buys more steps per round, so the burst finishes fastest at 24+8,
 not 4+28.
 
+### Running now: where the boundary is
+
+The same cost model that explains the loss also says where it stops. A
+round is paced by its slowest member, so with the barrier **on** a
+32-step burst takes 17.7 s to 99.7 s at every split against a 5.34 s
+deadline — **no split can win, arithmetically**, and every campaign
+before 2026-08-27 ran that way. With the barrier off and a cap of 16,
+`24+8` runs 12 steps per round and finishes in **4.7 s, inside the
+deadline**; it is the only feasible partition.
+
+Over one burst period `T`, priority gives the batch tenant
+`32 x (T - 3.71)` unit-seconds and a 24+8 partition gives `8 x T`, so
+partitioning wins when **`T < 4.95 s`**. Measured gaps: 6.79 s at load
+0.6, about 3.9 s at 1.05. **Predicted: loss at 0.6, win at 1.05** — the
+boundary sits between the two loads this project has measured all along.
+
+Experiment `expB` (`docs/prereg-boundary.md`) tests it with
+`pipelined_quota`, whose feasibility test is the corrected one, against
+`exclusive_priority`, judged by plan.md's own second branch: same miss
+rate, video goodput up at least 10%. Grants are now counted per cell
+(`ledger.grant_shapes`), because the 2x2 could not tell whether its
+policy ever issued an asymmetric grant.
+
 ## Gates
 
 * **Gate A** — **accepted**, and it is Gate A-AMD. All clauses passed
