@@ -80,11 +80,28 @@ arrivals it **dominates**: identical video goodput, identical Jain. The
 fairness defence was named in the pre-registration before the run and is
 not available. See 3.6.
 
-**Read this correctly.** The refuted scheduler has an action space of
-exactly two grants and ran under a round barrier costing 44% where the
-hardware costs 3.4%. Neither is a property of spatial partitioning. 3.6
-withdraws the claim for the scheduler that was built, not for the idea —
-and the two defects are named, cheap to fix, and unmeasured.
+**Both named defects were then tested and neither explains it (3.7).**
+Experiment 2x2, 240 cells, barrier `{on, off}` x action space `{2, 6}`,
+opponent `exclusive_priority` in every group, pre-registered verdict 3.
+Every cell loses to priority by +83% to +434%, intervals excluding zero;
+the barrier factor moves nothing (all four paired differences cross zero,
+none above 0.016); and six actions are *far worse* than two.
+
+The cleanest argument does not need the barrier fix to work at all: in
+backlog `step_matched_pairing` runs **1.000 steps per round** — it never
+pairs on this workload, so it is already barrier-free — and it still
+loses by 83-107%.
+
+Why six actions lose: `deadline_quota` gives urgent **more** die-seconds
+than priority (45.0% vs 40.8%) and completes the same requests, at miss
+0.99 against 0.12. **Die-seconds are not the currency a deadline is paid
+in.** Choosing the smallest quota that "makes it" on isolated predicted
+costs under-provisions systematically once co-run is real.
+
+**So on this workload the decision that matters is which tenant gets the
+die, not how it is divided.** In backlog neither adaptive policy
+partitions at all; they differ from priority only in picking by
+accumulated deficit rather than by deadline.
 
 ## Gates
 

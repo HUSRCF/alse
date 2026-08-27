@@ -504,11 +504,88 @@ does beat whole-die time-slicing and the best fixed split -- and is no
 longer interesting, because a policy with no partitioning at all beats
 both.
 
-**What it does not settle.** The scheduler it refutes had an action space
-of exactly two grants, `{16+16, 32+0}`, and ran on a runtime whose round
-barrier costs 44% where the hardware costs 3.4%. Neither defect is a
-property of spatial partitioning. This withdraws the claim for the
-scheduler that was built, not for the idea.
+**What it did not settle, and what settled it.** The scheduler P refutes
+had an action space of exactly two grants and ran on a runtime whose
+round barrier costs 44% where the hardware costs 3.4%. Neither defect is
+a property of spatial partitioning, so P withdrew the claim for the
+scheduler that was built rather than for the idea. **Experiment 2x2 then
+tested both defects directly and returned the pre-registered verdict 3:
+neither explains it.** See 3.7.
+
+
+### 3.7 That the round barrier or the two-action space was hiding the gain
+
+**Verdict 3 of `docs/prereg-experiment-2x2.md`, fixed before the run.**
+240 cells, 80 groups, 10 seeds, all safe, every group `fast`. Factors:
+barrier `{on, off}` x action space `{2, 6}`, opponent
+`exclusive_priority` in every group. All intervals are the seed cluster
+bootstrap, declared before the run this time.
+
+Every cell of the 2x2 loses to priority, and the six-action policy loses
+far worse:
+
+    m=1  arrivals  step_matched  +131.3%  [+0.1355, +0.3931]
+    m=8  arrivals  step_matched  +139.8%  [+0.1376, +0.3758]
+    m=1  backlog   step_matched  +106.5%  [+0.1130, +0.2762]
+    m=8  backlog   step_matched   +82.7%  [+0.0719, +0.2685]
+    m=1  arrivals  deadline_quota +191.9%  [+0.2562, +0.5163]
+    m=8  arrivals  deadline_quota +213.1%  [+0.2662, +0.5207]
+    m=1  backlog   deadline_quota +434.0%  [+0.7178, +0.8884]
+    m=8  backlog   deadline_quota +374.4%  [+0.7037, +0.8646]
+
+The barrier factor itself moves nothing: paired across the two columns,
+all four differences cross zero and none exceeds 0.016.
+
+**The barrier is not the explanation, and the cleanest proof of that does
+not depend on the fix working at all.** In backlog `step_matched_pairing`
+runs **1.000 steps per round** -- it never pairs on this mismatched
+workload, so `_step_budget` sees fewer than two active requests and the
+barrier costs it nothing. It is already barrier-free, and it still loses
+to priority by 83-107%.
+
+**The pre-registered validity condition on steps/s failed, and the reason
+is a finding.** The condition said the barrier-off column means nothing
+unless steps/s rises. It did not rise: -1.6% to +0.4%. The fix is not
+broken -- twelve unit tests hold `_step_budget`, and `deadline_quota` did
+go from 1.070 to 1.102 steps per round. What is missing is a policy that
+creates the condition the fix addresses. The 44% was measured on 16+16
+pairing with a 4.6x step mismatch; `step_matched_pairing` never pairs and
+`deadline_quota` pairs at quotas that roughly equalise step times. So the
+barrier-off column cannot test the fix, and does not need to.
+
+**Why six actions are worse than two, which is the useful part.**
+`deadline_quota` gives urgent *more* die-seconds than priority does in
+backlog -- 1356 against 1321, 45.0% against 40.8% of the die -- and
+completes the same number of requests, 41.5 against 41.6. Its miss rate
+is 0.99 against 0.12. **Die-seconds are not the currency a deadline is
+paid in.** Running a request at 4 units for eight times as long spends
+the same die and misses. The rule "smallest quota that still makes the
+deadline" is evaluated on *isolated* predicted costs; under co-run the
+step is slower than predicted, so every choice sits just past
+feasibility. This is 3.5's lesson arriving from the other side: there a
+more accurate cost model did not produce better decisions, here a
+*tighter* use of the cost model produced much worse ones.
+
+**Validity condition 2 passed.** `exclusive_priority` cannot see the
+barrier flag -- it grants one request per round -- and its paired
+difference across the two columns crosses zero in both regimes
+(-0.0134 [-0.0317, +0.0021] and +0.0230 [-0.0048, +0.0529]). Nothing
+other than the barrier changed between the columns, and that also fixes
+the noise floor: between-column differences below about 12% of the miss
+rate cannot be resolved here, which is why the barrier factor's small
+movements are reported as zero.
+
+**What this leaves standing.** 3.6 stands unnarrowed. The two defects
+named when it was written are real, are still real, and are not the
+explanation. On this workload the decision that matters is **which tenant
+gets the die, not how it is divided**: `step_matched_pairing` picks by
+accumulated deficit and `exclusive_priority` picks by deadline, and in
+backlog neither of them partitions at all.
+
+**What it does not claim.** `deadline_quota` is one rule over six
+actions, and a bad one for a diagnosed reason. That a better six-action
+rule exists is not excluded -- it would need its own pre-registration and
+its own seeds. What has changed is where the burden sits.
 
 
 ## 4. Open

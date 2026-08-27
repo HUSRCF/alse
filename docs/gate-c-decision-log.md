@@ -3751,3 +3751,64 @@ where the hardware costs 3.4%. Both defects are named, neither is a
 property of spatial partitioning, and neither has been measured. The next
 experiment is not a bigger grid; it is the two-by-two that separates
 them.
+
+### 2026-08-27 -- the 2x2: neither named defect was hiding the gain
+
+240 cells, 80 groups, 10 seeds, all safe, every group `fast`. Barrier
+`{on, off}` crossed with action space `{2, 6}`, `exclusive_priority` as
+the fixed opponent in every group, all intervals the seed cluster
+bootstrap declared before the run.
+
+**Verdict 3.** Every cell loses to priority: `step_matched_pairing` by
++131% and +140% under arrivals and +107% and +83% under backlog;
+`deadline_quota` by +192% and +213% under arrivals and +434% and +374%
+under backlog. All eight intervals exclude zero. The barrier factor
+itself moves nothing -- paired across columns, all four differences cross
+zero and none exceeds 0.016.
+
+**The steps/s validity condition failed, and the failure is informative
+rather than fatal.** It said the barrier-off column means nothing unless
+steps/s rises; it did not, -1.6% to +0.4%. The fix is not broken --
+twelve unit tests hold `_step_budget` and `deadline_quota` did move from
+1.070 to 1.102 steps per round. What is missing is an arm that creates
+the condition the fix addresses. The 44% was measured on 16+16 pairing
+with a 4.6x step mismatch. Neither arm here does that:
+`step_matched_pairing` **never pairs** on this workload -- 1.000 steps
+per round in backlog -- and `deadline_quota` pairs at quotas that roughly
+equalise step times.
+
+That gives the argument that does not depend on the fix at all: **the
+policy that loses to priority is already barrier-free, so the barrier
+cannot be why it loses.**
+
+**Why six actions are worse than two.** `deadline_quota` gives urgent
+*more* die than priority does -- 1356 die-seconds against 1321, 45.0%
+against 40.8% -- and completes the same number of requests, 41.5 against
+41.6. Its miss rate is 0.99 against 0.12. Die-seconds are not the
+currency a deadline is paid in: a request at 4 units for eight times as
+long spends the same die and misses anyway. The rule picks the smallest
+quota that makes the deadline on *isolated* predicted costs, and under
+co-run the step is slower, so every choice lands just past feasibility.
+3.5 found that a more accurate cost model did not produce better
+decisions; this is the same lesson from the other side, where a tighter
+use of the model produced much worse ones.
+
+**Validity condition 2 passed**, and it also fixes the noise floor.
+`exclusive_priority` cannot see the flag, and its paired difference
+across columns crosses zero in both regimes: -0.0134 [-0.0317, +0.0021]
+and +0.0230 [-0.0048, +0.0529]. So nothing but the barrier changed, and
+between-column differences below roughly 12% of the miss rate are not
+resolvable here.
+
+**Where this leaves the project.** Three independent lines now say the
+same thing. P: priority beats the scheduler. The 2x2: neither named
+defect explains it. And the mechanism: the losing policy is already
+barrier-free, and in backlog it does not partition at all -- it differs
+from priority only in picking the die's holder by accumulated deficit
+rather than by deadline. **On this workload the decision that matters is
+which tenant gets the die, not how it is divided.**
+
+The honest caveat, stated so it is not used as an escape: `deadline_quota`
+is one rule over six actions and a bad one for a diagnosed reason. A
+better six-action rule is not excluded and would need its own
+pre-registration. What has changed is where the burden sits.
