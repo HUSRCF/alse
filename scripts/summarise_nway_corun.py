@@ -26,7 +26,11 @@ sys.dont_write_bytecode = True
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
-from burstserve.trace_sim import QuotaCostModel  # noqa: E402
+from burstserve.trace_sim import (  # noqa: E402
+    QuotaCostModel,
+    UnmeasuredPairing,
+    externality,
+)
 
 # The pairwise stand-in each device's arithmetic has been using.
 PAIRWISE = {"gfx1201": 1.297, "gfx90a": 1.2336}
@@ -101,6 +105,31 @@ def main() -> int:
         print(f"  {ways:4d} {row['slice']:6d} {row['idle']:4d}  "
               f"{row['mean']:8.4f} {row['sd']:7.4f}  "
               f"{measured:9.2f} {assumed:9.2f}{mark}")
+
+    # The comparison the pairwise table cannot make. At N ways a slice of
+    # width w has N-1 peers occupying maskable-w units; the pairwise
+    # entry (w, maskable-w) has ONE peer occupying exactly the same
+    # units. Same slice, same busy fraction, different number of
+    # independent contexts. If the two agree, the penalty is a function
+    # of how much of the die is busy; if they diverge, it is a function
+    # of how many things are running, and a pairwise table cannot express
+    # it at all.
+    print("\n  same slice, same busy die, N-1 peers against one:")
+    print(f"    {'ways':>4} {'slice':>6}  {'N-way':>7} {'pairwise':>8}"
+          f" {'ratio':>7}")
+    for ways in sorted(rows):
+        if ways < 2:
+            continue
+        width = rows[ways]["slice"]
+        try:
+            pair = externality(width, model.maskable_units - width,
+                               device=args.device)
+        except (UnmeasuredPairing, KeyError):
+            print(f"    {ways:4d} {width:6d}  {rows[ways]['mean']:7.4f} "
+                  f"{'--':>8}   no measured pairing at this width")
+            continue
+        print(f"    {ways:4d} {width:6d}  {rows[ways]['mean']:7.4f} "
+              f"{pair:8.4f} {rows[ways]['mean'] / pair:7.3f}")
 
     best = min(rows, key=lambda w: (
         math.ceil(args.burst / max(1, min(w, args.burst))) * args.steps
