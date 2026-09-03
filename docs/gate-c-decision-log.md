@@ -4600,3 +4600,54 @@ model-specific entry differs by only 4.2%. So: leaning, not predicting.
 
 Either way this is the number `8+6+6+6+6` should be priced with, and
 neither the N-way table nor the pairwise one is it.
+
+### 2026-09-04 -- a mismatched peer costs the small slices 7.3x, and costs itself 4%
+
+Three SDXL slices of 26 units beside one CogVideoX-2b slice of 26, on
+gfx90a, three trials, overlap 135-147 s of a 150 s window:
+
+    slice           solo      co-run   externality   n
+    sdxl           2.53 s    18.6 s      7.06-7.42   5-7
+    sdxl           2.52 s    18.7 s                  6
+    sdxl           2.54 s    18.6 s                  6-7
+    cogvideox-2b  11.85 s    12.36 s     1.041-1.048  10-11
+
+Nine SDXL observations across three trials span **7.06 to 7.42** and the
+CogVideoX peer spans **1.041 to 1.048**. This is not a noisy measurement;
+it is a very large, very repeatable asymmetry.
+
+**The comparison.** The same three slices with three *same-model* peers
+at the same width pay **1.4625** (1.11). Adding one CogVideoX-2b in place
+of one SDXL takes that to 7.3 -- a factor of five -- while the CogVideoX
+slice itself is essentially unaffected.
+
+**What it would mean if it survives.** CU masks partition **compute
+units**, not memory bandwidth or cache. A model that saturates HBM takes
+what it needs and leaves the co-runners the remainder, and a 26-unit SDXL
+slice has too little compute to hide the resulting latency. If that is
+the mechanism, spatial partitioning gives almost no isolation on this
+architecture against a bandwidth-heavy neighbour -- which is most of what
+"co-serving a video model" means.
+
+**Why it is not a claim yet.** It contradicts 1.5, which measured
+mismatched tenants on **gfx1201** at 1.00-1.06 per side. Either the two
+architectures differ by a factor of seven on this axis, or the difference
+is in the arrangement: 1.5 is one-against-one, this is three-against-one
+with every slice at a quarter of the die. **The decisive check is the
+mismatched PAIR on gfx90a** -- one SDXL slice at 52 units beside one
+CogVideoX-2b slice at 52 -- which is running now. If SDXL pays ~7x there
+too, this is a property of mismatched co-run on CDNA2 and 1.5 does not
+travel. If it pays ~1.05, the factor needs the four-way structure and the
+finding is about crowding rather than about the peer's model.
+
+**Three things checked before writing this down.** Every mask was read
+back and the four were disjoint. The overlap window covered 135-147 s of
+the 150 s, so these are genuinely concurrent samples. And each slice is
+divided by **its own** solo at **its own** width -- CogVideoX's 11.85 s
+against SDXL's 2.53 s -- which is the defect that once made an 8+24 pair
+read -44.6%.
+
+It also predicts the direction for `8+6+6+6+6`, which is the grant
+`concurrent_quota` issues most: the urgent tenant's slices sit beside a
+video tenant, and if this holds they are paying far more than either the
+pairwise or the N-way table says.
