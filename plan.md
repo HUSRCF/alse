@@ -23,6 +23,15 @@
   - **代价**：`MEASURED_*` 与 `externality()` 都获得 device 维度，缺表的设备
     **报错而非回退**。理由写在代码里：52+52 在 32 单元的 die 上不存在，且两块
     卡的曲线是**形状**不同而不只是常数不同。
+  - **对 Gate B 条文的一个观察，只记不改**：`held_out_solo_p50_mape ≤10%`
+    评的是一个 **Amdahl 形式**（`latency = serial + parallel/q`）的拟合，
+    因为那是调度器假定的形式。该形式在 gfx90a 上被证伪（拟合串行项为负；
+    留一 MAPE 24.9%/28.1%，噪声只有 0.11%）。所以
+    `docs/alignment-weeks-3-4.md` 第 93 行的 `exact` **是对 gfx1201 而言**
+    ——那也是 Gate B-AMD 唯一跑过的设备。**该报告未被改动**（sha256 仍为
+    `c5283204…`，与本文上方所引一致）：它是 2026-08-26 那次验收的快照，
+    事后改写正是 §五 要防的失效模式。观察记在
+    `docs/gate-c-decision-log.md` 与 claims 1.10，不改任何验收。
 - Last updated (前一次): 2026-08-26
 - **阶段验收（2026-08-26，第 3–4 周最后一天）**：requirement alignment 报告
   `docs/alignment-weeks-3-4.md`，sha256
