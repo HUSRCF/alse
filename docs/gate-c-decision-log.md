@@ -4568,3 +4568,35 @@ leave run 2's attestation describing a tree that no longer exists. The
 pre-registered **verdicts are unchanged**; what is now doubtful, in a
 stated direction, is the prediction the pre-registration itself declined
 to back.
+
+### 2026-09-04 -- predicted before the mixed-peer run reads out
+
+1.11's scope note named the gap: the probe measures N slices of ONE
+model, which is `concurrent_quota`'s `8+8+8+8`, while the grant it
+actually issues most is `8+6+6+6+6` -- four same-model slices beside one
+mismatched peer. In expC run 2 so far that is 330 grants against 78.
+
+The gfx90a analogue at measured widths is **three SDXL slices of 26 units
+beside one CogVideoX-2b slice of 26**: same structure, one mismatched
+peer, and every width in the quota curve. It is running now, 21.3 GB
+resident over two copies of the weights.
+
+**Predicted, before reading it.** The comparison for the SDXL slices is
+1.4625, which is what they pay with three *same-model* peers at the same
+width. If contention is about how many independent contexts are running
+and not about what they are running, the SDXL slices should land near
+1.4625 and the interesting number will be the CogVideoX slice's own. If
+instead the mismatched peer contends harder -- a bigger model, more
+memory traffic per step -- the SDXL slices land above 1.4625, and
+`concurrent_quota`'s dominant grant is more expensive than the
+arithmetic that has been applied to it.
+
+I lean slightly toward the second, on the grounds that 1.11 already shows
+the penalty tracking context count rather than busy fraction, and a
+CogVideoX step moves far more memory than an SDXL step at the same width
+(1.454 s against 0.316 s solo at 26 units). But that reasoning would also
+have predicted the pairwise table to be model-dependent, and its one
+model-specific entry differs by only 4.2%. So: leaning, not predicting.
+
+Either way this is the number `8+6+6+6+6` should be priced with, and
+neither the N-way table nor the pairwise one is it.
