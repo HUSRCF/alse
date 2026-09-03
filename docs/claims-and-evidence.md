@@ -775,6 +775,14 @@ Best partitioned **7.42 s** against 5.75 s; gfx1201's is 8.23 s against
 5.54 s, +48.4%. **3.8 holds on both architectures without qualification.**
 CDNA2 remains the closer of the two, and it is not close.
 
+**And 7.42 s is itself a floor.** The round at 78+26 is paced by the
+video tenant, whose penalty is read from the SDXL-measured table because
+no per-model gfx90a table exists -- the same fallback gfx1201 uses
+everywhere except (16,16). The one model-specific measurement there says
+CogVideoX-2b pays **more** than SDXL at the same split, 1.2891 against
+1.2367, so the fallback understates the side that sets the pace. The
+direction is known even though the number is not.
+
 The best split is three quarters of the die on both devices -- 24+8 and
 78+26 -- so the *fraction* travels even though the margin does not.
 

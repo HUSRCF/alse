@@ -289,13 +289,38 @@ def main() -> int:
     if args.model.startswith("cogvideox") and hasattr(pipeline, "vae"):
         pipeline.vae.enable_tiling()   # the decode does not fit otherwise
 
-    # One copy of the weights, N call dictionaries. Each slice needs its
-    # own generator and its own prompt embeddings; it does not need its
-    # own UNet. That is the construction --share-weights already
-    # validated for Gate B-AMD's co-run evidence, and it is why N slices
-    # of one tenant are cheap enough to be worth asking about at all.
-    pipelines = [(pipeline, make_call(pipeline, args, args.seed + index))
-                 for index in range(args.ways)]
+    # One copy of the weights, N *pipeline objects*. Sharing a single
+    # pipeline across the threads shares its scheduler, and two threads
+    # stepping one EulerDiscreteScheduler clobber ``_step_index``:
+    # "IndexError: index 9 is out of bounds for dimension 0 with size 9",
+    # on the second trial, after the first has already reported numbers.
+    # prereg-intra-tenant.md names this hazard for the adapters; it is the
+    # same hazard here.
+    #
+    # A sibling built from ``components`` holds the same module objects --
+    # the same UNet, the same VAE -- with its own scheduler and its own
+    # per-call state. So the extra cost per way is a scheduler built
+    # ``from_config`` and one set of prompt embeddings, not a second copy
+    # of the weights, which is why N slices of one tenant are cheap enough
+    # to be worth asking about at all.
+    scheduler_class = type(pipeline.scheduler)
+    pipelines = []
+    for index in range(args.ways):
+        if index == 0:
+            sibling = pipeline
+        else:
+            components = dict(pipeline.components)
+            components["scheduler"] = scheduler_class.from_config(
+                pipeline.scheduler.config)
+            sibling = type(pipeline)(**components)
+            sibling.set_progress_bar_config(disable=True)
+            if args.model.startswith("cogvideox") and hasattr(sibling, "vae"):
+                sibling.vae.enable_tiling()
+        pipelines.append((sibling, make_call(sibling, args,
+                                             args.seed + index)))
+    weights_gb = torch.cuda.memory_allocated() / 2**30
+    print(f"  {args.ways} pipelines sharing one copy of the weights, "
+          f"{weights_gb:.1f} GB resident", flush=True)
 
     print(f"  peak memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GB",
           flush=True)
