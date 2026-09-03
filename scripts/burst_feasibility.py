@@ -48,22 +48,41 @@ def splits_for(model: QuotaCostModel) -> list[int]:
 
 
 def row(urgent: QuotaCostModel, video: QuotaCostModel, quota: int,
-        steps: int, burst: int, cap: int, use_externality: bool) -> dict:
+        steps: int, burst: int, cap: int, use_externality: bool,
+        concurrency: int = 1, same_model_penalty: float = 1.0,
+        peer_penalty: float = 1.0) -> dict:
+    """One split's burst completion, optionally with intra-tenant slices.
+
+    ``concurrency`` divides the urgent tenant's own quota among that many
+    of its own requests, on disjoint masks -- the arrangement expC tests.
+    It is the only thing here that shortens a serial burst, because the
+    burst then runs in ``ceil(burst / concurrency)`` batches instead of
+    ``burst`` of them. Each slice pays the SAME-MODEL co-run penalty to
+    its siblings, which is what 1.3 measures and is bistable on gfx1201.
+    """
     peer_quota = urgent.maskable_units - quota
-    own = urgent.step_seconds(quota)
+    slice_quota = max(1, quota // concurrency)
+    own = urgent.step_seconds(slice_quota)
     peer = video.step_seconds(peer_quota)
     if use_externality:
         own *= externality(quota, peer_quota)
         peer *= externality(peer_quota, quota, model="cogvideox-2b")
+    else:
+        peer *= peer_penalty
+    if concurrency > 1:
+        own *= same_model_penalty
     budget = max(1, min(cap, int(peer // own), steps))
     rounds = math.ceil(steps / budget)
     round_cost = max(own, peer)
+    batches = math.ceil(burst / concurrency)
     return {
         "split": f"{quota}+{peer_quota}",
+        "slice_quota": slice_quota,
+        "slice_measured": urgent.is_measured(slice_quota),
         "own_s": own, "peer_s": peer, "budget": budget,
         "rounds_per_request": rounds,
         "request_s": rounds * round_cost,
-        "burst_s": burst * rounds * round_cost,
+        "burst_s": batches * rounds * round_cost,
     }
 
 
@@ -101,6 +120,18 @@ def main() -> int:
                              "derived deadline here is 5.54 s where the "
                              "runs used 5.34 s, and the derived one is "
                              "the more generous of the two.")
+    parser.add_argument("--concurrency", type=int, default=1,
+                        help="intra-tenant slices: the urgent tenant's "
+                             "quota divided among this many of its own "
+                             "requests on disjoint masks. 1 is the "
+                             "runtime as it stands and as 3.8 measured it")
+    parser.add_argument("--same-model-penalty", type=float, default=1.0,
+                        help="co-run penalty between the intra-tenant "
+                             "slices. 1.297 is 1.3's fast state on "
+                             "gfx1201, 1.949 its slow one, 1.2336 gfx90a")
+    parser.add_argument("--peer-penalty", type=float, default=1.0,
+                        help="mismatched penalty charged to the video "
+                             "tenant when --externality is not used")
     parser.add_argument("--externality", action="store_true",
                         help="apply the measured co-run penalty; without "
                              "it every partitioned row is a floor")
@@ -116,15 +147,19 @@ def main() -> int:
     for quota in splits_for(urgent):
         try:
             rows.append(row(urgent, video, quota, args.steps, args.burst,
-                            args.cap, args.externality))
+                            args.cap, args.externality, args.concurrency,
+                            args.same_model_penalty, args.peer_penalty))
         except UnmeasuredPairing:
             # Named rather than dropped: a table that quietly loses its
             # widest split reads as coverage it does not have.
             skipped.append(f"{quota}+{urgent.maskable_units - quota}")
     rows.append(exclusive(urgent, args.steps, args.burst))
+    rows[-1]["slice_measured"] = True
 
     print(f"device {args.device}  urgent {args.urgent_model} "
-          f"({args.steps} steps x {args.burst}) beside {args.video_model}")
+          f"({args.steps} steps x {args.burst}) beside {args.video_model}"
+          + (f"  concurrency {args.concurrency} at penalty "
+             f"{args.same_model_penalty}" if args.concurrency > 1 else ""))
     derived = "measured" if args.deadline_s is not None else (
         f"{args.slack} x {args.steps} x {full:.5f} s x {args.burst}")
     print(f"deadline = {derived} = {deadline:.2f} s"
@@ -136,12 +171,19 @@ def main() -> int:
         peer = ("      -" if entry["peer_s"] is None
                 else f"{entry['peer_s']:7.3f}")
         verdict = "makes it" if entry["burst_s"] <= deadline else "misses"
+        # A slice whose width was never measured is priced by the Amdahl
+        # branch, which is refuted outright on gfx90a (1.10). Marked, not
+        # dropped, so the row is readable and not quietly trusted.
+        mark = "" if entry.get("slice_measured", True) else " *"
         print(f"  {entry['split']:>8}  {entry['own_s']:7.3f}  {peer}  "
               f"{entry['budget']:3d}  {entry['rounds_per_request']:4d}  "
-              f"{entry['burst_s']:7.2f}   {verdict}")
+              f"{entry['burst_s']:7.2f}   {verdict}{mark}")
         if entry["peer_s"] is not None:
             if best is None or entry["burst_s"] < best["burst_s"]:
                 best = entry
+    if any(not r.get("slice_measured", True) for r in rows):
+        print("\n  * slice width not in the measured curve; priced by the "
+              "Amdahl fit,\n    which 1.10 refutes on gfx90a")
     if skipped:
         print(f"\n  skipped, no measured externality: {', '.join(skipped)}")
     margin = (best["burst_s"] - deadline) / deadline
