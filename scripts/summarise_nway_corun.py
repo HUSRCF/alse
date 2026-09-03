@@ -93,7 +93,24 @@ def main() -> int:
           f"{'sd':>7}  {'measured':>9} {'stand-in':>9}   burst, seconds")
     for ways in sorted(rows):
         row = rows[ways]
+        # The policy takes critical[:concurrency], so a burst of B cannot
+        # use more than B slices. At B=4 asking for eight ways IS four
+        # ways -- same width, same peers, same penalty -- and pricing it
+        # with the EIGHT-way penalty is a four-way geometry wearing an
+        # eight-way number. That mistake put "eight ways costs 5.30 s at
+        # a burst of four" into four documents before this line existed.
         active = max(1, min(ways, args.burst))
+        if active != ways:
+            if active in rows:
+                print(f"  {ways:4d} {row['slice']:6d} {row['idle']:4d}  "
+                      f"{row['mean']:8.4f} {row['sd']:7.4f}  "
+                      f"      --        --   a burst of {args.burst} uses "
+                      f"only {active}; identical to the {active}-way row")
+            else:
+                print(f"  {ways:4d} {row['slice']:6d} {row['idle']:4d}  "
+                      f"{row['mean']:8.4f} {row['sd']:7.4f}  "
+                      f"      --        --   needs a burst of {ways}")
+            continue
         width = model.maskable_units // active
         step = model.step_seconds(width)
         batches = math.ceil(args.burst / active)
@@ -131,11 +148,11 @@ def main() -> int:
         print(f"    {ways:4d} {width:6d}  {rows[ways]['mean']:7.4f} "
               f"{pair:8.4f} {rows[ways]['mean'] / pair:7.3f}")
 
-    best = min(rows, key=lambda w: (
-        math.ceil(args.burst / max(1, min(w, args.burst))) * args.steps
-        * model.step_seconds(model.maskable_units
-                             // max(1, min(w, args.burst)))
-        * (rows[w]["mean"] if min(w, args.burst) > 1 else 1.0)))
+    usable = [w for w in rows if min(w, args.burst) == w]
+    best = min(usable, key=lambda w: (
+        math.ceil(args.burst / w) * args.steps
+        * model.step_seconds(model.maskable_units // w)
+        * (rows[w]["mean"] if w > 1 else 1.0)))
     print(f"\n  best measured concurrency: {best} ways")
     print("  solo per-call p50 by slice width, a cross-check on the curve:")
     for ways in sorted(rows):

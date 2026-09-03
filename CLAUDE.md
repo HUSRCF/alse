@@ -172,11 +172,13 @@ with no table **raises rather than falling back**.
 
 **What 1.11 does to the one open path.** 3.8 left intra-tenant
 concurrency as the only way to shorten a serial burst. On gfx90a, whole
-die, burst of four: serial 3.83 s, two ways **3.55 s**, four ways 3.70 s,
-eight ways 5.30 s. The optimum is **two, not four**, and the gain over
-serial is **7.3%** where the pairwise stand-in promised 18.5%. The
-stand-in erred in the direction that flattered the mechanism, and by more
-the further it was extrapolated.
+die, burst of four: serial 3.83 s, two ways **3.55 s**, four ways
+3.70 s. (Eight ways is unreachable at a burst of four -- the policy takes
+`critical[:concurrency]` -- and at a burst of eight it costs **14.30 s**
+against 7.66 s for not splitting.) The optimum is **two, not four**, and
+the gain over serial is **7.3%** where the pairwise stand-in promised
+18.5%. The stand-in erred in the direction that flattered the mechanism,
+and by more the further it was extrapolated.
 
 ### The structural result, 2026-09-03
 

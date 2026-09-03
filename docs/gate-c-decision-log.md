@@ -4495,7 +4495,8 @@ been using the pairwise number as a stand-in.
        1     3.83 s        3.83 s
        2     3.55 s        3.60 s     <- measured optimum
        4     3.70 s        3.12 s
-       8     5.30 s        3.12 s
+       8       --            --       a burst of four uses only four
+                                      slices; identical to the 4-way row
 
 The optimum concurrency is **two, not four**, and the advantage over
 serving the burst serially is **7.3%** where the stand-in promised 18.5%.
@@ -4521,10 +4522,40 @@ baselines reproduce the quota curve to within 1% at 104, 52 and 26 units
 (-0.34%, +0.94%, +0.80%), which is the same curve measured a day earlier
 by a different script.
 
-**One weak cell, named.** Eight ways has 5 to 7 samples per slice inside
-the overlap window, sd 0.12, and a third trial whose solo sat 13.6% above
-the first's. A 300-second-window rerun is under way and will be kept
-**beside** it, not in place of it.
+**One weak cell, named -- and the replication found an artefact rather
+than removing one.** A 300-second-window run with a different seed
+reproduced the 120-second run **trial for trial, to 0.1%**:
+
+    trial      120 s run              300 s run
+        0   2.1675  solo 6.794     2.1662  solo 6.796   n 6 -> 18
+        1   2.1582  solo 6.827     2.1622  solo 6.817   n 6 -> 18
+        2   1.9542  solo 7.720     1.9555  solo 7.716   n 5 -> 16
+
+Tripling the samples changed nothing, which is the useful part: in
+**both** runs the third trial's solo baseline sits 13.5% above the
+first's while its co-run p50 does not follow. The solo is measured
+immediately after the previous trial's co-run window, so by the third it
+is taken on a hot die; the co-run is at steady state throughout. That
+deflates trial 2's ratio. Six-trial mean **2.0940**; clean-trial value
+**2.1635**, sd 0.0042.
+
+**2.0940 is what is recorded.** Dropping a trial after seeing it would
+move the number in the direction that strengthens the claim being drawn
+from it, and this project has a rule about choosing after the
+measurement. The clean value is written down so nobody has to rediscover
+it, and the instrument fix -- cool the die, or take the solo before the
+first co-run rather than between windows -- belongs to the next run of
+this probe.
+
+**And a modelling error the tool caught in its own output.** The
+summariser priced "eight ways at a burst of four" at 5.30 s, which is a
+**four**-way geometry wearing an **eight**-way penalty: the policy takes
+`critical[:concurrency]`, so a burst of four can only use four slices,
+and at four slices the penalty is 1.4625 rather than 2.0933. The figure
+had reached four documents. The row now says the burst cannot reach that
+concurrency, and the eight-way number is reported where it is
+reachable -- a burst of eight, where it costs **14.30 s** against 7.66 s
+for not splitting at all.
 
 **What it means for expC, and what it does not.** expC's prediction
 charges gfx1201's pairwise 1.297 to a four-way arrangement. If gfx1201

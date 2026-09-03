@@ -168,8 +168,9 @@ at.** On the solo curves with a pairwise stand-in, the whole die split
 four ways within the priority tenant finished the burst in 2.79 s against
 3.70 s serial on gfx1201 and 3.12 s against 3.83 s on gfx90a. With the
 N-way penalty measured -- contribution (4), claim 1.11 -- gfx90a's best
-is **two** ways at 3.55 s, **7.3%** over serial rather than 18.5%; four
-ways is 3.70 s and eight is 5.30 s.
+is **two** ways at 3.55 s, **7.3%** over serial rather than 18.5%, and
+four ways is 3.70 s. Eight ways needs a burst of eight to be reachable at
+all, and there it costs **14.30 s** against 7.66 s for not splitting.
 
 So the shape of the result holds and its size does not: between tenants,
 partitioning loses to priority; *within* the priority tenant it helps,

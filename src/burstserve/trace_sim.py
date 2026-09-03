@@ -441,15 +441,34 @@ MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {
 #
 # The sweep ran 1, 2, 4, 8 in order on a warming die, which inflates the
 # later solo baselines and therefore DEFLATES their externality. The
-# growth is if anything understated. The eight-way cell is the weakest --
-# 5 to 7 samples inside the overlap window, sd 0.12, and a third trial
-# whose solo sat 13.6% above the first's -- and a longer-window rerun is
-# kept beside it rather than replacing it.
+# growth is if anything understated.
+#
+# **The eight-way cell has a reproducible instrument artefact and the
+# value below keeps it rather than editing it out.** A 300-second-window
+# replication with a different seed reproduced the 120-second run trial
+# for trial:
+#
+#     trial      120 s run              300 s run
+#         0   2.1675  solo 6.794     2.1662  solo 6.796   n 6 -> 18
+#         1   2.1582  solo 6.827     2.1622  solo 6.817   n 6 -> 18
+#         2   1.9542  solo 7.720     1.9555  solo 7.716   n 5 -> 16
+#
+# Agreement to 0.1% at every trial index across two independent runs, and
+# in BOTH the third trial's solo baseline sits 13.5% above the first's
+# while its co-run p50 does not move with it. The solo is measured right
+# after the previous trial's co-run window, so by the third it is taken
+# on a hot die; the co-run is at steady state in every trial. That
+# deflates trial 2's ratio, which is why the six-trial mean 2.0940 is
+# BELOW the clean-trial value 2.1635 (sd 0.0042).
+#
+# 2.0940 is recorded because dropping a trial after seeing it would raise
+# the number in the direction that strengthens the claim being made from
+# it. The clean value is stated here so nobody has to rediscover it.
 MEASURED_NWAY_PENALTY_GFX90A: dict[int, float] = {
     1: 1.0001,     # control: a solo, and it must read 1.000
     2: 1.2146,
     4: 1.4625,
-    8: 2.0933,
+    8: 2.0940,     # six trials over two runs; clean-trial value 2.1635
 }
 
 EXTERNALITY_TABLES: dict[str, dict[tuple[int, int], float]] = {

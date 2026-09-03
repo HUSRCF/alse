@@ -219,7 +219,13 @@ four, gfx90a:
        1     3.83 s        3.83 s
        2     3.55 s        3.60 s     <- measured optimum
        4     3.70 s        3.12 s
-       8     5.30 s        3.12 s
+       8       --            --       a burst of four uses only four
+                                      slices; identical to the 4-way row
+
+At a burst of **eight**, where eight slices can be used at all: serial
+7.66 s, two ways **7.09 s**, four ways 7.40 s, eight ways **14.30 s**.
+The ordering is the same and eight ways costs nearly twice not splitting
+at all.
 
 The optimum concurrency is **two, not four**, and the advantage over
 serving the burst serially is **7.3%** where the stand-in promised 18.5%.
@@ -227,9 +233,27 @@ The stand-in erred in the direction that flattered the mechanism, and by
 more the further it was extrapolated. **The penalty does not merely scale
 the answer; it moves the optimum.**
 
-The eight-way cell is the weakest -- 5 to 7 samples per slice inside the
-overlap window, sd 0.12, one trial's solo 13.6% above another's. A
-300-second-window replication is running and will be kept beside it.
+**The eight-way cell had a reproducible instrument artefact, and the
+replication found the same one rather than removing it.** A
+300-second-window run with a different seed reproduced the 120-second run
+trial for trial, to 0.1%:
+
+    trial      120 s run              300 s run
+        0   2.1675  solo 6.794     2.1662  solo 6.796   n 6 -> 18
+        1   2.1582  solo 6.827     2.1622  solo 6.817   n 6 -> 18
+        2   1.9542  solo 7.720     1.9555  solo 7.716   n 5 -> 16
+
+In **both** runs the third trial's solo baseline sits 13.5% above the
+first's while its co-run p50 does not move with it. The solo is measured
+immediately after the previous trial's co-run window, so by the third it
+is taken on a hot die, while the co-run itself is at steady state in
+every trial. That deflates trial 2's ratio: the six-trial mean is
+**2.0940** and the clean-trial value is **2.1635**, sd 0.0042.
+
+The table records **2.0940**. Dropping a trial after seeing it would move
+the number in the direction that strengthens the claim being made from
+it, so the conservative value is the published one and the clean value is
+stated here.
 
 ---
 
