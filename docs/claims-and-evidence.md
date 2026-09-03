@@ -662,8 +662,21 @@ interval excluding zero under the seed cluster bootstrap:
     backlog  1.05  miss +206.6%  video -36.7%
 
 **The pre-registered invalidity condition fired.** `pipelined_quota` was
-required to issue `24+8` and never did: over 40 cells its urgent-quota
-histogram is `{4: 394, 8: 255, 16: 58, 32: 12173}`. The diagnosis is the
+required to give the urgent tenant 24 units and never did: over 40 cells
+its urgent-quota histogram is `{4: 394, 8: 255, 16: 58, 32: 12173}` --
+no 24.
+
+*Clarified 2026-09-04, and the claim is unchanged.* The same cells'
+`grant_shapes` show `24+8`, which reads as a contradiction and is not:
+that counter sorted each round's widths **descending** with no tenant, so
+a round giving urgent 8 and video 24 was recorded as "24+8". Both records
+are correct and only one is readable. The histogram is keyed by tenant,
+is what 3.8 quotes, and is the authority. `_grant_shapes` is now
+tenant-ordered; `tests/test_grant_shapes_ordering.py` pins the repair and
+the disagreement, and `tests/test_analyse_campaign.py` pins that expB's
+stored cells still exhibit it, because raw runs are not rewritten. The
+counter existed to answer "did the policy ever issue this grant", and
+that is the one question its own key could not answer. The diagnosis is the
 same confusion for the third time, one level up. A burst's four requests
 share **one absolute deadline**, and the policy computes feasibility for
 **one request's eight steps**. At `4+28` a single request needs 4.42 s

@@ -156,5 +156,60 @@ class Claim38Test(unittest.TestCase):
                 self.assertLess(got["high"], 0.0)
 
 
+@unittest.skipUnless((RUNS / "expB").is_dir(), "expB cells absent")
+class Claim38InvalidityConditionTest(unittest.TestCase):
+    """3.8's pre-registered invalidity condition fired, and here is why.
+
+    ``pipelined_quota`` was required to issue 24+8 and never did. The
+    published histogram is the evidence; a claim that a policy never took
+    an action is only as good as the counter behind it.
+    """
+
+    PUBLISHED = {"4": 394, "8": 255, "16": 58, "32": 12173}
+
+    def test_the_urgent_quota_histogram_regenerates(self):
+        from collections import Counter
+        cells = load_cells(RUNS / "expB")
+        total = Counter()
+        for cell in cells:
+            if cell.policy != "pipelined_quota":
+                continue
+            for units, count in ((cell.ledger or {}).get(
+                    "urgent_units_histogram") or {}).items():
+                total[units] += count
+        self.assertEqual(dict(total), self.PUBLISHED)
+
+    def test_it_never_gave_the_urgent_tenant_twenty_four_units(self):
+        # The histogram, not the shapes. expB's cells were written by a
+        # tree whose grant_shapes sorted the widths DESCENDING, so a
+        # round that gave urgent 8 and video 24 is recorded as "24+8" and
+        # a reader taking that as (urgent, video) would conclude the
+        # opposite of the truth. 3.8 quotes the histogram, so the
+        # published claim is sound and the counter was not.
+        cells = load_cells(RUNS / "expB")
+        for cell in cells:
+            if cell.policy != "pipelined_quota":
+                continue
+            histogram = (cell.ledger or {}).get(
+                "urgent_units_histogram") or {}
+            self.assertNotIn("24", histogram, cell.path)
+
+    def test_the_old_shape_format_is_ambiguous_and_that_is_recorded(self):
+        # Pinned so nobody reads an old payload's shapes as tenant
+        # ordered: the same cell shows "24+8" in shapes and 8 in the
+        # histogram, and both are correct.
+        cells = load_cells(RUNS / "expB")
+        contradictions = 0
+        for cell in cells:
+            if cell.policy != "pipelined_quota":
+                continue
+            shapes = (cell.ledger or {}).get("grant_shapes") or {}
+            histogram = (cell.ledger or {}).get(
+                "urgent_units_histogram") or {}
+            if "24+8" in shapes and "24" not in histogram:
+                contradictions += 1
+        self.assertGreater(contradictions, 0)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

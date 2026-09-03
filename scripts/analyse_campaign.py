@@ -85,11 +85,10 @@ def describe(pairs, lower_is_better: bool, baseline_mean=None) -> dict:
     }
 
 
-def grant_shapes(cells) -> Counter:
+def ledger_counter(cells, field: str) -> Counter:
     total: Counter = Counter()
     for cell in cells:
-        for shape, count in ((cell.ledger or {}).get("grant_shapes")
-                             or {}).items():
+        for shape, count in ((cell.ledger or {}).get(field) or {}).items():
             total[shape] += count
     return total
 
@@ -109,11 +108,18 @@ def report(cells, method: str, against: str, label: str) -> dict:
     out["co_run_states"] = dict(states)
     print(f"\n=== {label} ===")
     print(f"  cells {len(cells)}   drawn state {dict(states)}")
+    # Both counted rather than assumed. expB's invalidity condition was
+    # "the policy never issues the grant the derivation is about", and
+    # nothing had been recording them; the 2x2 could not answer the same
+    # question about its own six-action policy for the same reason.
     for policy in sorted({c.policy for c in cells}):
-        shapes = grant_shapes([c for c in cells if c.policy == policy])
-        if shapes:
-            top = ", ".join(f"{k}:{v}" for k, v in shapes.most_common(6))
-            print(f"  grants {policy:26s} {top}")
+        mine = [c for c in cells if c.policy == policy]
+        for field, label in (("grant_shapes", "grants"),
+                             ("urgent_units_histogram", "urgent u")):
+            counts = ledger_counter(mine, field)
+            if counts:
+                top = ", ".join(f"{k}:{v}" for k, v in counts.most_common(6))
+                print(f"  {label:8s} {policy:26s} {top}")
     for metric, name, lower_is_better in METRICS:
         pairs = paired_differences(cells, method, against, metric,
                                    extra_key=configuration)

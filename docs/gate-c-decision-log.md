@@ -4286,3 +4286,40 @@ with **three** peers rather than one -- is still unmeasured. 1.297 is a
 slice widths that are measured quotas on both dice (32/{1,2,4,8} and
 104/{1,2,4,8}), with one way carried as a control that must come back at
 1.000.
+
+### 2026-09-04 -- the counter that existed to answer one question could not answer it
+
+`_grant_shapes` was added after the 2x2, which could not tell whether its
+six-action policy had ever issued an asymmetric grant because nothing
+recorded the grants. It then built its key as
+`sorted(record.granted.values(), reverse=True)` -- **descending by
+width, with no tenant** -- which throws away precisely what it was for.
+
+Found while pinning 3.8's invalidity condition with a test. expB's
+`pipelined_quota` cells show `24+8` in `grant_shapes` and `8` in
+`urgent_units_histogram`, which reads as a contradiction and is not: the
+urgent tenant had 8 and the video tenant 24, and the shape sorted them.
+A reader taking the shape as (urgent, video) would conclude the policy
+issued the split 3.8 says it never issued.
+
+**3.8 is unaffected.** It quotes the histogram, which is keyed by tenant
+and is correct. The claim was right; one of its two recorders was not
+readable.
+
+`_grant_shapes` now takes the tenant map and puts the urgent tenant's
+widths first. Without the map it keeps the old descending sort, so an
+older payload still parses -- and is still ambiguous, which is why the
+histogram remains the authority for any question about *which* tenant
+got *what*. `tests/test_grant_shapes_ordering.py` pins both orders and
+their disagreement; `tests/test_analyse_campaign.py` pins that expB's
+stored cells still exhibit it, because raw runs are never rewritten.
+
+**Not synced to X570 while expC run 2 is in flight.** Changing the
+recorder mid-campaign would put two ledger formats inside one campaign,
+which is worse than an ambiguous one throughout. Run 2's cells will carry
+the descending shapes, and the concurrency question its pre-registration
+asks -- "did `concurrent_quota_c4` ever grant four requests at once" --
+is answered by the **number of parts** in the shape, which the sort does
+not affect. The tenant-ordered version goes to X570 before the next
+campaign, and the run-2 attestation records which version wrote its
+cells.

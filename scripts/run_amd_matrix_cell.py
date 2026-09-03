@@ -56,20 +56,43 @@ from burstserve.workload import (                               # noqa: E402
 import run_amd_mismatched_corun as harness                      # noqa: E402
 
 
-def _grant_shapes(ledger) -> dict:
+def _grant_shapes(ledger, tenant_of: dict | None = None) -> dict:
     """How many rounds issued each grant shape, as "24+8" style keys.
 
     Experiment 2x2 could not tell whether its six-action policy ever
     issued an asymmetric grant, because nothing recorded the grants and
     the whole question was whether it reached 24+8. Counted, not inferred
     from the policy's name.
+
+    **Ordered by tenant since 2026-09-04, and it was not before.** The
+    first version sorted the widths descending, which throws away the
+    thing the counter exists to record: expB's `pipelined_quota` shows
+    ``24+8`` in its shapes and ``8`` in its urgent-quota histogram, and
+    both are right -- the urgent tenant had 8 and the video tenant 24. A
+    reader taking the shape as (urgent, video) would conclude the policy
+    issued the split 3.8 says it never did. 3.8 quotes the histogram, so
+    the published claim is sound; the counter was not.
+
+    With ``tenant_of`` the urgent tenant's widths come first, in
+    descending order, then the rest. Without it the old descending sort
+    is kept, so a payload written by an older tree still parses -- and is
+    still ambiguous, which is why the histogram remains the authority.
     """
     out: dict[str, int] = {}
     for record in ledger:
         if not record.granted:
             continue
-        key = "+".join(str(u) for u in sorted(record.granted.values(),
-                                              reverse=True))
+        if tenant_of is None:
+            widths = sorted(record.granted.values(), reverse=True)
+        else:
+            urgent = sorted(
+                (u for rid, u in record.granted.items()
+                 if tenant_of.get(rid) == "urgent"), reverse=True)
+            other = sorted(
+                (u for rid, u in record.granted.items()
+                 if tenant_of.get(rid) != "urgent"), reverse=True)
+            widths = urgent + other
+        key = "+".join(str(u) for u in widths)
         out[key] = out.get(key, 0) + 1
     return out
 
@@ -749,7 +772,9 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
             # was whether it reached 24+8. Two views: the shape of each
             # round's grant, and the width the deadline-carrying tenant
             # received.
-            "grant_shapes": _grant_shapes(runtime.ledger),
+            "grant_shapes": _grant_shapes(
+                runtime.ledger, {rid: req.tenant
+                                 for rid, (req, _) in admitted.items()}),
             "urgent_units_histogram": _urgent_units(
                 runtime.ledger, {rid: req.tenant
                                  for rid, (req, _) in admitted.items()}),
