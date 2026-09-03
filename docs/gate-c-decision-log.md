@@ -4244,3 +4244,45 @@ is the same shape as the comparator that was read as "no partitioning"
 and was time-slicing, and as `pipelined_quota`'s feasibility test against
 the wrong unit: in each case something was checked, and it was not the
 thing that mattered. Run 2 is under way.
+
+### 2026-09-04 -- what run 1's grants say, recorded before run 2 has results
+
+Run 1 is unusable for a paired comparison but its **grant shapes** are
+real, and they answer the pre-registered validity condition
+("`concurrent_quota_c4` never granting four requests at once") before
+run 2 finishes. Over 28 groups:
+
+    concurrent_quota_c2   12+12+8: 17    16+16: 9
+    concurrent_quota_c4   8+6+6+6+6: 1032   8+8+8+8: 560
+                          32: 228           16+16: 162
+
+`8+6+6+6+6` is the video tenant on 8 units beside **four** urgent
+requests of 6 each -- the arrangement `prereg-intra-tenant.md` computes
+at 5.01 s against a 5.34 s deadline in the fast co-run state. So the
+policy does issue the grant the experiment is about, 1032 times, and the
+condition will not fire.
+
+**`8+8+8+8` is the case the pre-registration did not compute, and it is
+the interesting one.** When the video tenant has no ready work,
+`concurrent_quota` gives the whole die to the critical tenant and splits
+it four ways -- 560 rounds of it, all under arrivals, where the video
+queue does empty. On the measured curve that finishes a four-request
+burst in **2.79 s** against **3.70 s** for the same burst served
+serially at full width, in the fast state. On gfx90a the same
+arrangement is 3.12 s against 3.83 s, and at eight ways it collapses to
+8.43 s, because 1.10's efficiency optimum sits at a quarter of that die.
+
+Recorded now, with run 2 at group 1 of 40 and no outcome read, because
+the shape of the result may turn on which of the two arrangements the
+cells actually spent their time in, and deciding that afterwards is how
+this project has gone wrong before. The pre-registered verdicts are
+unchanged: they compare `c4` against `exclusive_priority` and against
+`fixed_split_24`, and nothing here alters them.
+
+The number both arrangements turn on -- the same-model co-run penalty
+with **three** peers rather than one -- is still unmeasured. 1.297 is a
+*pair* at 16+16. `scripts/run_amd_nway_corun.py` and
+`scripts/campaign_nway_corun.sh` measure it at 1, 2, 4 and 8 ways, at
+slice widths that are measured quotas on both dice (32/{1,2,4,8} and
+104/{1,2,4,8}), with one way carried as a control that must come back at
+1.000.
