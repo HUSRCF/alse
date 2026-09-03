@@ -50,7 +50,7 @@ def splits_for(model: QuotaCostModel) -> list[int]:
 def row(urgent: QuotaCostModel, video: QuotaCostModel, quota: int,
         steps: int, burst: int, cap: int, use_externality: bool,
         concurrency: int = 1, same_model_penalty: float = 1.0,
-        peer_penalty: float = 1.0) -> dict:
+        peer_penalty: float = 1.0, device: str = "gfx1201") -> dict:
     """One split's burst completion, optionally with intra-tenant slices.
 
     ``concurrency`` divides the urgent tenant's own quota among that many
@@ -65,8 +65,9 @@ def row(urgent: QuotaCostModel, video: QuotaCostModel, quota: int,
     own = urgent.step_seconds(slice_quota)
     peer = video.step_seconds(peer_quota)
     if use_externality:
-        own *= externality(quota, peer_quota)
-        peer *= externality(peer_quota, quota, model="cogvideox-2b")
+        own *= externality(quota, peer_quota, device=device)
+        peer *= externality(peer_quota, quota, model="cogvideox-2b",
+                            device=device)
     else:
         peer *= peer_penalty
     if concurrency > 1:
@@ -148,7 +149,8 @@ def main() -> int:
         try:
             rows.append(row(urgent, video, quota, args.steps, args.burst,
                             args.cap, args.externality, args.concurrency,
-                            args.same_model_penalty, args.peer_penalty))
+                            args.same_model_penalty, args.peer_penalty,
+                            args.device))
         except UnmeasuredPairing:
             # Named rather than dropped: a table that quietly loses its
             # widest split reads as coverage it does not have.

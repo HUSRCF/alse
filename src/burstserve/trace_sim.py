@@ -377,6 +377,24 @@ MEASURED_EXTERNALITY_BY_MODEL: dict[str, dict[tuple[int, int], float]] = {
     "cogvideox-2b": {(16, 16): 1.2891},
 }
 
+# The same quantity on gfx90a, measured 2026-09-04 with the same harness
+# that produced the table above -- run_amd_inproc_corun.py, one process,
+# one copy of the weights, two masked streams, self-paired SDXL at
+# 768x768, only samples inside the overlap window counted. Checked
+# against the stored gfx1201 probe rather than assumed, because a table
+# half-measured with another harness would be two quantities in one
+# column.
+#
+# The splits are gfx1201's die fractions rather than its unit counts --
+# 13/104 = 4/32, 26 = 8, 52 = 16 -- so the two architectures are compared
+# at equal shares, and each co-run fills two entries.
+MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {}
+
+EXTERNALITY_TABLES: dict[str, dict[tuple[int, int], float]] = {
+    "gfx1201": MEASURED_EXTERNALITY,
+    "gfx90a": MEASURED_EXTERNALITY_GFX90A,
+}
+
 
 class UnmeasuredPairing(LookupError):
     """Raised when a co-run pairing has no measured externality.
@@ -476,7 +494,8 @@ MEASURED_WORKPOINT: dict[str, str] = {
 
 
 def externality(own_units: int, peer_units: int | None,
-                model: str | None = None) -> float:
+                model: str | None = None,
+                device: str = "gfx1201") -> float:
     """Slowdown factor for a tenant sharing the die with one peer.
 
     Uses the model's own measurement where one exists and the shared
@@ -484,24 +503,42 @@ def externality(own_units: int, peer_units: int | None,
     4.2% above SDXL at 16+16 -- so a fallback is an extrapolation across
     models, not a lookup.
 
-    Keyed by quota and model, not by workpoint. The penalty depends
-    strongly on that too -- see MEASURED_WORKPOINT -- and this function
-    silently assumes the one the table was built at, because a trace does
-    not carry a resolution to key on.
+    Keyed by quota, model and device, not by workpoint. The penalty
+    depends strongly on that too -- see MEASURED_WORKPOINT -- and this
+    function silently assumes the one the table was built at, because a
+    trace does not carry a resolution to key on.
+
+    ``device`` defaults to gfx1201, which every table here was measured
+    on and every campaign before 2026-09-03 ran on, so every existing
+    caller is unchanged. A device with no measured table raises rather
+    than falling back: 52+52 does not exist on a 32-unit die, and the
+    two architectures' quota curves have different *shapes* and not only
+    different constants (1.10), so borrowing one for the other is an
+    extrapolation of the wrong hardware.
+
+    The per-model table is gfx1201's only. It is not consulted on another
+    device, because a model-specific penalty measured on one architecture
+    is not a correction to apply on a different one.
     """
     if peer_units is None:
         return 1.0
     key = (own_units, peer_units)
-    if model is not None:
+    if device == "gfx1201" and model is not None:
         own_table = MEASURED_EXTERNALITY_BY_MODEL.get(model)
         if own_table and key in own_table:
             return own_table[key]
-    if key not in MEASURED_EXTERNALITY:
-        raise UnmeasuredPairing(
-            f"no measured externality for {own_units}+{peer_units}; "
-            f"measured pairs are {sorted(MEASURED_EXTERNALITY)}"
+    table = EXTERNALITY_TABLES.get(device)
+    if table is None:
+        raise KeyError(
+            f"no measured externality table for device {device!r}; "
+            f"have {sorted(EXTERNALITY_TABLES)}"
         )
-    return MEASURED_EXTERNALITY[key]
+    if key not in table:
+        raise UnmeasuredPairing(
+            f"no measured externality for {own_units}+{peer_units} on "
+            f"{device}; measured pairs are {sorted(table)}"
+        )
+    return table[key]
 
 
 @dataclass(frozen=True)
