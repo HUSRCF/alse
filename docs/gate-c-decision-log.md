@@ -4462,3 +4462,78 @@ video tenant has no ready work -- 560 rounds of it in run 1. The other
 arrangement, `8+6+6+6+6`, has each urgent slice contending with three
 same-model siblings **and** a mismatched peer, which is not measured here
 and is not the same number.
+
+### 2026-09-04 -- the N-way penalty counts peers, not busy die, and it flatters nothing
+
+The sweep is in. SDXL self-paired on gfx90a, denoising only, one GCD,
+three trials per point, slice widths that are all measured quotas:
+
+    ways  slice   penalty      sd   pairwise at same slice   ratio
+       1    104    1.0001  0.0004   --  (control, must be 1.000)
+       2     52    1.2146  0.0041                   1.2176   0.998
+       4     26    1.4625  0.0231                   1.2770   1.145
+       8     13    2.0933  0.1206                   1.3559   1.544
+
+**The comparison in the last two columns is the finding.** A slice of
+width `w` at N ways has N-1 peers filling `104 - w` units; the pairwise
+entry `(w, 104-w)` has **one** peer filling exactly those units. Same
+slice, same busy fraction of the die, different number of independent
+contexts. At two ways the arrangement *is* the pairwise one and the two
+agree to 0.2% -- a cross-instrument check, not a result. At four and
+eight ways the same busy die costs **14.5% and 54.4% more** when it is
+split among more peers.
+
+`MEASURED_EXTERNALITY` is pairwise by construction and cannot express
+that. The numbers are carried as `MEASURED_NWAY_PENALTY_GFX90A`, read by
+no policy, because what they are for is the burst arithmetic -- which had
+been using the pairwise number as a stand-in.
+
+**What it does to intra-tenant concurrency, which is the only open path
+3.8 left.** Whole die, burst of four, gfx90a:
+
+    ways   measured   with the stand-in
+       1     3.83 s        3.83 s
+       2     3.55 s        3.60 s     <- measured optimum
+       4     3.70 s        3.12 s
+       8     5.30 s        3.12 s
+
+The optimum concurrency is **two, not four**, and the advantage over
+serving the burst serially is **7.3%** where the stand-in promised 18.5%.
+At a burst of eight the ordering is the same and eight ways costs 14.30 s
+against 7.66 s for not splitting at all. **The stand-in was wrong in the
+direction that flattered the mechanism**, which is the direction this
+project has agreed to distrust, and it was wrong by more the further it
+was extrapolated.
+
+**Against the prediction written before the numbers.** It said a mild
+rise keeps the advantage and a penalty above about 1.5 at four ways
+destroys it. The measured four-way is 1.4625, just under that line, and
+the outcome is **neither branch**: the advantage survives, at less than
+half its promised size, and at a *different concurrency*. The prediction
+was too binary and the shape it missed is the interesting part -- the
+penalty does not merely scale the answer, it moves the optimum.
+
+**Two things that make the result safer rather than weaker.** The sweep
+ran 1, 2, 4, 8 in order on a warming die, so the later points' solo
+baselines are inflated and their externality correspondingly
+**deflated**: the growth is if anything understated. And the solo
+baselines reproduce the quota curve to within 1% at 104, 52 and 26 units
+(-0.34%, +0.94%, +0.80%), which is the same curve measured a day earlier
+by a different script.
+
+**One weak cell, named.** Eight ways has 5 to 7 samples per slice inside
+the overlap window, sd 0.12, and a third trial whose solo sat 13.6% above
+the first's. A 300-second-window rerun is under way and will be kept
+**beside** it, not in place of it.
+
+**What it means for expC, and what it does not.** expC's prediction
+charges gfx1201's pairwise 1.297 to a four-way arrangement. If gfx1201
+behaves like gfx90a -- about 15% above its pairwise equivalent at four
+ways -- the pre-registration's 5.01 s grows and `concurrent_quota_c4`
+misses the 5.34 s deadline rather than meeting it with a 6% margin.
+**gfx1201's N-way penalty is not measured**: that run is queued behind
+expC, because syncing new scripts into X570's tree mid-campaign would
+leave run 2's attestation describing a tree that no longer exists. The
+pre-registered **verdicts are unchanged**; what is now doubtful, in a
+stated direction, is the prediction the pre-registration itself declined
+to back.

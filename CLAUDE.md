@@ -32,6 +32,7 @@ When adding an arm, read what the arm does rather than what it is called.
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
 | 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
 | 1.10 | The partitioning gain has an **optimum width on CDNA2 and none on RDNA4** — aggregate solo throughput peaks at four ways on gfx90a and falls below the whole die at eight; the Amdahl form the cost model assumes is **refuted** there | `experiments/probes/gfx90a/`, 2026-09-03 |
+| 1.11 | The co-run penalty **counts peers, not busy die**: the same slice with N−1 peers filling the same units costs +14.5% at four ways and +54.4% at eight over the pairwise entry. A pairwise table cannot express it, and every intra-tenant arithmetic here used one | `experiments/probes/gfx90a/nway/`, 2026-09-04 |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
 losses, 9 exact ties, sign test p = 0.383 — but the worst loss is +0.046
@@ -159,12 +160,23 @@ with no table **raises rather than falling back**.
   wrote to the same path and the last overwrote the other three. Both
   guards looked at the wrong name. Fixed in the library
   (`matrix_results.output_path`) and in the campaign, pinned by a test.
-* **The N-way co-run penalty** on gfx90a. Every arithmetic about
-  intra-tenant concurrency uses 1.3's **pair** at 16+16 for an arrangement
-  with three peers; the pre-registration says so and it is the number its
-  prediction turns on. `scripts/run_amd_nway_corun.py`, validated at two
-  ways against two other instruments (1.2074 here, 1.2176 whole-call,
-  1.2336 per-step) with a one-way control at 1.0001.
+* **A 300 s-window replication of the eight-way point** on gfx90a. The
+  sweep itself is done (1.11): the eight-way cell is its weakest, with 5
+  to 7 samples per slice inside the overlap window and sd 0.12, and the
+  replication is kept **beside** it rather than replacing it.
+* **Queued behind expC: the same sweep on gfx1201.** That is the number
+  `prereg-intra-tenant.md`'s prediction actually turns on, and it is
+  unmeasured. Nothing is synced into X570's tree while run 2 is in
+  flight, or run 2's attestation would describe a tree that no longer
+  exists.
+
+**What 1.11 does to the one open path.** 3.8 left intra-tenant
+concurrency as the only way to shorten a serial burst. On gfx90a, whole
+die, burst of four: serial 3.83 s, two ways **3.55 s**, four ways 3.70 s,
+eight ways 5.30 s. The optimum is **two, not four**, and the gain over
+serial is **7.3%** where the pairwise stand-in promised 18.5%. The
+stand-in erred in the direction that flattered the mechanism, and by more
+the further it was extrapolated.
 
 ### The structural result, 2026-09-03
 

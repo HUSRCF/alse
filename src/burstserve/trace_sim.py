@@ -419,6 +419,39 @@ MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {
     (91, 13): 1.0317,
 }
 
+# The same-model penalty as a function of how many ways the die is split,
+# measured 2026-09-04 on gfx90a with scripts/run_amd_nway_corun.py.
+# Denoising only -- output_type="latent" -- because the shared VAE is
+# upcast by whichever slice reaches the decode first, and because the
+# burst arithmetic is denominated in denoising steps.
+#
+# **The penalty depends on how many peers there are, not only on how much
+# of the die is busy.** A slice of width w at N ways has N-1 peers filling
+# maskable-w units; the pairwise entry (w, maskable-w) has ONE peer
+# filling exactly those units. Against it:
+#
+#     ways  slice   N-way  pairwise  ratio
+#        2     52  1.2146    1.2176  0.998   <- same arrangement, a check
+#        4     26  1.4625    1.2770  1.145
+#        8     13  2.0933    1.3559  1.544
+#
+# So MEASURED_EXTERNALITY cannot express this and no policy here reads
+# this table: it is carried as data for the burst arithmetic, which had
+# been using the pairwise number as a stand-in and was flattered by it.
+#
+# The sweep ran 1, 2, 4, 8 in order on a warming die, which inflates the
+# later solo baselines and therefore DEFLATES their externality. The
+# growth is if anything understated. The eight-way cell is the weakest --
+# 5 to 7 samples inside the overlap window, sd 0.12, and a third trial
+# whose solo sat 13.6% above the first's -- and a longer-window rerun is
+# kept beside it rather than replacing it.
+MEASURED_NWAY_PENALTY_GFX90A: dict[int, float] = {
+    1: 1.0001,     # control: a solo, and it must read 1.000
+    2: 1.2146,
+    4: 1.4625,
+    8: 2.0933,
+}
+
 EXTERNALITY_TABLES: dict[str, dict[tuple[int, int], float]] = {
     "gfx1201": MEASURED_EXTERNALITY,
     "gfx90a": MEASURED_EXTERNALITY_GFX90A,

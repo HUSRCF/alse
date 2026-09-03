@@ -20,6 +20,7 @@ from burstserve.trace_sim import (
     MEASURED_EXTERNALITY,
     MEASURED_EXTERNALITY_GFX90A,
     MEASURED_MODELS_GFX90A,
+    MEASURED_NWAY_PENALTY_GFX90A,
     MEASURED_QUOTA_SECONDS,
     MEASURED_QUOTA_SECONDS_GFX90A,
     QuotaCostModel,
@@ -212,6 +213,75 @@ class TheCoRunPenaltyTravelsTest(unittest.TestCase):
                             MEASURED_EXTERNALITY[(16, 16)])
         with self.assertRaises(Exception):
             externality(16, 16, model="cogvideox-2b", device="gfx90a")
+
+
+class ThePenaltyCountsPeersNotBusyDieTest(unittest.TestCase):
+    """N-1 peers cost more than one peer filling the same units.
+
+    A slice of width w at N ways has N-1 peers occupying maskable-w
+    units. The pairwise entry (w, maskable-w) has ONE peer occupying
+    exactly those units. Same slice, same busy fraction, different number
+    of independent contexts.
+    """
+
+    SLICE = {2: 52, 4: 26, 8: 13}
+
+    def ratio(self, ways):
+        width = self.SLICE[ways]
+        return (MEASURED_NWAY_PENALTY_GFX90A[ways]
+                / externality(width, MASKABLE - width, device="gfx90a"))
+
+    def test_the_one_way_control_is_a_solo(self):
+        self.assertAlmostEqual(MEASURED_NWAY_PENALTY_GFX90A[1], 1.0,
+                               delta=0.005)
+
+    def test_two_ways_is_the_pairwise_arrangement_and_agrees(self):
+        # Not a finding: it is the same arrangement measured by two
+        # harnesses, so it is the cross-check that licenses the rest.
+        self.assertAlmostEqual(self.ratio(2), 1.0, delta=0.01)
+
+    def test_more_peers_cost_more_at_the_same_busy_fraction(self):
+        self.assertGreater(self.ratio(4), 1.10)
+        self.assertGreater(self.ratio(8), 1.40)
+        self.assertGreater(self.ratio(8), self.ratio(4))
+
+    def test_the_penalty_grows_with_ways(self):
+        values = [MEASURED_NWAY_PENALTY_GFX90A[w] for w in (1, 2, 4, 8)]
+        self.assertEqual(values, sorted(values))
+
+    def test_the_pairwise_stand_in_flatters_the_mechanism(self):
+        # 1.2336 is what every intra-tenant arithmetic used for gfx90a.
+        for ways in (4, 8):
+            self.assertGreater(MEASURED_NWAY_PENALTY_GFX90A[ways], 1.2336)
+
+
+class TheConcurrencyOptimumMovesWhenTheStandInGoesTest(unittest.TestCase):
+    """Measured, the best concurrency on gfx90a is two, not four."""
+
+    def burst(self, ways, penalty, burst=4, steps=8):
+        model = QuotaCostModel.for_model("sdxl", device="gfx90a")
+        active = max(1, min(ways, burst))
+        width = model.maskable_units // active
+        batches = -(-burst // active)
+        return batches * steps * model.step_seconds(width) * (
+            penalty if active > 1 else 1.0)
+
+    def test_two_ways_wins_on_the_measured_penalties(self):
+        measured = {w: self.burst(w, MEASURED_NWAY_PENALTY_GFX90A[w])
+                    for w in (1, 2, 4, 8)}
+        self.assertEqual(min(measured, key=measured.get), 2)
+
+    def test_the_stand_in_would_have_picked_four(self):
+        stand_in = {w: self.burst(w, 1.2336) for w in (1, 2, 4)}
+        self.assertEqual(min(stand_in, key=stand_in.get), 4)
+
+    def test_the_advantage_over_serial_is_much_smaller_than_promised(self):
+        serial = self.burst(1, 1.0)
+        best = self.burst(2, MEASURED_NWAY_PENALTY_GFX90A[2])
+        promised = self.burst(4, 1.2336)
+        self.assertAlmostEqual((serial - best) / serial, 0.073, delta=0.005)
+        self.assertAlmostEqual((serial - promised) / serial, 0.185,
+                               delta=0.005)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -200,6 +200,37 @@ the sign. `tests/test_gfx90a_cost_tables.py` pins all of it.
 
 ---
 
+### 1.11 The co-run penalty counts peers, not busy die
+
+| | |
+| --- | --- |
+| **Claim** | The same-model co-run penalty is **not** a function of how much of the die is busy. A slice of width `w` with `N-1` peers filling `104-w` units pays materially more than the same slice with **one** peer filling exactly those units: **+14.5% at four ways and +54.4% at eight**. A pairwise externality table cannot express this, and every arithmetic in this project about intra-tenant concurrency had been using one as a stand-in. |
+| **Evidence** | `scripts/run_amd_nway_corun.py`, gfx90a, SDXL self-paired at 768x768, denoising only, one GCD, three trials per point, slice widths all measured quotas. Penalty 1.0001 / 1.2146 / 1.4625 / 2.0933 at 1 / 2 / 4 / 8 ways against pairwise 1.2176 / 1.2770 / 1.3559 at the same slices. `experiments/probes/gfx90a/nway/`. |
+| **Control** | One way is a solo and reads **1.0001**, sd 0.0004. Two ways *is* the pairwise arrangement and reads 0.998 of it -- two harnesses, one number, so the 4- and 8-way divergences are the result and the 2-way agreement is what licenses reading them. |
+| **Direction of the drift** | The sweep ran 1, 2, 4, 8 in order on a warming die, which inflates the later points' solo baselines and therefore **deflates** their externality. The growth is if anything understated. Solo baselines reproduce the quota curve to within 1% at 104, 52 and 26 units. |
+| **Scope** | N slices of one model with **no other tenant** -- the `8+8+8+8` grant `concurrent_quota` issues when the video tenant is idle. The `8+6+6+6+6` arrangement adds a mismatched peer to each slice and is a different number, not measured. gfx1201's N-way penalty is **not measured**; that run is queued behind expC. |
+| **Falsifier** | A longer-window replication at eight ways landing near the pairwise 1.3559; or a gfx1201 sweep whose ratios are flat at 1.0, which would make this CDNA2's alone. |
+
+**What it costs the one open path.** 3.8 left intra-tenant concurrency as
+the only way to shorten a serial burst. On the whole die at a burst of
+four, gfx90a:
+
+    ways   measured   with the pairwise stand-in
+       1     3.83 s        3.83 s
+       2     3.55 s        3.60 s     <- measured optimum
+       4     3.70 s        3.12 s
+       8     5.30 s        3.12 s
+
+The optimum concurrency is **two, not four**, and the advantage over
+serving the burst serially is **7.3%** where the stand-in promised 18.5%.
+The stand-in erred in the direction that flattered the mechanism, and by
+more the further it was extrapolated. **The penalty does not merely scale
+the answer; it moves the optimum.**
+
+The eight-way cell is the weakest -- 5 to 7 samples per slice inside the
+overlap window, sd 0.12, one trial's solo 13.6% above another's. A
+300-second-window replication is running and will be kept beside it.
+
 ---
 
 ## 2. Negative results
