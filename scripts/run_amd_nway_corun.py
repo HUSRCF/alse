@@ -145,6 +145,24 @@ def make_call(pipeline, args, seed: int) -> dict:
     else:
         call["height"] = args.height
         call["width"] = args.width
+    # Stop before the VAE decode. Two reasons, and the second is fatal
+    # rather than merely tidy.
+    #
+    # The measurement is the cost of *denoising* under N-way co-run,
+    # because that is what a quota decision moves and what the burst
+    # arithmetic is denominated in. The decode is a fixed tail.
+    #
+    # And SDXL's __call__ upcasts the VAE to float32 when it is fp16 with
+    # force_upcast set -- on the **shared** module. One slice upcasting
+    # while another is mid-decode gives "Input type (c10::Half) and bias
+    # type (float) should be the same", or hangs with both threads
+    # spinning and the die idle. Pre-upcasting does not fix it either:
+    # the branch that would re-cast the latents is guarded on MPS.
+    #
+    # This is a real difference from gfx1201's pairwise externality
+    # table, which is a whole-CALL ratio and does include the decode. The
+    # two are not the same quantity and are not mixed.
+    call["output_type"] = "latent"
     return call
 
 
@@ -346,8 +364,14 @@ def main() -> int:
               if t["externality_mean"] is not None]
     payload = {
         "schema_version": SCHEMA_VERSION,
-        "question": "what does a slice pay when it has N-1 same-model "
-                    "peers rather than one",
+        "question": "what does a slice pay in DENOISING cost when it has "
+                    "N-1 same-model peers rather than one",
+        "decode": "excluded -- output_type=latent. The shared VAE is "
+                  "upcast to float32 by whichever slice reaches the "
+                  "decode first, which corrupts the others. Also the "
+                  "wrong quantity: the burst arithmetic is in denoising "
+                  "steps. gfx1201's pairwise table is a whole-call ratio "
+                  "and includes the decode; the two are not mixed.",
         "arrangement": "one process, one copy of the weights, "
                        f"{args.ways} disjoint equal masked streams",
         "model": args.model,
