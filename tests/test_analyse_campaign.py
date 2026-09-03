@@ -62,6 +62,52 @@ def compare(cells, method, against, metric, subset=None):
             "pct": 100.0 * mean / statistics.mean(base)}
 
 
+class CrossedFactorsTest(unittest.TestCase):
+    """A runtime factor a policy is fixed at belongs to the arm.
+
+    The 2x2 ran every policy at both caps, so the cap is crossed with the
+    arms and is part of the configuration. expC's arms each have their own
+    ``requests_per_tenant`` -- it is a runtime setting, so one process
+    cannot hold two values of it, and ``exclusive_priority`` exists only
+    at 1 while ``concurrent_quota_c4`` exists only at 4. Putting that in
+    the key gives the two arms different configurations and pairs nothing
+    at all, which is how an analysis reports "no paired cells" for a
+    campaign that ran fine.
+    """
+
+    @unittest.skipUnless((RUNS / "exp2x2").is_dir(), "exp2x2 cells absent")
+    def test_the_2x2_crosses_the_cap_with_its_arms(self):
+        cells = load_cells(RUNS / "exp2x2")
+        names = [name for name, _ in _ANALYSER.crossed_factors(cells)]
+        self.assertIn("cap", names)
+        self.assertNotIn("rpt", names)
+
+    def test_a_factor_fixed_per_policy_is_not_crossed(self):
+        from burstserve.matrix_results import Cell
+
+        def cell(policy, rpt):
+            return Cell(policy=policy, load=0.6, burst=4, seed=0,
+                        miss_rate=0.0, video_goodput=1.0, urgent_p99_s=1.0,
+                        urgent_completed=1, path="x",
+                        requests_per_tenant=rpt)
+
+        arms = [cell("exclusive_priority", 1), cell("concurrent_quota_c4", 4)]
+        self.assertEqual(_ANALYSER.crossed_factors(arms), [])
+        crossed = arms + [cell("exclusive_priority", 4)]
+        self.assertEqual([n for n, _ in _ANALYSER.crossed_factors(crossed)],
+                         ["rpt"])
+
+    def test_the_key_always_carries_the_regime(self):
+        from burstserve.matrix_results import Cell
+        cells = [Cell(policy="a", load=0.6, burst=4, seed=0, miss_rate=0.0,
+                      video_goodput=1.0, urgent_p99_s=1.0,
+                      urgent_completed=1, path="x", video_backlog=backlog)
+                 for backlog in (False, True)]
+        key, names = _ANALYSER.make_configuration(cells)
+        self.assertEqual(names, [])
+        self.assertNotEqual(key(cells[0]), key(cells[1]))
+
+
 class KeyMustSeparateRegimesTest(unittest.TestCase):
     @unittest.skipUnless((RUNS / "expP").is_dir(), "expP cells absent")
     def test_the_default_key_refuses_a_two_regime_directory(self):

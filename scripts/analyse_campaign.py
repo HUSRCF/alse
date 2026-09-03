@@ -93,15 +93,52 @@ def ledger_counter(cells, field: str) -> Counter:
     return total
 
 
-# The configuration key. Regime belongs in it because a directory can
-# hold arrivals and backlog cells at the same (load, burst, seed), and
-# the runtime factors belong in it because the 2x2 varied one of them.
-# The seed stays last so the cluster bootstrap still finds it.
-def configuration(cell) -> tuple:
-    return (cell.regime, cell.max_steps_per_round, cell.requests_per_tenant)
+# The configuration key. Regime always belongs in it: a directory can hold
+# arrivals and backlog cells at the same (load, burst, seed), and that key
+# names two different traces.
+#
+# The runtime factors are decided from the data, because they are not the
+# same kind of thing in every campaign. The 2x2 ran EVERY policy at both
+# caps, so the cap is a factor crossed with the arms and belongs in the
+# key. expC's arms each have their own ``requests_per_tenant`` -- it is a
+# runtime setting, so one process cannot hold two values of it, and
+# ``exclusive_priority`` exists only at 1 while ``concurrent_quota_c4``
+# exists only at 4. Putting that in the key would give the two arms
+# different configurations and pair nothing at all, which is how an
+# experiment reports "no paired cells" for a campaign that ran fine.
+#
+# The rule: a factor is part of the configuration if some policy appears
+# at more than one of its values, and part of the ARM otherwise. Decided
+# per directory and printed, never assumed.
+FACTORS = (("cap", lambda c: c.max_steps_per_round),
+           ("rpt", lambda c: c.requests_per_tenant))
 
 
-def report(cells, method: str, against: str, label: str) -> dict:
+def crossed_factors(cells) -> list:
+    """Which runtime factors are crossed with the arms rather than fixed
+    by them."""
+    out = []
+    for name, get in FACTORS:
+        by_policy: dict[str, set] = {}
+        for cell in cells:
+            by_policy.setdefault(cell.policy, set()).add(get(cell))
+        if any(len(values) > 1 for values in by_policy.values()):
+            out.append((name, get))
+    return out
+
+
+def make_configuration(cells):
+    crossed = crossed_factors(cells)
+    names = [name for name, _ in crossed]
+
+    def configuration(cell) -> tuple:
+        return (cell.regime,) + tuple(get(cell) for _, get in crossed)
+
+    return configuration, names
+
+
+def report(cells, method: str, against: str, label: str,
+           configuration=None) -> dict:
     out = {"group": label, "method": method, "against": against,
            "cells": len(cells)}
     states = Counter(c.co_run_state for c in cells)
@@ -172,23 +209,29 @@ def main() -> int:
     # is constant adds nothing; a factor that varies and is pooled over
     # averages two arms of a factorial design into one number, which is
     # what the 2x2 would suffer from if only regime and load were used.
-    factors = [("regime", lambda c: c.regime),
-               ("load", lambda c: c.load),
-               ("cap", lambda c: c.max_steps_per_round),
-               ("rpt", lambda c: c.requests_per_tenant)]
+    factors = ([("regime", lambda c: c.regime),
+                ("load", lambda c: c.load)]
+               + [(name, get) for name, get in crossed_factors(cells)])
     varying = [(name, get) for name, get in factors
                if len({get(c) for c in cells}) > 1]
     print("  varying factors: "
           + (", ".join(name for name, _ in varying) or "none"))
 
-    out = [report(cells, args.method, args.against, "all cells")]
+    configuration, crossed = make_configuration(cells)
+    print("  configuration key: regime"
+          + ("".join(f", {name}" for name in crossed) if crossed else "")
+          + "   (a runtime factor a policy is fixed at belongs to the arm,"
+            " not the configuration)")
+
+    out = [report(cells, args.method, args.against, "all cells",
+                  configuration)]
     # Each factor on its own first -- that is how 3.6 reports arrivals
     # against backlog -- then the full cross.
     for name, get in varying:
         for value in sorted({get(c) for c in cells}, key=repr):
             subset = [c for c in cells if get(c) == value]
             out.append(report(subset, args.method, args.against,
-                              f"{name} {value}"))
+                              f"{name} {value}", configuration))
     if len(varying) > 1:
         groups: dict[tuple, list[Cell]] = {}
         for cell in cells:
@@ -196,7 +239,8 @@ def main() -> int:
                               []).append(cell)
         for key in sorted(groups, key=repr):
             label = " ".join(f"{n} {v}" for (n, _), v in zip(varying, key))
-            out.append(report(groups[key], args.method, args.against, label))
+            out.append(report(groups[key], args.method, args.against, label,
+                              configuration))
     if args.fast_only:
         fast = [c for c in cells if c.co_run_state == "fast"]
         if len(fast) == len(cells):
@@ -204,7 +248,7 @@ def main() -> int:
                   "same analysis and is not repeated)")
         elif fast:
             out.append(report(fast, args.method, args.against,
-                              "fast-state cells only"))
+                              "fast-state cells only", configuration))
     if args.json:
         args.json.write_text(json.dumps(out, indent=1, default=str))
         print(f"\n-> {args.json}")
