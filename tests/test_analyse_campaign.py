@@ -28,6 +28,18 @@ from burstserve.matrix_results import (
     paired_differences,
 )
 
+# The sign test lives in the analyser script, which imports nothing that
+# needs a GPU, so it is loaded the same way here.
+import importlib.util as _importlib_util
+
+_SPEC = _importlib_util.spec_from_file_location(
+    "analyse_campaign",
+    pathlib.Path(__file__).resolve().parent.parent
+    / "scripts" / "analyse_campaign.py")
+_ANALYSER = _importlib_util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_ANALYSER)
+sign_p = _ANALYSER.sign_p
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 RUNS = REPO / "experiments" / "runs"
 
@@ -73,6 +85,40 @@ class KeyMustSeparateRegimesTest(unittest.TestCase):
         pairs = paired_differences(cells, "step_matched_pairing",
                                    "exclusive_fcfs", "miss_rate")
         self.assertEqual(len(pairs), 30)
+
+
+@unittest.skipUnless((RUNS / "expA3").is_dir(), "expA3 cells absent")
+class Claim19ShapeTest(unittest.TestCase):
+    """1.9's shape: asymmetric in magnitude, not in frequency.
+
+    The interval excludes zero and the sign test says nothing. Reporting
+    either alone misrepresents it, so both are pinned.
+    """
+
+    def test_the_counts_and_the_sign_test(self):
+        cells = load_cells(RUNS / "expA3")
+        pairs = paired_differences(cells, "step_matched_pairing",
+                                   "exclusive_fcfs", "miss_rate",
+                                   extra_key=configuration)
+        values = [v for _, v in pairs]
+        wins = sum(1 for v in values if v < 0)
+        losses = sum(1 for v in values if v > 0)
+        ties = sum(1 for v in values if v == 0)
+        self.assertEqual((wins, losses, ties), (13, 8, 9))
+        self.assertAlmostEqual(sign_p(wins, losses), 0.383, places=3)
+
+    def test_no_loss_exceeds_five_points_and_wins_do(self):
+        cells = load_cells(RUNS / "expA3")
+        pairs = paired_differences(cells, "step_matched_pairing",
+                                   "exclusive_fcfs", "miss_rate",
+                                   extra_key=configuration)
+        values = [v for _, v in pairs]
+        self.assertAlmostEqual(max(v for v in values), 0.0455, places=4)
+        self.assertGreaterEqual(sum(1 for v in values if v < -0.10), 5)
+        # Two wins are at least 60 points: -0.7500 and exactly -0.6000.
+        # 1.9 first said "two exceed 60", which the second one does not.
+        self.assertGreaterEqual(sum(1 for v in values if v <= -0.60), 2)
+        self.assertEqual(sum(1 for v in values if v < -0.60), 1)
 
 
 @unittest.skipUnless((RUNS / "expP").is_dir(), "expP cells absent")

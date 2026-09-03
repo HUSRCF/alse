@@ -120,7 +120,10 @@ exclude zero is the size of the two sides:
     wins    13 configs, worst-case -0.7500, median -0.0909, total -2.2775
     losses   8 configs, worst-case **+0.0455**, median +0.0185, total +0.2151
 
-**No loss exceeds 4.6 points; five wins exceed 10 points and two exceed 60.**
+**No loss exceeds 4.6 points; five wins exceed 10 points and two reach 60
+or more** -- -0.7500 and exactly -0.6000. (The second read "exceed 60"
+until 2026-09-04, when the test that regenerates these counts found that
+one of the two is exactly 60.)
 So choosing the split at run time is close to free when it is wrong and
 occasionally decisive when it is right. Reporting this as a mean would
 hide the shape that matters, and reporting the sign test alone would
