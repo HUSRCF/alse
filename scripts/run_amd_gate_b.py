@@ -44,16 +44,23 @@ from burstserve.provenance import canonical_json  # noqa: E402
 GIT = Path(os.environ.get("BURSTSERVE_GIT", "/usr/bin/git"))
 TABLE_SCHEMA_VERSION = "burstserve.amd-gate-b-table/v1"
 
-# The die has 32 maskable units (established by the Gate A sweep, which also
-# showed bits 32..63 being silently ignored). All 32 behave identically, so a
-# contiguous low mask is a reproducible choice rather than an arbitrary one.
+# gfx1201 (R9700) has 32 maskable units, established by the Gate A sweep,
+# which also showed bits 32..63 being silently ignored. All 32 behave
+# identically, so a contiguous low mask is a reproducible choice rather
+# than an arbitrary one.
+#
+# Made a parameter on 2026-09-03 when the second SKU came back. gfx90a
+# (MI250X, CDNA2) has 104 compute units per GCD, and `xarch.sh` already
+# drove `run_amd_overlap_events.py` there with `--maskable-units 104`;
+# this sweep was the one place the count was still a module constant. The
+# default is unchanged, so every gfx1201 sweep reproduces.
 MASKABLE_UNITS = 32
 DEFAULT_QUOTAS = [4, 8, 12, 16, 20, 24, 28, 32]
 
 
-def mask_for(units: int) -> str:
-    if not 1 <= units <= MASKABLE_UNITS:
-        raise ValueError(f"quota {units} outside 1..{MASKABLE_UNITS}")
+def mask_for(units: int, maskable_units: int = MASKABLE_UNITS) -> str:
+    if not 1 <= units <= maskable_units:
+        raise ValueError(f"quota {units} outside 1..{maskable_units}")
     return hex((1 << units) - 1)
 
 
@@ -75,7 +82,7 @@ def problem_scale(*, batch: int, height: int, width: int, frames: int,
 def run_cell(cell_script: Path, *, units: int, batch: int, args, samples: int,
              warmup: int, height: int, width: int, frames: int) -> dict:
     env = dict(os.environ)
-    env["ROC_GLOBAL_CU_MASK"] = mask_for(units)
+    env["ROC_GLOBAL_CU_MASK"] = mask_for(units, args.maskable_units)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     argv = [
         sys.executable, str(cell_script),
@@ -186,6 +193,10 @@ def main() -> int:
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--frames", type=int, default=49)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--maskable-units", type=int,
+                        default=MASKABLE_UNITS,
+                        help="units on this die. 32 on gfx1201 (R9700); 104 per GCD on gfx90a (MI250X). The quota list must fit "
+                             "inside it.")
     parser.add_argument("--quotas", default=",".join(str(q) for q in DEFAULT_QUOTAS))
     parser.add_argument("--canonical-batch", type=int, default=1)
     parser.add_argument("--probe-batch", type=int, default=2)
@@ -293,7 +304,7 @@ def main() -> int:
         "source_revision": revision,
         "source_revision_after": revision_after,
         "source_revision_stable": stable,
-        "maskable_units": MASKABLE_UNITS,
+        "maskable_units": args.maskable_units,
         "quotas": quotas,
         "mask_policy": "contiguous low bits ((1<<q)-1)",
         "saturation_epsilon": args.saturation_epsilon,

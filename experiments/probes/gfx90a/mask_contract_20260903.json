@@ -1,0 +1,124 @@
+{
+ "schema_version": "burstserve.gfx90a-mask-contract/v1",
+ "measured_on": "2026-09-03",
+ "host": "DiamondHill",
+ "device": "AMD Instinct MI250X / MI250",
+ "arch": "gfx90a:sramecc+:xnack-",
+ "gcd": 4,
+ "multi_processor_count": 104,
+ "note": "Two masking interfaces disagree on gfx90a. The stream path honours every width tested exactly, low half and high half, and the halves are disjoint. The process path is exact only at or below 32 and at 64 and 104, and silently rounds 52 to 64, 78 to 104 and 96 to 104. Gate B's quota sweep drives cells through the process path, so it cannot sweep those widths here; the scheduling runtime uses the stream path, so measuring the cost curve there is both possible and closer to how the scheduler runs.",
+ "process_path_ROC_GLOBAL_CU_MASK": [
+  {
+   "requested": 8,
+   "readback_popcount": 8,
+   "matches": true,
+   "torch_mpc": 8
+  },
+  {
+   "requested": 13,
+   "readback_popcount": 13,
+   "matches": true,
+   "torch_mpc": 13
+  },
+  {
+   "requested": 16,
+   "readback_popcount": 16,
+   "matches": true,
+   "torch_mpc": 16
+  },
+  {
+   "requested": 26,
+   "readback_popcount": 26,
+   "matches": true,
+   "torch_mpc": 26
+  },
+  {
+   "requested": 32,
+   "readback_popcount": 32,
+   "matches": true,
+   "torch_mpc": 32
+  },
+  {
+   "requested": 52,
+   "readback_popcount": 64,
+   "matches": false,
+   "torch_mpc": 84
+  },
+  {
+   "requested": 64,
+   "readback_popcount": 64,
+   "matches": true,
+   "torch_mpc": 96
+  },
+  {
+   "requested": 78,
+   "readback_popcount": 104,
+   "matches": false,
+   "torch_mpc": 104
+  },
+  {
+   "requested": 96,
+   "readback_popcount": 104,
+   "matches": false,
+   "torch_mpc": 104
+  },
+  {
+   "requested": 104,
+   "readback_popcount": 104,
+   "matches": true,
+   "torch_mpc": 104
+  }
+ ],
+ "stream_path_hipExtStreamCreateWithCUMask": [
+  {
+   "requested": 8,
+   "low_half_popcount": 8,
+   "high_half_popcount": 8,
+   "matches": true
+  },
+  {
+   "requested": 16,
+   "low_half_popcount": 16,
+   "high_half_popcount": 16,
+   "matches": true
+  },
+  {
+   "requested": 26,
+   "low_half_popcount": 26,
+   "high_half_popcount": 26,
+   "matches": true
+  },
+  {
+   "requested": 32,
+   "low_half_popcount": 32,
+   "high_half_popcount": 32,
+   "matches": true
+  },
+  {
+   "requested": 52,
+   "low_half_popcount": 52,
+   "high_half_popcount": 52,
+   "matches": true
+  },
+  {
+   "requested": 64,
+   "low_half_popcount": 64,
+   "high_half_popcount": 64,
+   "matches": true
+  },
+  {
+   "requested": 78,
+   "low_half_popcount": 78,
+   "high_half_popcount": 78,
+   "matches": true
+  },
+  {
+   "requested": 104,
+   "low_half_popcount": 104,
+   "high_half_popcount": 104,
+   "matches": true
+  }
+ ],
+ "bearing_on_claim_1_3": "xarch.sh measured the cross-architecture negative at 52+52 through the stream path, which honours 52 exactly in both halves. The negative is therefore not an artefact of an unhonoured mask -- which would have produced an unusually low and tight co-run penalty, the shape 1.2336 sd 0.0030 has.",
+ "also_recorded": "torch's multi_processor_count disagrees with the readback above 32 on the process path: at a requested 64 the readback is 64 and torch reports 96."
+}

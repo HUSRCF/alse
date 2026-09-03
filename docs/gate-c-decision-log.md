@@ -3947,3 +3947,51 @@ experiments can, today, and one already has (`xarch.sh`, 32 processes at
 52+52). The scheduling experiments cannot until a gfx90a quota table and
 externality table exist. Diffusers is 0.40.0 there against 0.39.0 on
 X570, which is a second thing to hold fixed or to report.
+
+### 2026-09-03 -- gfx90a's two masking interfaces disagree, and one of them rounds up silently
+
+Probing before sweeping, and it earned it. On DiamondHill's gfx90a, with
+a readback after every request:
+
+    process path, ROC_GLOBAL_CU_MASK
+      8, 13, 16, 26, 32   honoured exactly
+      52                  -> 64      NOT honoured
+      64                  honoured exactly
+      78, 96              -> 104     NOT honoured
+      104                 honoured exactly
+
+    stream path, hipExtStreamCreateWithCUMask
+      8, 16, 26, 32, 52, 64, 78, 104   all honoured exactly,
+      low half and high half alike, and the halves disjoint
+
+**Why this was worth an hour.** `xarch.sh` measured the cross-architecture
+negative -- no bistability on gfx90a -- at **52+52**, and 52 is one of the
+widths the process path rounds up. If that measurement had gone through
+the process path it would have run on 64-unit masks or wider, and the
+reduced contract names this failure in exactly this direction: a runtime
+that accepts the call and quietly hands over more of the device produces
+an unusually **low** co-run penalty, which reads as good news. The gfx90a
+penalty was 1.2336 with sd 0.0030 -- low and tight, the shape an
+unmasked run would have.
+
+It went through the stream path, which honours 52 exactly. **1.3's
+cross-architecture clause stands**, and now it stands on a check rather
+than on the absence of one. The clause in `claims-and-evidence.md` says so.
+
+**Also recorded**: torch's `multi_processor_count` disagrees with the
+readback above 32 on the process path. At a requested 64 the readback is
+64 and torch reports 96. Two views of the same thing, and they part
+company exactly where the rounding starts.
+
+**What it costs the plan.** Gate B's quota sweep drives its cells with
+`ROC_GLOBAL_CU_MASK`, so on gfx90a it cannot sweep 52, 78 or 96 -- the
+half-die point included. The scheduling runtime uses the stream path
+anyway, so measuring the gfx90a cost curve there is both possible and
+closer to how the scheduler actually runs. That is the next step, not a
+port of the gfx1201 table: `MEASURED_MODELS` and
+`MEASURED_QUOTA_SECONDS` are keyed by model alone and carry
+`maskable_units: 32`, so they need a device dimension before any gfx90a
+scheduling cell can run.
+
+`run_amd_gate_b.py`'s `MASKABLE_UNITS = 32` is now a `--maskable-units`
+parameter, default unchanged so every gfx1201 sweep reproduces.
