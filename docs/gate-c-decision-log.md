@@ -4426,3 +4426,39 @@ The sweep runs ways 1, 2, 4 and 8 -- slice widths 104, 52, 26 and 13, all
 measured quotas -- on **one GCD**, because the comparison is between ways
 and must be within-device. One way is a solo and is carried as a control
 that must come back at 1.000.
+
+### 2026-09-04 -- a prediction about the N-way penalty, written before the sweep finished
+
+One way and two ways are in: **1.0001** for the solo control and
+**1.2099 / 1.2171** at two ways, which is the pairwise number the
+arithmetic has been using (1.2336 from the 2026-08-25 probe, 1.2176 from
+the whole-call table). At two ways the stand-in is right by
+construction, so nothing is learned there. Four and eight ways are what
+the question is about, and they are still running.
+
+**Predicted, before reading them.** If the contention is mostly for
+memory bandwidth and last-level cache rather than for issue slots, each
+slice's slowdown against *its own* solo should grow only mildly with the
+number of peers -- the die's aggregate demand is similar whether it is
+split two ways or four. Then intra-tenant concurrency keeps the advantage
+the curves give it, and 2.79 s / 3.12 s at four ways stand roughly as
+computed.
+
+If instead the penalty grows steeply -- say above 1.5 at four ways -- the
+advantage disappears: four ways on gfx1201 would go from 2.79 s to over
+3.2 s and stop beating the 3.70 s serial case, and the whole intra-tenant
+argument would be a stand-in's artefact.
+
+I do not have a strong prior between these. The one relevant measurement
+is that gfx90a's *pairwise* penalty rises smoothly as the slice narrows
+(1.0317 at 7/8 of the die to 1.3559 at 1/8), which is consistent with
+either. Written down so that whichever arrives is not described
+afterwards as the expected one.
+
+**A scope note that will matter when the numbers are read.** This probe
+measures N slices of the SAME model with no other tenant, which is
+exactly the `8+8+8+8` arrangement `concurrent_quota` issues when the
+video tenant has no ready work -- 560 rounds of it in run 1. The other
+arrangement, `8+6+6+6+6`, has each urgent slice contending with three
+same-model siblings **and** a mismatched peer, which is not measured here
+and is not the same number.
