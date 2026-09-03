@@ -167,8 +167,10 @@ being measured now (`scripts/run_amd_nway_corun.py`).
 On the measured curves the striking case is not partitioning between
 tenants at all: the **whole die split four ways within the priority
 tenant** finishes the burst in 2.79 s against 3.70 s serial on gfx1201,
-and 3.12 s against 3.83 s on gfx90a, while eight ways collapses to 8.43 s
-there. If that survives measurement, the shape of the result is: between
+and 3.12 s against 3.83 s on gfx90a. At a burst of eight, where eight
+slices can be used at all, gfx1201 keeps improving to 5.41 s while gfx90a
+peaks at four ways and eight costs 8.43 s -- worse than not splitting,
+which is 7.66 s. **The optimum concurrency is the architecture's.** If that survives measurement, the shape of the result is: between
 tenants, partitioning loses to priority; *within* the priority tenant it
 wins, and the measured curve predicts by how much and where the optimum
 is. That is a scoping result rather than a defeat, and (3) is what makes

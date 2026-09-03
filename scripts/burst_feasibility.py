@@ -61,7 +61,12 @@ def row(urgent: QuotaCostModel, video: QuotaCostModel, quota: int,
     its siblings, which is what 1.3 measures and is bistable on gfx1201.
     """
     peer_quota = urgent.maskable_units - quota
-    slice_quota = max(1, quota // concurrency)
+    # The policy takes ``critical[:concurrency]`` and divides among what
+    # it took, so asking for more slices than the burst has requests does
+    # not make the slices narrower -- it just leaves the extra unused.
+    # Dividing by ``concurrency`` here charged a width nobody would grant.
+    active = max(1, min(concurrency, burst))
+    slice_quota = max(1, quota // active)
     own = urgent.step_seconds(slice_quota)
     peer = video.step_seconds(peer_quota)
     if use_externality:
@@ -70,12 +75,12 @@ def row(urgent: QuotaCostModel, video: QuotaCostModel, quota: int,
                             device=device)
     else:
         peer *= peer_penalty
-    if concurrency > 1:
+    if active > 1:
         own *= same_model_penalty
     budget = max(1, min(cap, int(peer // own), steps))
     rounds = math.ceil(steps / budget)
     round_cost = max(own, peer)
-    batches = math.ceil(burst / concurrency)
+    batches = math.ceil(burst / active)
     return {
         "split": f"{quota}+{peer_quota}",
         "slice_quota": slice_quota,
@@ -87,14 +92,40 @@ def row(urgent: QuotaCostModel, video: QuotaCostModel, quota: int,
     }
 
 
-def exclusive(urgent: QuotaCostModel, steps: int, burst: int) -> dict:
-    own = urgent.step_seconds(urgent.maskable_units)
+def exclusive(urgent: QuotaCostModel, steps: int, burst: int,
+              concurrency: int = 1, same_model_penalty: float = 1.0) -> dict:
+    """The whole die, optionally split among the tenant's own requests.
+
+    With no peer there is nothing pacing a round, so each slice simply
+    runs its own steps and the burst takes ``ceil(burst / c)`` batches of
+    them. This is the arrangement the measured curves make interesting:
+    on gfx1201 four ways finishes in 2.79 s against 3.70 s served
+    serially, and on gfx90a 3.12 s against 3.83 s. Eight ways needs a
+    burst of eight to be usable at all -- the policy takes only as many
+    slices as it has requests, so ``concurrency`` is capped at ``burst``
+    here as it is there -- and at that burst gfx1201 improves to 5.41 s
+    while gfx90a costs 8.43 s against 7.66 s for not splitting, because
+    that die's efficiency optimum sits at a quarter of it (1.10).
+
+    ``same_model_penalty`` is what it turns on, and it is a **pairwise**
+    number being used for an N-way arrangement -- 1.297 is 1.3's pair at
+    16+16. `scripts/run_amd_nway_corun.py` measures the real one.
+    """
+    full = urgent.maskable_units
+    active = max(1, min(concurrency, burst))
+    slice_quota = max(1, full // active)
+    own = urgent.step_seconds(slice_quota)
+    if active > 1:
+        own *= same_model_penalty
+    batches = math.ceil(burst / active)
     return {
-        "split": f"{urgent.maskable_units}+0",
+        "split": f"{full}+0",
+        "slice_quota": slice_quota,
+        "slice_measured": urgent.is_measured(slice_quota),
         "own_s": own, "peer_s": None, "budget": steps,
-        "rounds_per_request": 1,
+        "rounds_per_request": steps,
         "request_s": steps * own,
-        "burst_s": burst * steps * own,
+        "burst_s": batches * steps * own,
     }
 
 
@@ -155,8 +186,8 @@ def main() -> int:
             # Named rather than dropped: a table that quietly loses its
             # widest split reads as coverage it does not have.
             skipped.append(f"{quota}+{urgent.maskable_units - quota}")
-    rows.append(exclusive(urgent, args.steps, args.burst))
-    rows[-1]["slice_measured"] = True
+    rows.append(exclusive(urgent, args.steps, args.burst, args.concurrency,
+                          args.same_model_penalty))
 
     print(f"device {args.device}  urgent {args.urgent_model} "
           f"({args.steps} steps x {args.burst}) beside {args.video_model}"

@@ -19,9 +19,12 @@ an 8+24 pair read -44.6%.
 Why it matters beyond expC. On the measured curves the whole die split
 four ways beats serving a burst serially on both architectures -- 2.79 s
 against 3.70 s on gfx1201 at the pairwise fast penalty, 3.12 s against
-3.83 s on gfx90a -- and on gfx90a eight ways collapses to 8.43 s. So
-there is an optimum, the curve predicts where it is, and the N-way
-penalty is what turns that prediction into a claim.
+3.83 s on gfx90a. At a burst of eight, where eight slices can actually
+be used, gfx1201 keeps improving to 5.41 s while gfx90a **peaks at four
+ways** (6.24 s) and eight ways costs 8.43 s -- worse than not splitting
+at all, which is 7.66 s. So the optimum concurrency is the
+architecture's, the curve predicts where it is, and the N-way penalty is
+what turns that prediction into a claim.
 
 Everything is read back rather than assumed: each mask after
 installation, and every pair of masks for disjointness. A runtime that

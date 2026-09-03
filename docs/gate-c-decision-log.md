@@ -4269,8 +4269,11 @@ it four ways -- 560 rounds of it, all under arrivals, where the video
 queue does empty. On the measured curve that finishes a four-request
 burst in **2.79 s** against **3.70 s** for the same burst served
 serially at full width, in the fast state. On gfx90a the same
-arrangement is 3.12 s against 3.83 s, and at eight ways it collapses to
-8.43 s, because 1.10's efficiency optimum sits at a quarter of that die.
+arrangement is 3.12 s against 3.83 s. Eight ways cannot be used by a
+burst of four at all -- the policy takes ``critical[:concurrency]`` and
+divides among what it took -- but at a burst of eight it costs 8.43 s
+against 7.66 s for not splitting, where gfx1201 improves to 5.41 s.
+1.10's efficiency optimum at a quarter of the gfx90a die is why.
 
 Recorded now, with run 2 at group 1 of 40 and no outcome read, because
 the shape of the result may turn on which of the two arrangements the

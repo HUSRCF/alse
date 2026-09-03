@@ -10,7 +10,13 @@
 # measured curves the whole die split four ways beats serving a burst
 # serially on BOTH architectures (2.79 s vs 3.70 s on gfx1201 at the
 # pairwise fast penalty, 3.12 s vs 3.83 s on gfx90a), and on gfx90a eight
-# ways collapses to 8.43 s. There is an optimum and the curve says where.
+# ways -- which needs a burst of eight, since the policy takes only as
+# many slices as it has requests -- costs 8.43 s where four costs 6.24 s
+# and not splitting at all costs 7.66 s. gfx1201 at the same burst
+# improves all the way to eight ways, 5.41 s. **The optimum concurrency
+# is the architecture's**, and on CDNA2 overshooting it is worse than
+# doing nothing. The curve says where it is; this measurement says
+# whether the curve is allowed to.
 # The N-way penalty is what turns that into a claim.
 #
 # Ways are chosen so every slice width is a MEASURED quota on both dice:

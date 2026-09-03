@@ -151,6 +151,47 @@ class TheSecondDeviceMissesUnconditionallyTest(unittest.TestCase):
         self.assertGreater(externality(26, 78, device="gfx90a"), 1.012)
 
 
+class IntraTenantConcurrencyTest(unittest.TestCase):
+    """The whole die split among the priority tenant's own requests.
+
+    The penalty used here is 1.3's **pair** at 16+16 standing in for an
+    N-way arrangement, which is what prereg-intra-tenant.md does and says
+    it does. scripts/run_amd_nway_corun.py measures the real one; until
+    it has, these are pinned as the arithmetic, not as a claim.
+    """
+
+    PENALTY = {"gfx1201": 1.297, "gfx90a": 1.2336}
+
+    def burst(self, device, ways, burst=4):
+        urgent = QuotaCostModel.for_model("sdxl", device=device)
+        penalty = 1.0 if ways == 1 else self.PENALTY[device]
+        return bf.exclusive(urgent, 8, burst, ways, penalty)["burst_s"]
+
+    def test_four_ways_beats_serial_on_both_devices(self):
+        for device, serial, four in (("gfx1201", 3.70, 2.79),
+                                     ("gfx90a", 3.83, 3.12)):
+            self.assertAlmostEqual(self.burst(device, 1), serial, delta=0.01)
+            self.assertAlmostEqual(self.burst(device, 4), four, delta=0.01)
+            self.assertLess(self.burst(device, 4), self.burst(device, 1))
+
+    def test_asking_for_more_slices_than_requests_changes_nothing(self):
+        # The policy takes critical[:concurrency] and divides among what
+        # it took, so eight slices for four requests is four slices.
+        for device in ("gfx1201", "gfx90a"):
+            self.assertAlmostEqual(self.burst(device, 8),
+                                   self.burst(device, 4), places=9)
+
+    def test_the_optimum_number_of_ways_differs_between_the_devices(self):
+        # Visible only at a burst that can fill eight slices.
+        gfx1201 = [self.burst("gfx1201", n, burst=8) for n in (1, 2, 4, 8)]
+        gfx90a = [self.burst("gfx90a", n, burst=8) for n in (1, 2, 4, 8)]
+        self.assertEqual(gfx1201.index(min(gfx1201)), 3)   # eight ways
+        self.assertEqual(gfx90a.index(min(gfx90a)), 2)     # four ways
+        # And overshooting on CDNA2 is worse than not splitting at all.
+        self.assertGreater(gfx90a[3], gfx90a[0])
+        self.assertLess(gfx1201[3], gfx1201[0])
+
+
 class ExternalityIsAFloorTest(unittest.TestCase):
     def test_applying_the_measured_penalty_never_shortens_a_burst(self):
         urgent = QuotaCostModel.for_model("sdxl", device="gfx1201")
