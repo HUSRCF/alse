@@ -211,6 +211,72 @@ def make_pipelined_quota(cap: int = 16,
     return pipelined_quota
 
 
+def make_concurrent_quota(concurrency: int = 4, urgent_units: int = 24,
+                          cap: int = 16):
+    """Run several requests of the critical tenant at once, on slices.
+
+    The only path 3.8 leaves open. Every request of a burst carries one
+    absolute deadline and the registry served them one at a time, so the
+    burst was serial whatever the split -- and on the measured cost model
+    no split meets a 5.34 s burst deadline that way: the best is 6.30 s
+    at 24+8 against 3.70 s exclusive. Widening the slice cannot fix a
+    serial burst; only shortening it can, and the only way to shorten it
+    is to stop serialising.
+
+    Here the critical tenant's quota is divided among ``concurrency`` of
+    its own requests, each on its own mask, and the batch tenant keeps
+    the rest. On the same cost model, with the same-model co-run penalty
+    charged to the intra-tenant pair, ``24+8`` at concurrency 4 completes
+    a burst in **5.01 s against the 5.34 s deadline** -- a 6% margin, and
+    the only combination that survives that penalty at all. At the slow
+    state's 1.949 it is 6.67 s and misses, which makes 1.3's bistability
+    the thing that decides whether this works.
+
+    ``concurrency`` requests are only granted when that many are runnable;
+    with fewer, the quota is divided among those that are. The batch
+    tenant is never starved of its slice, so this is a partitioning
+    policy rather than priority wearing a mask.
+    """
+    if concurrency < 1:
+        raise ValueError("concurrency has to be at least one")
+    if not 0 < urgent_units < 32:
+        raise ValueError("a split has to leave both tenants something")
+
+    def concurrent_quota(states, units, now) -> dict[int, int]:
+        if not states:
+            return {}
+        critical = [s for s in states if s.request.deadline_s is not None]
+        others = [s for s in states if s.request.deadline_s is None]
+        if not critical:
+            return static_even(states, units, now)
+        if not others:
+            # Nothing to share with: the whole die, divided among the
+            # critical requests that are runnable.
+            take = critical[:concurrency]
+            share = max(1, units // len(take))
+            grant = {s.request.request_id: share for s in take}
+            first = take[0].request.request_id
+            grant[first] += units - share * len(take)
+            return grant
+
+        want = max(1, min(units - 1, round(urgent_units * units / 32)))
+        critical = sorted(critical, key=lambda s: (s.request.deadline_s,
+                                                   s.request.request_id))
+        take = critical[:concurrency]
+        share = max(1, want // len(take))
+        if share * len(take) > units - 1:
+            take = take[:1]
+            share = want
+        grant = {s.request.request_id: share for s in take}
+        spent = share * len(take)
+        grant[others[0].request.request_id] = units - spent
+        return grant
+
+    concurrent_quota.__name__ = (
+        f"concurrent_quota_c{concurrency}_u{urgent_units}")
+    return concurrent_quota
+
+
 def measured_pairs_only(states: Sequence[RequestState], units: int,
                         now: float) -> dict[int, int]:
     """Prefer splits the externality table actually covers.
@@ -671,6 +737,9 @@ for _u in FIXED_SPLITS:
 
 BASELINES["deadline_aware"] = deadline_aware
 BASELINES["deadline_quota"] = deadline_quota
+for _c in (2, 4):
+    POLICY_FACTORIES[f"concurrent_quota_c{_c}"] = (
+        lambda c=_c: make_concurrent_quota(concurrency=c, urgent_units=24))
 BASELINES["pipelined_quota"] = make_pipelined_quota(16)
 BASELINES["exclusive_priority"] = exclusive_priority
 BASELINES["probing_partitioning"] = probing_partitioning

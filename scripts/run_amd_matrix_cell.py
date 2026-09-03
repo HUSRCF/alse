@@ -176,6 +176,20 @@ def main() -> int:
                              "1+e, leaving the ledger's measurements alone. "
                              "plan.md week 15: no safety failure at +/-10%%, "
                              "conservative degradation at +/-20%%.")
+    parser.add_argument("--requests-per-tenant", type=int, default=1,
+                        help="how many requests of one tenant the policy "
+                             "is offered per round. 1 is what every "
+                             "campaign before 2026-09-03 ran under, and "
+                             "it is what makes a burst serial: all four "
+                             "requests of a burst share one absolute "
+                             "deadline, so served one at a time no split "
+                             "meets it -- 6.30 s at best against 3.70 s "
+                             "exclusive and a 5.34 s deadline (3.8). "
+                             "Above 1 the critical tenant's quota can be "
+                             "divided among its own requests, each on its "
+                             "own mask. Costs one adapter per in-flight "
+                             "slot; they share the pipeline's weights and "
+                             "carry only their own scheduler.")
     parser.add_argument("--max-steps-per-round", type=int, default=1,
                         help="how many steps a granted request may run "
                              "inside one round. The default of 1 is the "
@@ -279,18 +293,30 @@ def main() -> int:
 
         args.unmasked_pool = Unmasked(pool)
 
-    pipelines, warm_adapters = {}, {}
+    pipelines, warm_adapters, slots = {}, {}, {}
     for tenant, model in models.items():
         if model not in pipelines:
             print(f"loading {model} ...", flush=True)
             pipelines[model] = harness.build_pipeline(
                 model, drop_text_encoders=False)
-        # One adapter per tenant is enough here: each tenant runs at most
-        # one request at a time, which is what TenantRegistry offers.
+        # One adapter per in-flight slot, and all of them built HERE --
+        # before the text encoders are freed below. An adapter encodes its
+        # prompt in __init__, so one built later finds
+        # ``pipeline.text_encoder`` set to None and dies with
+        # "'NoneType' object is not callable". A smoke test caught that;
+        # building lazily at admission time did not survive first
+        # contact.
+        #
+        # The slots share the pipeline, so the extra cost is a scheduler
+        # built from_config and one set of prompt embeds each, not a
+        # second copy of the weights.
         args.steps = (args.urgent_steps if tenant == "urgent"
                       else args.video_steps)
-        warm_adapters[tenant] = harness.make_adapter(model, pipelines[model],
-                                                     args, seed=1000)
+        slots[tenant] = [
+            harness.make_adapter(model, pipelines[model], args, seed=1000)
+            for _ in range(max(1, args.requests_per_tenant))
+        ]
+        warm_adapters[tenant] = slots[tenant][0]
     for model in pipelines:
         harness.free_text_encoders(pipelines[model])
     loaded_s = time.perf_counter() - began_all
@@ -357,7 +383,7 @@ def main() -> int:
         args.predictor_error = error
         for policy_name in policies:
             run_one(policy_name, args, torch, models, pool, pipelines,
-                    warm_adapters, loaded_s, began_all,
+                    warm_adapters, slots, loaded_s, began_all,
                     out_template.replace("ERROR", f"{error:g}"),
                     many, shared, drawn, began_all_unix)
     return 0
@@ -478,7 +504,7 @@ def measure_isolated(args, torch, models, pool, warm_adapters, *, label):
 
 
 def run_one(policy_name, args, torch, models, pool, pipelines,
-            warm_adapters, loaded_s, began_all, out_template, many,
+            warm_adapters, slots, loaded_s, began_all, out_template, many,
             shared=None, drawn=None, began_all_unix=None):
     began_all = time.perf_counter() - loaded_s
     if shared is not None:
@@ -527,6 +553,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
                       externality_blind=args.externality_blind,
                       charge_currency=args.charge_currency,
                       max_steps_per_round=args.max_steps_per_round,
+                      requests_per_tenant=args.requests_per_tenant,
                       enforce_disjoint=not args.unmasked)
     # Warm-up is residency, not a tenant's debt: on the card a first step
     # measured 1.855 s against a 0.157 s steady step, and charging it made
@@ -534,6 +561,13 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
     for tenant, model in models.items():
         runtime.warm(model, 0.0)
         runtime.resident_models.add(model)
+
+    # Round-robin over the slots built above. At requests_per_tenant == 1
+    # there is one slot and this is exactly the old behaviour: the warmed
+    # adapter, reused for every request of the tenant.
+    def adapter_slot(tenant: str, request_id: int):
+        pool_for = slots[tenant]
+        return pool_for[request_id % len(pool_for)]
 
     pending = list(trace.requests)
     admitted, finished = {}, {}
@@ -554,7 +588,14 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
             # same seed and produces the same latent: a nuisance variable
             # removed deliberately, and harmless here because the
             # scheduler's cost does not depend on the latent's content.
-            adapter = warm_adapters[tenant]
+            # One adapter per in-flight slot, not per tenant. Two
+            # executors sharing an adapter clobber each other's
+            # ``_step_index`` -- the adapter's own docstring records the
+            # symptom, a hang at 3% GPU with both threads alive. The
+            # adapters share the pipeline, so the extra cost is a
+            # scheduler built ``from_config`` and one set of prompt
+            # embeds, not a second copy of the weights.
+            adapter = adapter_slot(tenant, request.request_id)
             queued = QueuedRequest(request_id=request.request_id,
                                    tenant=tenant, model=models[tenant],
                                    arrival_s=request.arrival_s,
@@ -640,6 +681,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
         "policy": policy_name,
         "drift_tolerance": args.drift_tolerance,
         "max_steps_per_round": args.max_steps_per_round,
+        "requests_per_tenant": args.requests_per_tenant,
         "predictor_error": args.predictor_error,
         "externality_blind": args.externality_blind,
         "unmasked": args.unmasked,

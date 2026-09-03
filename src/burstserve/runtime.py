@@ -96,7 +96,8 @@ class Runtime:
                  enforce_disjoint: bool = True,
                  fallback_backoff_s: float = 1.0,
                  max_fallback_backoff_s: float = 60.0,
-                 max_steps_per_round: int = 1):
+                 max_steps_per_round: int = 1,
+                 requests_per_tenant: int = 1):
         self.policy = policy
         # How many steps one request may run inside a round. 1 is the
         # behaviour every number in this project was produced under, and
@@ -106,6 +107,18 @@ class Runtime:
         if max_steps_per_round < 1:
             raise ValueError("a round has to run at least one step")
         self.max_steps_per_round = max_steps_per_round
+        # How many requests of one tenant the policy is offered. One is
+        # the original rule and is what makes a burst serial: every
+        # request of a burst carries the same absolute deadline, so with
+        # one candidate per tenant they are served one after another
+        # whatever the split. 3.8 measures what that costs -- no split can
+        # meet a 5.34 s burst deadline because the best partitioned burst
+        # is 6.30 s against 3.70 s exclusive. Above one, a policy may run
+        # several requests of a tenant concurrently on slices of that
+        # tenant's quota.
+        if requests_per_tenant < 1:
+            raise ValueError("a tenant has to be offered at least one request")
+        self.requests_per_tenant = requests_per_tenant
         # Optional so the loop stays testable without a GPU. When present,
         # each granted request runs on a stream carrying its own CU mask,
         # and the masks of a co-running pair are constructed disjoint
@@ -375,7 +388,7 @@ class Runtime:
 
     def tick(self, now_s: float) -> RoundRecord:
         """One decision and its execution."""
-        offered = self.registry.ready(now_s)
+        offered = self.registry.ready(now_s, self.requests_per_tenant)
         states = []
         for tenant, queued in offered:
             executor = self.executors[queued.request_id]

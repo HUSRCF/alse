@@ -234,18 +234,33 @@ class TenantRegistry:
     def tenants(self) -> Iterator[str]:
         return iter(tuple(self._order))
 
-    def ready(self, now: float) -> list[tuple[str, QueuedRequest]]:
-        """One candidate per tenant, in the current rotation order.
+    def ready(self, now: float,
+              per_tenant: int = 1) -> list[tuple[str, QueuedRequest]]:
+        """Up to ``per_tenant`` candidates per tenant, in rotation order.
 
-        One per tenant, not all: the between-tenant policy decides how
-        much die each tenant gets, and offering it several requests from
-        the same tenant would let it choose within a tenant, which is the
-        inner discipline's job.
+        One per tenant was the original rule, and the reason was that the
+        between-tenant policy decides how much die each tenant gets while
+        choosing *within* a tenant is the inner discipline's job.
+
+        That rule is also what makes a burst serial. Every request of a
+        burst carries the same absolute deadline, so with one candidate
+        per tenant the burst's four requests are served one after
+        another whatever the split -- and 3.8 shows the consequence: on
+        the measured cost model no split can meet a 5.34 s burst deadline,
+        because the best partitioned burst is 6.30 s against 3.70 s
+        exclusive. That is a property of this rule, not of partitioning.
+
+        ``per_tenant`` above one offers the policy several requests of one
+        tenant so it can run them concurrently on slices of that tenant's
+        quota. The inner discipline still decides *which* ones: they come
+        off the same sorted queue in order.
         """
+        if per_tenant < 1:
+            raise ValueError("a tenant has to be offered at least one request")
         out = []
         for tenant in self._order:
-            candidate = self._queues[tenant].next_ready(now)
-            if candidate is not None:
+            queue = self._queues[tenant]
+            for candidate in queue.ready(now)[:per_tenant]:
                 out.append((tenant, candidate))
         return out
 
