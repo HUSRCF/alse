@@ -34,7 +34,16 @@ UNITS=${UNITS:-32}
 MODEL=${MODEL:-sdxl}
 WINDOW=${WINDOW:-120}
 TRIALS=${TRIALS:-3}
+# One GCD for the whole sweep, deliberately. The comparison here is
+# BETWEEN ways, so it must be within-device: the 0.6% deterministic
+# device-to-device difference on this machine is nothing beside the
+# effects being measured (tens of percent), but rotating would confound
+# the two axes for no gain.
 GCDS=${GCDS:-""}          # empty: use whatever device the env selects
+
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/opt/rocm/lib
+export HF_HOME=${HF_HOME:-/media/PM983/alse/hf}
+export HF_HUB_OFFLINE=1
 
 mkdir -p "$OUT"
 i=0

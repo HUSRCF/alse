@@ -4372,3 +4372,57 @@ An error corrected in the same breath: this was first written as "the
 two agree to within 0.03 everywhere", which is false at 26+78 (0.030)
 and 91+13 (0.039). The test that pins the agreement found it before the
 sentence had been published anywhere but this file.
+
+### 2026-09-04 -- the N-way probe, and the three bugs it took to get one number
+
+`prereg-intra-tenant.md` charges 1.297 -- 1.3's **pair** at 16+16 -- to a
+four-way arrangement where each slice has three peers. It says so; it is
+the single number its prediction turns on; nothing had measured it.
+`scripts/run_amd_nway_corun.py` does: N disjoint equal slices of the die,
+one process, one copy of the weights, all running the same model for a
+fixed window, each scored against a solo baseline **at its own slice
+width on its own mask**.
+
+Three defects had to be cleared first, and each is the same shape --
+something that is safe to share until two threads touch it.
+
+1. **One pipeline, one scheduler.** N threads stepping one
+   `EulerDiscreteScheduler` clobber `_step_index`: "IndexError: index 9
+   is out of bounds for dimension 0 with size 9", on the *second* trial,
+   after the first has already printed numbers. `prereg-intra-tenant.md`
+   names this hazard for the adapters; it is the same one. Each way now
+   gets a sibling pipeline built from `components` -- the same UNet, the
+   same VAE, its own scheduler -- which is the construction
+   `--share-weights` already uses.
+2. **One VAE, upcast underneath.** SDXL's `__call__` upcasts the VAE to
+   float32 when it is fp16 with `force_upcast`, on the shared module. One
+   slice upcasting while another is mid-decode gives "Input type
+   (c10::Half) and bias type (float) should be the same" -- or hangs,
+   both threads spinning at 100% CPU with the die at **0%**, which is how
+   it presented first. Pre-upcasting does not help: the branch that would
+   re-cast the latents is guarded on MPS. `output_type="latent"` stops
+   before the decode.
+3. And that is also the **right quantity**. The measurement is the cost
+   of *denoising* under N-way co-run, which is what a quota decision
+   moves and what the burst arithmetic is denominated in. It is a real
+   difference from gfx1201's pairwise table, which is a whole-**call**
+   ratio and does include the decode, so the payload records it and the
+   two are not mixed.
+
+**Validated before being trusted.** Two ways at 104 units is 52+52, which
+two other instruments have already measured:
+
+    this probe, denoising only        1.2074  1.2106
+    inproc pairwise, whole call       1.2176
+    overlap-events probe, per step    1.2336   (2026-08-25)
+
+Three instruments, spread 2.1%, and the decode-free number is the lowest,
+which is the direction it should be if the decode contends too. The solo
+baseline agrees with the quota curve as well: 1.472 s for an 8-step call
+at 52 units is 0.184 s per step against the curve's 0.18247, 0.8% apart.
+Two pipelines resident in 6.6 GB confirms the weights really are shared.
+
+The sweep runs ways 1, 2, 4 and 8 -- slice widths 104, 52, 26 and 13, all
+measured quotas -- on **one GCD**, because the comparison is between ways
+and must be within-device. One way is a solo and is carried as a control
+that must come back at 1.000.
