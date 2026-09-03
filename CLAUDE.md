@@ -31,6 +31,7 @@ When adding an arm, read what the arm does rather than what it is called.
 | 1.6b | Masked partitioning beats two **unmasked** full-die streams: urgent miss +0.0333 [+0.0079, +0.0592] against it | `experiments/runs/unmasked_base`, 36 cells |
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
 | 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
+| 1.10 | The partitioning gain has an **optimum width on CDNA2 and none on RDNA4** — aggregate solo throughput peaks at four ways on gfx90a and falls below the whole die at eight; the Amdahl form the cost model assumes is **refuted** there | `experiments/probes/gfx90a/`, 2026-09-03 |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
 losses, 9 exact ties, sign test p = 0.383 — but the worst loss is +0.046
@@ -115,28 +116,55 @@ six-action barrier-off cell was not properly tested. And
 quota buys more steps per round, so the burst finishes fastest at 24+8,
 not 4+28.
 
-### Running now: where the boundary is
+### The second SKU, 2026-09-03/04
 
-The same cost model that explains the loss also says where it stops. A
-round is paced by its slowest member, so with the barrier **on** a
-32-step burst takes 17.7 s to 99.7 s at every split against a 5.34 s
-deadline — **no split can win, arithmetically**, and every campaign
-before 2026-08-27 ran that way. With the barrier off and a cap of 16,
-`24+8` runs 12 steps per round and finishes in **4.7 s, inside the
-deadline**; it is the only feasible partition.
+The single-SKU decision was reversed by the user on 2026-09-03. The
+second SKU is **DiamondHill, 8x MI250X (gfx90a, CDNA2, 104 CU per GCD)**,
+reached as `ssh pc@10.120.16.9`; it is not NVIDIA, so Gate B's NVIDIA
+text stays withdrawn. Two cost tables were measured there and **no
+scheduling cell has ever run on it**.
 
-Over one burst period `T`, priority gives the batch tenant
-`32 x (T - 3.71)` unit-seconds and a 24+8 partition gives `8 x T`, so
-partitioning wins when **`T < 4.95 s`**. Measured gaps: 6.79 s at load
-0.6, about 3.9 s at 1.05. **Predicted: loss at 0.6, win at 1.05** — the
-boundary sits between the two loads this project has measured all along.
+**The quota curve refutes the model's functional form.** `fit_quota_latency`
+returns a *negative* serial term for both models, and the refutation does
+not need the fitter: under `latency = serial + parallel/q` the
+unit-seconds `q x t(q)` must rise with `q`, and on gfx90a they fall from
+13 to 26 units. Leave-one-out MAPE 24.9% and 28.1% against 5.6% and 4.6%
+on gfx1201, **where Gate B's bar is 10%** and the noise here is 0.11%.
+`serial_fraction` is recorded as 0.0 and that is **not a fit**; the
+measured quota set is closed under complement so the fit stays
+unreachable.
 
-Experiment `expB` (`docs/prereg-boundary.md`) tests it with
-`pipelined_quota`, whose feasibility test is the corrected one, against
-`exclusive_priority`, judged by plan.md's own second branch: same miss
-rate, video goodput up at least 10%. Grants are now counted per cell
-(`ledger.grant_shapes`), because the 2x2 could not tell whether its
-policy ever issued an asymmetric grant.
+**The co-run penalty travels; the scaling does not.** At the same die
+fractions the two architectures' externality tables agree to within 0.039
+absolute and 3.6% relative:
+
+    fraction   1/8     1/4     1/2     3/4     7/8
+    gfx90a   1.3559  1.2770  1.2176  1.1016  1.0317
+    gfx1201  1.3383  1.3070  1.2367  1.1259  1.0706
+
+So whatever produces the penalty is **not** what makes gfx90a's
+efficiency peak at a quarter of the die. That says which table needs
+re-measuring per SKU and which does not.
+
+`MEASURED_*` and `externality()` both take a `device` now, and a device
+with no table **raises rather than falling back**.
+
+### Running now
+
+* **expC run 2** on X570 (`docs/prereg-intra-tenant.md`), 160 cells.
+  Run 1 was stopped at group 28 of 40 and preserved as
+  `experiments/runs/expC_run1_overwritten/`: its four arms each ran in
+  their own process, `run_amd_matrix_cell` substituted `POLICY` into
+  `--out` only when given *more* than one policy, so every arm of a group
+  wrote to the same path and the last overwrote the other three. Both
+  guards looked at the wrong name. Fixed in the library
+  (`matrix_results.output_path`) and in the campaign, pinned by a test.
+* **The N-way co-run penalty** on gfx90a. Every arithmetic about
+  intra-tenant concurrency uses 1.3's **pair** at 16+16 for an arrangement
+  with three peers; the pre-registration says so and it is the number its
+  prediction turns on. `scripts/run_amd_nway_corun.py`, validated at two
+  ways against two other instruments (1.2074 here, 1.2176 whole-call,
+  1.2336 per-step) with a one-way control at 1.0001.
 
 ### The structural result, 2026-09-03
 
@@ -145,6 +173,23 @@ pipelining cap.** The registry offers one request per tenant per round,
 so a burst of four is serial whatever the split, and an 8-step request
 cannot use a budget larger than 8. Best partitioned burst **6.30 s**
 (`24+8`), exclusive **3.70 s**, deadline **5.34 s**. See 3.8.
+
+**It is a program now, and it holds on both architectures
+(2026-09-04).** A hand-computed table cannot notice a cost table changing
+under it, and `trace_sim` has just gained a device dimension, so the
+arithmetic is `scripts/burst_feasibility.py` with every published row
+pinned to 10 ms by a test -- including "raising the cap cannot help",
+which is cap 16 and cap 256 agreeing to nine places. With each device's
+own measured curves **and** its own measured co-run penalty:
+
+    gfx1201  best partitioned 8.23 s vs deadline 5.54 s   +48.4%
+    gfx90a   best partitioned 7.42 s vs deadline 5.75 s   +29.2%
+
+The *fraction* travels -- three quarters of the die is the best split on
+both -- and the margin does not. Before the penalty was measured, gfx90a
+was over by only 1.2%, and the bar for it to join gfx1201
+unconditionally was stated in advance as a penalty above 1.012. It is
+1.2770.
 
 That reframes 3.6 and 3.7: they are not "the scheduler was bad". Under
 this runtime spatial partitioning cannot meet this SLO by construction,
@@ -192,6 +237,8 @@ about what was gated when.
 
 ## Where evidence lives
 
+    scripts/analyse_campaign.py      every campaign number, from the raw cells
+    scripts/burst_feasibility.py     3.8's table, as a program
     docs/claims-and-evidence.md      every claim, its interval, its falsifier
     docs/gate-c-decision-log.md      the running record, including corrections
     docs/prereg-*.md                 one per experiment, dated, before the run
@@ -220,6 +267,21 @@ coverage backfill, deliberately deprioritised.
   separate connection**: a `pkill` confirmed by the shell that issued it
   once reported success while the runner was still at 100%.
 * Never delete a raw run, including a failed one.
+* **Analyse with `scripts/analyse_campaign.py`, not by hand.** The seed
+  cluster bootstrap, the win/loss/tie counts, the sign test, the
+  fast-state split and the grant counters were computed ad hoc, once per
+  campaign, outside version control until 2026-09-04. Committing them
+  regenerated 1.9's three intervals, 3.6's +134.0% / +84.5% and its
+  "15 of 20, tied in 3", all eight rows of 3.7 and all four of 3.8 --
+  and found three defects doing it: a cluster ordering that moved a
+  published bound, a configuration key that could not separate arrivals
+  from backlog and silently halved any pooled comparison, and a key that
+  *over*-separated and would have paired nothing in expC. A published
+  number that cannot be regenerated is a number on trust.
+* **`grant_shapes` written before 2026-09-04 is sorted by width, not by
+  tenant.** expB shows `24+8` in shapes and `8` in the urgent-quota
+  histogram and both are right. The histogram is the authority for any
+  question about which tenant got what.
 * dd's gh account has **READ** on `HUSRCF/alse`; X570's has ADMIN.
   Pushes go via X570 (bundle → bare clone → push), never by moving a
   token.
