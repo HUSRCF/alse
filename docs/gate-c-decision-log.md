@@ -4133,3 +4133,53 @@ cell, which on gfx1201 was 0.89 s against the curve's 8 x 0.11552 =
 the measured value; against 5.34 s gfx1201's margin is +17.9% rather
 than +13.6%. The gfx90a figure above is derived, not measured, and will
 move when a cell runs there.
+
+### 2026-09-03 -- the interval every recent claim rests on was not in the repository
+
+The seed cluster bootstrap has been the interval for every claim since
+2026-08-26, and it was computed ad hoc, once per campaign, outside
+version control. So was the wins/losses/ties count, the sign test, the
+fast-state recomputation and the grant-shape tally. A published number
+that cannot be regenerated is a number on trust.
+
+`matrix_results.cluster_bootstrap_ci` and `scripts/analyse_campaign.py`
+now do all of it from the raw cells, and the first thing asked of them
+was to reproduce what was published. They do, exactly:
+
+    1.9  A3 vs exclusive_fcfs      -0.0687 [-0.1521, -0.0044]
+    1.9  A3 vs fixed_split_8       -0.1061 [-0.2040, -0.0276]
+    1.9  A3 video vs fixed_split_8 +0.0495 [+0.0257, +0.0774]
+    3.6  expP arrivals             +134.0%      backlog  +84.5%
+    3.6  expP better in 15 of 20, tied in 3
+    3.7  all eight 2x2 rows, percentage and interval alike
+    3.8  all four expB rows, miss and video alike
+
+**Two defects were found by making it reproducible, which is the point
+of doing so.**
+
+*The cluster ordering.* The first version sorted the clusters by `repr`,
+which puts seed 10 before seed 5, changes which cluster each draw lands
+on, and moved A3's lower bound from -0.1521 to -0.1488. Immaterial to
+the verdict; still a published number a committed tool could not
+regenerate. Sorting naturally reproduces it to the digit.
+
+*The configuration key did not separate the regimes.* `paired_differences`
+keyed on `(load, burst, seed)`, which was enough while every campaign
+varied nothing else. `expP`, the 2x2 and `expB` put arrivals and backlog
+cells in one directory, where that key names two different traces: the
+index kept one of them and **halved the comparison without saying so**.
+Every published number was computed per regime and is unaffected -- 3.6's
+"15 of 20, tied in 3" regenerates exactly -- but a pooled one would have
+been wrong and nothing would have flagged it. The key now takes an
+`extra_key` callable, the analyser passes regime and the two runtime
+factors, and a collision **raises** rather than overwriting.
+
+Ordering turned out to matter twice, in opposite directions: the pair
+order also feeds `bootstrap_ci`'s indexing, so switching to `repr` there
+moved A3's *cell* interval from -0.1361 to -0.1387. Both are now natural
+order with `repr` only as a fallback for keys that have none, and both
+published intervals regenerate.
+
+`tests/test_cluster_bootstrap.py` and `tests/test_analyse_campaign.py`
+pin all of it, skipping when `experiments/runs` is absent -- the cells
+are never deleted but they are not in the repository either.

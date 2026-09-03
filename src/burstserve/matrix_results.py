@@ -81,6 +81,33 @@ class Cell:
     urgent_p99_s: float | None
     urgent_completed: int
     path: str
+    # Added 2026-09-03 so one directory can hold two regimes and the
+    # drawn state can be reported per cell, which every campaign since P
+    # has had to do by reading the payloads again outside this module.
+    video_backlog: bool = False
+    drawn_co_run_state: dict | None = None
+    ledger: dict | None = None
+    # Runtime factors a campaign may vary. They are not in ``spec``
+    # because they are properties of the runtime rather than the trace,
+    # and the 2x2 varied one of them: pooling across it would average two
+    # arms of a factorial design into one number.
+    max_steps_per_round: int = 1
+    requests_per_tenant: int = 1
+
+    @property
+    def co_run_state(self) -> str | None:
+        """``fast``, ``slow`` or None -- 1.3's draw, as this cell saw it.
+
+        Every campaign since P has had to report the draw per cell, and
+        every one of them reopened the payloads to do it.
+        """
+        if not self.drawn_co_run_state:
+            return None
+        return self.drawn_co_run_state.get("state")
+
+    @property
+    def regime(self) -> str:
+        return "backlog" if self.video_backlog else "arrivals"
 
     @property
     def config(self) -> tuple[float, int]:
@@ -110,34 +137,68 @@ def load_cells(directory: Path) -> list[Cell]:
             urgent_p99_s=payload["urgent"]["latency_p99_s"],
             urgent_completed=payload["urgent"]["completed"],
             path=str(path),
+            video_backlog=bool(spec.get("video_backlog", False)),
+            drawn_co_run_state=payload.get("drawn_co_run_state"),
+            ledger=payload.get("ledger"),
+            max_steps_per_round=int(payload.get("max_steps_per_round") or 1),
+            requests_per_tenant=int(payload.get("requests_per_tenant") or 1),
         ))
     return cells
 
 
 def paired_differences(cells: Sequence[Cell], policy: str, against: str,
-                       metric: str) -> list[tuple[tuple[float, int, int],
-                                                  float]]:
-    """Per (load, burst, seed), one policy's metric minus another's.
+                       metric: str, *, extra_key=None
+                       ) -> list[tuple[tuple, float]]:
+    """Per configuration, one policy's metric minus another's.
 
     Only configurations where *both* policies have a cell contribute. A
     missing cell drops the pair rather than the seed's other half, which
     would compare a policy's easy configurations against another's hard
     ones.
+
+    The configuration is ``(load, burst, seed)`` by default, which was
+    enough while every campaign varied nothing else. It is **not** enough
+    for a directory holding two regimes: `expP`, the 2x2 and `expB` all
+    put arrivals and backlog cells side by side, and there the same
+    ``(load, burst, seed)`` names two different traces. The index would
+    silently keep one of them and halve the comparison without saying so.
+
+    ``extra_key`` is a callable on a cell whose result is prepended, so
+    the seed stays last and ``cluster_bootstrap_ci`` still finds it.
+    Every published number was computed per regime and so is unaffected,
+    but a pooled one would not have been.
     """
-    index: dict[tuple[str, float, int, int], Cell] = {}
+    if extra_key is None:
+        def extra_key(_cell):
+            return ()
+    index: dict[tuple, Cell] = {}
     for cell in cells:
-        index[(cell.policy, cell.load, cell.burst, cell.seed)] = cell
+        key = (cell.policy,) + tuple(extra_key(cell)) + (
+            cell.load, cell.burst, cell.seed)
+        if key in index:
+            raise ValueError(
+                f"two cells share the configuration {key}; the key does "
+                f"not separate them -- {index[key].path} and {cell.path}")
+        index[key] = cell
+    # Natural order, with repr only as a fallback for keys that have
+    # none. The order is not cosmetic: ``bootstrap_ci`` indexes into the
+    # returned list, so a different order is a different resample and
+    # A3's published cell interval moves from -0.1361 to -0.1387.
+    try:
+        ordered = sorted(index.items())
+    except TypeError:
+        ordered = sorted(index.items(), key=repr)
     out = []
-    for (name, load, burst, seed), cell in sorted(index.items()):
-        if name != policy:
+    for key, cell in ordered:
+        if key[0] != policy:
             continue
-        other = index.get((against, load, burst, seed))
+        other = index.get((against,) + key[1:])
         if other is None:
             continue
         mine, theirs = getattr(cell, metric), getattr(other, metric)
         if mine is None or theirs is None:
             continue
-        out.append(((load, burst, seed), mine - theirs))
+        out.append((key[1:], mine - theirs))
     return out
 
 
@@ -161,6 +222,65 @@ def bootstrap_ci(values: Sequence[float], *, seed: int = 0,
     low = means[int(tail * resamples)]
     high = means[min(resamples - 1, int((1.0 - tail) * resamples))]
     return statistics.mean(values), low, high
+
+
+def cluster_bootstrap_ci(keyed: Sequence[tuple[tuple, float]], *,
+                         seed: int = 0, resamples: int = 10000,
+                         confidence: float = 0.95,
+                         cluster=lambda key: key[-1]
+                         ) -> tuple[float, float, float]:
+    """Percentile bootstrap resampling whole SEEDS, not cells.
+
+    ``build_trace`` seeds its generator with ``spec.seed`` alone and the
+    load enters only as a rate, so one seed at load 0.6 and at load 1.05
+    is the same arrival sequence rescaled in time -- verified, the ratio
+    of inter-burst gaps is constant to 1e-9. A cell bootstrap therefore
+    treats two views of one trace as two independent units and reports an
+    interval that is too tight: on A3 it gave [-0.1361, -0.0161] where
+    the cluster bootstrap gives [-0.1521, -0.0044], three and a half
+    times thinner at the near end. Experiment A's verdict 3 did not
+    survive the correction.
+
+    Every claim in this project made since 2026-08-26 uses this interval
+    and until now it was computed ad hoc, once per campaign, outside the
+    repository. That is exactly the kind of thing this project has
+    learned not to leave uncommitted.
+
+    ``keyed`` is what ``paired_differences`` returns: ``(key, value)``
+    pairs whose key ends in the seed. Returns (mean, low, high) of the
+    pooled differences, so a seed contributing more cells carries more
+    weight -- which is the right thing when the cells are the repeated
+    measures of that one trace.
+    """
+    if not keyed:
+        raise ValueError("no paired differences to bootstrap")
+    groups: dict[object, list[float]] = {}
+    for key, value in keyed:
+        groups.setdefault(cluster(key), []).append(value)
+    # Sorted by the cluster's own order where it has one. Sorting by
+    # ``repr`` instead puts seed 10 before seed 5, which changes which
+    # cluster each draw lands on and moves A3's lower bound from -0.1521
+    # to -0.1488 -- immaterial to the verdict, and still a published
+    # number a committed tool could not regenerate.
+    try:
+        names = sorted(groups)
+    except TypeError:            # mixed key types have no natural order
+        names = sorted(groups, key=repr)
+    clusters = [groups[name] for name in names]
+    rng = random.Random(seed)
+    n = len(clusters)
+    means = []
+    for _ in range(resamples):
+        pooled: list[float] = []
+        for _ in range(n):
+            pooled.extend(clusters[rng.randrange(n)])
+        means.append(sum(pooled) / len(pooled))
+    means.sort()
+    tail = (1.0 - confidence) / 2.0
+    low = means[int(tail * resamples)]
+    high = means[min(resamples - 1, int((1.0 - tail) * resamples))]
+    flat = [value for _, value in keyed]
+    return statistics.mean(flat), low, high
 
 
 def strongest_baseline(cells: Sequence[Cell], metric: str,
