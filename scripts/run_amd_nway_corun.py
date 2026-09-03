@@ -35,6 +35,7 @@ good news.
 from __future__ import annotations
 
 import argparse
+import copy
 import ctypes
 import json
 import statistics
@@ -285,6 +286,15 @@ def one_trial(args, pipelines) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="sdxl")
+    parser.add_argument("--peer-model", default=None,
+                        help="run the LAST slice as a different model. "
+                             "That is the arrangement concurrent_quota "
+                             "actually issues most -- 8+6+6+6+6, four "
+                             "same-model slices beside one mismatched "
+                             "peer -- and its penalty is neither the "
+                             "N-way number nor the pairwise one. Costs a "
+                             "second copy of the weights, since two "
+                             "models cannot share modules.")
     parser.add_argument("--ways", type=int, default=4)
     parser.add_argument("--maskable-units", type=int, default=32,
                         help="32 on gfx1201 (R9700), 104 on gfx90a (MI250X)")
@@ -324,24 +334,44 @@ def main() -> int:
     # ``from_config`` and one set of prompt embeddings, not a second copy
     # of the weights, which is why N slices of one tenant are cheap enough
     # to be worth asking about at all.
-    scheduler_class = type(pipeline.scheduler)
+    # With --peer-model the last slice is a different model and needs its
+    # own weights; the rest still share one copy.
+    same_model_ways = args.ways - (1 if args.peer_model else 0)
+    models = [args.model] * same_model_ways
+    if args.peer_model:
+        print(f"loading {args.peer_model} as the peer ...", flush=True)
+        peer = harness.build_pipeline(args.peer_model,
+                                      drop_text_encoders=False)
+        peer.set_progress_bar_config(disable=True)
+        if args.peer_model.startswith("cogvideox") and hasattr(peer, "vae"):
+            peer.vae.enable_tiling()
+        models.append(args.peer_model)
+
+    def sibling_of(base, model_name):
+        components = dict(base.components)
+        components["scheduler"] = type(base.scheduler).from_config(
+            base.scheduler.config)
+        made = type(base)(**components)
+        made.set_progress_bar_config(disable=True)
+        if model_name.startswith("cogvideox") and hasattr(made, "vae"):
+            made.vae.enable_tiling()
+        return made
+
     pipelines = []
-    for index in range(args.ways):
-        if index == 0:
-            sibling = pipeline
-        else:
-            components = dict(pipeline.components)
-            components["scheduler"] = scheduler_class.from_config(
-                pipeline.scheduler.config)
-            sibling = type(pipeline)(**components)
-            sibling.set_progress_bar_config(disable=True)
-            if args.model.startswith("cogvideox") and hasattr(sibling, "vae"):
-                sibling.vae.enable_tiling()
-        pipelines.append((sibling, make_call(sibling, args,
-                                             args.seed + index)))
+    for index, model_name in enumerate(models):
+        base = peer if model_name == args.peer_model else pipeline
+        first_of_its_model = models.index(model_name) == index
+        made = base if first_of_its_model else sibling_of(base, model_name)
+        call_args = copy.copy(args)
+        call_args.model = model_name
+        pipelines.append((made, make_call(made, call_args,
+                                          args.seed + index)))
+    args.slice_models = models
     weights_gb = torch.cuda.memory_allocated() / 2**30
-    print(f"  {args.ways} pipelines sharing one copy of the weights, "
-          f"{weights_gb:.1f} GB resident", flush=True)
+    copies = 2 if args.peer_model else 1
+    print(f"  {args.ways} pipelines over {copies} copy/copies of the "
+          f"weights, {weights_gb:.1f} GB resident   slices {models}",
+          flush=True)
 
     print(f"  peak memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GB",
           flush=True)
@@ -350,8 +380,30 @@ def main() -> int:
     for index in range(args.trials):
         row = one_trial(args, pipelines)
         row["trial"] = index
+        # With a mismatched peer the mean over all slices is two
+        # quantities averaged together. Split it: the same-model slices
+        # are what concurrent_quota's urgent tenant pays, and the peer is
+        # what the video tenant pays.
+        models = getattr(args, "slice_models", None)
+        if models and args.peer_model:
+            same = [side["externality"] for side, name
+                    in zip(row["sides"], models)
+                    if name != args.peer_model
+                    and "externality" in side]
+            peers = [side["externality"] for side, name
+                     in zip(row["sides"], models)
+                     if name == args.peer_model
+                     and "externality" in side]
+            row["externality_same_model_mean"] = (
+                statistics.mean(same) if same else None)
+            row["externality_peer_mean"] = (
+                statistics.mean(peers) if peers else None)
         trials.append(row)
         mean = row["externality_mean"]
+        if row.get("externality_same_model_mean") is not None:
+            print(f"    same-model slices "
+                  f"{row['externality_same_model_mean']:.4f}   peer "
+                  f"{row['externality_peer_mean']:.4f}", flush=True)
         print(f"  trial {index}: slice {row['slice_units']}u  "
               f"solo {statistics.median(row['solo_p50_s']):.3f}s  "
               f"externality mean "
@@ -375,6 +427,8 @@ def main() -> int:
         "arrangement": "one process, one copy of the weights, "
                        f"{args.ways} disjoint equal masked streams",
         "model": args.model,
+        "peer_model": args.peer_model,
+        "slice_models": getattr(args, "slice_models", None),
         "ways": args.ways,
         "maskable_units": args.maskable_units,
         "workpoint": (f"{args.height}x{args.width}" if args.model == "sdxl"
