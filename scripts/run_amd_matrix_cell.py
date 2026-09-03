@@ -84,19 +84,26 @@ def _urgent_units(ledger, tenant_of: dict) -> dict:
     return out
 
 
-def isolated_service(adapter, pool, steps, args, torch):
-    """Whole-request service on the whole die, and the step p99.
+def isolated_service(adapter, pool, steps, args, torch, quota: int = 32):
+    """Whole-request service at ``quota`` units, and the step p99.
 
     Runs the request twice: the first pays whatever this process has not
     paid yet, and only the second is measured. A cell whose load axis was
     calibrated against a kernel compilation would be a different cell from
     every one after it.
+
+    ``quota`` defaults to the whole die, which is what every cell reads and
+    what every campaign before 2026-09-03 measured. It is a parameter so a
+    quota curve can be measured through the same code path the scheduler
+    runs on -- the **stream** path. That matters on gfx90a, where
+    ``ROC_GLOBAL_CU_MASK`` silently rounds 52 up to 64 and 78 up to 104
+    while ``hipExtStreamCreateWithCUMask`` honours both exactly.
     """
     from burstserve.executor import StepExecutor as Executor
 
     per_step = []
     for attempt in range(2):
-        adapter.stream = pool.for_quota(32).handle
+        adapter.stream = pool.for_quota(quota).handle
         executor = Executor(object(), adapter, total_steps=steps)
         executor.prepare()
         wrapper = torch.cuda.ExternalStream(adapter.stream.value)

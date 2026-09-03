@@ -92,6 +92,26 @@ MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
                      20: 0.68764, 24: 0.60812, 28: 0.55175, 32: 0.51549},
 }
 
+# Cost tables by device. gfx1201 is the R9700's 32 maskable units, the
+# only device measured until the second SKU came back on 2026-09-03.
+#
+# gfx90a (MI250X, 104 units per GCD) is declared here with empty tables on
+# purpose: ``for_model`` raises for a device whose tables are empty rather
+# than reading gfx1201's numbers, because a 52-unit quota does not exist
+# on a 32-unit die and the answer would be an extrapolation of the wrong
+# hardware. The curve is being measured through the stream path --
+# ``scripts/measure_quota_curve.py`` -- because Gate B's sweep drives its
+# cells with ROC_GLOBAL_CU_MASK and that path silently rounds 52 up to 64
+# there. See experiments/probes/gfx90a/mask_contract_20260903.json.
+MEASURED_MODELS_GFX90A: dict[str, dict[str, float]] = {}
+MEASURED_QUOTA_SECONDS_GFX90A: dict[str, dict[int, float]] = {}
+
+DEVICE_TABLES: dict[str, tuple[dict, dict]] = {
+    "gfx1201": (MEASURED_MODELS, MEASURED_QUOTA_SECONDS),
+    "gfx90a": (MEASURED_MODELS_GFX90A, MEASURED_QUOTA_SECONDS_GFX90A),
+}
+
+
 # Measured pairwise externality: (own units, peer units) -> slowdown factor
 # applied to this tenant's step time.
 #
@@ -359,14 +379,35 @@ class QuotaCostModel:
         return units in dict(self.measured_curve)
 
     @classmethod
-    def for_model(cls, name: str) -> "QuotaCostModel":
-        if name not in MEASURED_MODELS:
+    def for_model(cls, name: str,
+                  device: str = "gfx1201") -> "QuotaCostModel":
+        """The measured cost table for this model on this device.
+
+        ``device`` defaults to ``gfx1201``, which every table in this
+        module was measured on and every campaign before 2026-09-03 ran
+        on, so every existing caller is unchanged.
+
+        A device with no measured table raises rather than falling back.
+        The fallback would be worse than an error: gfx90a has 104 units
+        against gfx1201's 32, so a gfx1201 curve read there would put
+        ``step_seconds(52)`` outside the die it was measured on and answer
+        with an Amdahl extrapolation of the wrong hardware. 3.7 and 3.8
+        both turned on a cost the scheduler believed and did not have.
+        """
+        tables = DEVICE_TABLES.get(device)
+        if tables is None:
             raise KeyError(
-                f"no measured quota table for {name!r}; "
-                f"have {sorted(MEASURED_MODELS)}"
+                f"no measured quota tables for device {device!r}; "
+                f"have {sorted(DEVICE_TABLES)}"
             )
-        curve = MEASURED_QUOTA_SECONDS.get(name, {})
-        return cls(**MEASURED_MODELS[name],
+        models, quotas = tables
+        if name not in models:
+            raise KeyError(
+                f"no measured quota table for {name!r} on {device}; "
+                f"have {sorted(models)}"
+            )
+        curve = quotas.get(name, {})
+        return cls(**models[name],
                    measured_curve=tuple(sorted(curve.items())))
 
 
