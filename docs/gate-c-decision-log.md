@@ -4183,3 +4183,64 @@ published intervals regenerate.
 `tests/test_cluster_bootstrap.py` and `tests/test_analyse_campaign.py`
 pin all of it, skipping when `experiments/runs` is absent -- the cells
 are never deleted but they are not in the repository either.
+
+### 2026-09-04 -- expC lost three cells in four for 28 groups, and the guard counted the wrong thing
+
+Run 1 of Experiment C was stopped at group 28 of 40 and preserved as
+`experiments/runs/expC_run1_overwritten/` with a note saying why. It had
+been discarding 75% of its work since the first group.
+
+**What happened.** expC is the first campaign whose arms cannot share a
+process: `requests_per_tenant` is a runtime setting, so one process
+cannot hold two values of it, and each arm therefore ran with a single
+`--policies`. `run_amd_matrix_cell` substituted `POLICY` into `--out`
+only when it was given **more** than one policy -- `many = len(policies)
+> 1 or len(errors) > 1` -- so with one policy the literal string
+`POLICY` stayed in the filename. All four arms of a group wrote to
+`cell_..._POLICY.json` and the last one overwrote the other three.
+
+Every earlier campaign passed several policies in one process, so the
+substitution had always fired and the condition had never been exercised.
+The one campaign that could not share a process is the one it broke.
+
+**Why nothing said so.** The campaign's own guard was
+`[ "$(ls "$R/$1"*.json | wc -l)" -ge 4 ]` -- it counted **files** against
+a path every arm shared. One file existed after the first arm, four never
+did, so the guard never fired and the loop cheerfully re-ran every group
+it had already "finished". The per-arm guard `[ -f
+"$R/${PREFIX}${pol}.json" ]` tested a path that was never written, so it
+never fired either. Two guards, both looking at the wrong name.
+
+It surfaced from a dry run of the new campaign analyser against the
+partial cells: it reported "policies: concurrent_quota_c2,
+concurrent_quota_c4" and "no paired cells" for 28 groups of a four-arm
+design. The analyser was written for a different reason two hours
+earlier.
+
+**Two fixes, because the defect is not only in one place.**
+
+* `matrix_results.output_path` substitutes whenever the template names
+  POLICY, not only when several policies are passed. A template that
+  names POLICY wants POLICY substituted; there is no case where it does
+  not. It lives in the library rather than the runner so a test can
+  import it without `libamdhip64`, which is every host the suite runs on.
+* The campaign passes the policy name in the path explicitly and its
+  guard counts **arms** rather than files.
+
+`tests/test_matrix_cell_output_path.py` pins both, including that four
+distinct arms never share a path.
+
+**What it cost and what it did not.** About five hours of X570 time.
+No claim: nothing had been read off run 1, and the surviving cells are
+real measurements, kept, and simply not usable for a paired comparison.
+The code identity of run 2 differs from run 1 in exactly two files --
+`run_amd_matrix_cell.py` and `matrix_results.py` -- so nothing measured
+changed and the campaigns stay commensurable. See
+`docs/attestations/x570-tree-expC-run2.sha256`.
+
+**The lesson, and it is a repeat.** A guard that checks for the existence
+of a thing must check for the *name the thing will actually have*. This
+is the same shape as the comparator that was read as "no partitioning"
+and was time-slicing, and as `pipelined_quota`'s feasibility test against
+the wrong unit: in each case something was checked, and it was not the
+thing that mattered. Run 2 is under way.

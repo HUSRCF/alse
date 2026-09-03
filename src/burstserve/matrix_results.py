@@ -70,6 +70,27 @@ METHOD_POLICIES = (
 ORACLE_POLICIES = ("oracle_shortest_remaining",)
 
 
+def output_path(out_template: str, policy_name: str, many: bool) -> Path:
+    """Where this policy's cell is written.
+
+    Substitutes whenever the template asks for it, not only when this
+    process holds several policies. expC could not put its arms in one
+    process -- ``requests_per_tenant`` is a runtime setting, so one
+    process cannot hold two values of it -- and so passed one
+    ``--policies`` per process. ``many`` was therefore False, all four
+    arms of every group wrote to the same literal ``..._POLICY.json``
+    path, and the last arm overwrote the other three. It ran that way for
+    28 groups: the file existed, the campaign's guard counted files
+    rather than arms, and nothing said a word.
+
+    A template that names POLICY wants POLICY substituted. There is no
+    case where it does not.
+    """
+    if many or "POLICY" in out_template:
+        return Path(out_template.replace("POLICY", policy_name))
+    return Path(out_template)
+
+
 @dataclass(frozen=True)
 class Cell:
     policy: str

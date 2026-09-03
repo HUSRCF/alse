@@ -44,6 +44,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 from burstserve.executor import StepExecutor                    # noqa: E402
 from burstserve.masked_streams import MaskedStreamPool          # noqa: E402
+from burstserve.matrix_results import output_path             # noqa: E402
 from burstserve.policies import BASELINES, POLICY_FACTORIES     # noqa: E402
 from burstserve.queues import QueuedRequest                     # noqa: E402
 from burstserve.runtime import Runtime                          # noqa: E402
@@ -807,8 +808,7 @@ def run_one(policy_name, args, torch, models, pool, pipelines,
                          "cell_run": ran_s,
                          "total": time.perf_counter() - began_all},
     }
-    out = Path(out_template.replace("POLICY", policy_name) if many
-               else out_template)
+    out = output_path(out_template, policy_name, many)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=2) + "\n")
 
