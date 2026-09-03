@@ -4088,3 +4088,48 @@ gfx1201.
 `check_inputs` refuses. The branch had never been reached on gfx1201,
 where `encode_prompt` raises and the plain-prompt fallback runs instead,
 so no gfx1201 measurement changes.
+
+### 2026-09-03 -- 3.8 as a program, and what it says about the second SKU
+
+3.8 -- no spatial split can meet this burst deadline, at any pipelining
+cap -- was published as a hand-computed table. A hand-computed table
+cannot notice a cost table changing under it, and this project has now
+given `trace_sim` a device dimension, so the arithmetic is
+`scripts/burst_feasibility.py` and `tests/test_burst_feasibility.py` pins
+every published row to within 10 ms. It reproduces 17.66 / 9.73 / 6.44 /
+6.30 / 12.47 / 3.70 exactly, including the two splits the published
+table left out (12+20 and 20+12, both worse than 24+8), and it pins the
+"raising the cap cannot help" clause directly: at cap 16 and cap 256
+every row is identical to nine places, because a request has eight steps.
+
+Pointed at gfx90a with its own curves:
+
+    13+91  burst 27.32 s     52+52  burst  6.35 s     91+13  burst 17.08 s
+    26+78  burst 18.16 s     78+26  burst  5.81 s     104+0  burst  3.83 s
+
+Deadline 5.75 s. **The best partitioned burst misses by 1.2%**, where
+gfx1201 misses by 13.6%. So 3.8 holds on both architectures and the
+margin on CDNA2 is more than ten times thinner.
+
+Two things follow. First, the *fraction* travels and the *margin* does
+not: three quarters of the die is the best split on both devices, 24+8
+and 78+26. Second, what decides whether the second SKU joins the first
+without qualification is the **measured co-run externality**, which this
+table does not include. Every partitioned row is a floor -- a co-run is
+slower than a solo -- and the exclusive row is the only exact one. On
+gfx1201 applying the measured table moves the best split from 6.30 s to
+8.23 s. On gfx90a a penalty above **1.012** at 78+26 is enough. That is a
+very low bar; the gfx1201 table's smallest entry is 1.0706.
+
+`--externality` therefore skips a split with no measured pairing **by
+name** rather than dropping it, because a table that quietly loses its
+widest split reads as coverage it does not have.
+
+**A caveat about the deadline that is worth stating once.** The campaigns
+take the deadline base from the isolated request latency measured in the
+cell, which on gfx1201 was 0.89 s against the curve's 8 x 0.11552 =
+0.924 s. So the derived deadline here is 5.54 s where the runs used
+5.34 s, and the derived one is the more generous. `--deadline-s` takes
+the measured value; against 5.34 s gfx1201's margin is +17.9% rather
+than +13.6%. The gfx90a figure above is derived, not measured, and will
+move when a cell runs there.

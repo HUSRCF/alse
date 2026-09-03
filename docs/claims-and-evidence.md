@@ -710,6 +710,34 @@ for deadline-bound bursts requires **intra-tenant concurrency** -- serving
 several requests of one tenant on one mask at once -- which this runtime
 does not do and which no experiment here has tested.
 
+**Added 2026-09-03: it holds on the second SKU too, and only just.** The
+table above was hand-computed and a hand-computed table cannot notice a
+cost table changing under it, so the arithmetic is now
+`scripts/burst_feasibility.py` and `tests/test_burst_feasibility.py`
+pins every published row to within 10 ms. Pointed at gfx90a:
+
+    13+91   8 rounds/req x 0.854 s          -> burst 27.32 s
+    26+78   8 rounds/req x 0.567 s          -> burst 18.16 s
+    52+52   2 rounds/req x 0.794 s          -> burst  6.35 s
+    78+26   1 round /req x 1.454 s          -> burst  5.81 s
+    91+13   1 round /req x 4.269 s          -> burst 17.08 s
+    104+0   8 steps     x 0.120 s           -> burst  3.83 s
+
+Against a deadline of 5.75 s the best partitioned burst is **5.81 s** --
+**over by 1.2%**, where gfx1201 is over by 13.6%. So the structural
+result stands on both architectures, and on CDNA2 the margin is more
+than ten times thinner. That is a different sentence from the one 3.8
+started as, and what decides which one is right is the **measured co-run
+externality**, which the table above does not include: every partitioned
+row is a floor, because a co-run is slower than a solo and the exclusive
+row is the only exact one. On gfx1201, applying the measured table moves
+the best split from 6.30 s to 8.23 s. The gfx90a externality table is
+being measured now; if its penalty at 78+26 exceeds 1.012, the second
+SKU joins the first without qualification.
+
+The best split is three quarters of the die on both devices -- 24+8 and
+78+26 -- so the *fraction* travels even though the margin does not.
+
 
 ## 4. Open
 
