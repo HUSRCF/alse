@@ -3995,3 +3995,96 @@ scheduling cell can run.
 
 `run_amd_gate_b.py`'s `MASKABLE_UNITS = 32` is now a `--maskable-units`
 parameter, default unchanged so every gfx1201 sweep reproduces.
+
+### 2026-09-03 -- the second SKU's cost curve, and the shape it refuses to have
+
+Both models measured on gfx90a through the stream path, quotas
+`{13, 26, 52, 78, 91, 104}` -- gfx1201's die fractions `{4, 8, 16, 24,
+28, 32}/32` rather than its unit counts, so the two architectures are
+compared at equal shares. Every mask read back exactly, worst CV 0.11%,
+`all_masks_honoured: true`.
+
+    per denoising step, ms          13      26      52      78      91     104
+    SDXL 768x768                 853.8   316.2   182.5   153.8   144.8   119.7
+    CogVideoX-2b 9f              4269.4  1453.6   793.5   567.4   488.1   423.0
+
+**Cross-checked against a measurement taken for another purpose.** The
+2026-08-25 overlap probe recorded its own solo p50s at 52 and 104 units
+with a different script: 184.2 ms and 119.7 ms against this curve's 182.5
+and 119.7 -- 0.9% and 0.04%. Two harnesses, nine days apart, same numbers.
+
+**Amdahl does not describe this device.** `fit_quota_latency`, the same
+fitter that produced gfx1201's `serial_fraction` 0.4419 and 0.2051,
+returns a **negative** serial term here: -0.0020 s for SDXL and -0.2348 s
+for CogVideoX-2b. That is not a physical quantity.
+
+The refutation does not depend on the fitter. Under
+`latency = serial + parallel/q` the unit-seconds a step consumes,
+`q x t(q)`, must rise with `q`. It does on gfx1201, monotonically, on both
+models. On gfx90a it **falls** from 13 to 26 units and then rises:
+
+    q x t(q), unit-seconds     13      26      52      78      91     104
+    SDXL                     11.10    8.22    9.49   11.99   13.17   12.45
+    CogVideoX-2b             55.50   37.79   41.26   44.26   44.42   43.99
+
+The die is least efficient at its narrowest mask **and** at its widest,
+with an optimum near a quarter of it. Leave-one-out MAPE against the
+Amdahl form is 24.9% and 28.1% here against 5.6% and 4.6% on gfx1201,
+where **Gate B's bar is 10%**. So a Gate B run on the second SKU would
+fail its held-out quota-prediction clause on the functional form, not on
+measurement noise -- and the noise here is 0.11%, so there is nothing to
+blame it on.
+
+`serial_fraction` is recorded as **0.0** for both gfx90a models and that
+is not a fit; it is the closest admissible value to a negative one.
+`QuotaCostModel` requires `[0, 1)`, and `step_seconds` is frozen under
+Gate C, so the fix is not to loosen the model but to keep the fit
+unreachable: the measured quota set is **closed under complement**
+(13+91, 26+78, 52+52), so every two-tenant split has both sides measured
+and never touches the Amdahl branch. What is left of the branch cannot
+even be called conservative -- at 13 units it is 12% **pessimistic** for
+SDXL and 21% **optimistic** for CogVideoX-2b. Two models, one device,
+opposite directions. `tests/test_gfx90a_cost_tables.py` pins all of it,
+including the sign disagreement.
+
+**And the partitioning gain has an optimum here, which it does not on
+gfx1201.** Aggregate solo throughput of `n` equal ways against the whole
+die:
+
+    ways                  1       2       4       8
+    gfx1201 SDXL       1.000   1.467   1.719   1.772
+    gfx1201 CogVideoX  1.000   1.280   1.310   1.323
+    gfx90a  SDXL       1.000   1.312   1.514   1.122
+    gfx90a  CogVideoX  1.000   1.066   1.164   0.793
+
+On RDNA4 the gain is monotone in the number of ways and saturates. On
+CDNA2 it peaks at **four** ways and then collapses -- and at eight ways
+CogVideoX-2b is **worse than not partitioning at all**. These are solo
+curves, so they are an upper bound: the co-run externality still has to
+be subtracted, and measuring it is the next step. But the shape is a
+statement about the hardware and not about any policy, and it says a
+scheduler cannot carry a split across these two devices. 1.5's five
+splits were chosen on gfx1201; four of the five have no reason to be the
+right five here.
+
+**Instrument note, and a trap avoided.** The externality table was going
+to be measured with `run_amd_overlap_events.py`, the harness that
+produced the 2026-08-25 cross-architecture result. It gives each side a
+fixed **step count**. At 13+91 the wide side finishes its nine kept steps
+in 1.3 s while the narrow side needs 7.7 s, so the two kept windows do
+not intersect: measured overlap **0.000**, and an externality of 1.004
+and 1.036 that is a solo measurement wearing a co-run's name. It is
+preserved as
+`experiments/probes/gfx90a/overlap_events_13_91_step_count_artefact_20260903.json`
+because a low externality is exactly the direction this project has
+agreed to distrust. The table is being measured with
+`run_amd_inproc_corun.py` instead, which runs both sides for a fixed
+**window** and keeps only samples inside the intersection -- and whose
+own comments record the same class of error being found at 8+24 on
+gfx1201.
+
+`run_amd_inproc_corun.py` also needed a fix to run there at all: SDXL's
+`encode_prompt` returns four tensors and the script passed two, which
+`check_inputs` refuses. The branch had never been reached on gfx1201,
+where `encode_prompt` raises and the plain-prompt fallback runs instead,
+so no gfx1201 measurement changes.

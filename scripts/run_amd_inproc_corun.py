@@ -130,6 +130,22 @@ def build(model: str, height: int, width: int, steps: int, seed: int,
             call["prompt_embeds"] = encoded[0]
             if len(encoded) > 1 and encoded[1] is not None:
                 call["negative_prompt_embeds"] = encoded[1]
+            # SDXL's encode_prompt returns four tensors, not two, and its
+            # check_inputs refuses prompt_embeds without the pooled pair.
+            # Dropping them raised on gfx90a at the first warm call; the
+            # branch had never been reached on gfx1201, where
+            # encode_prompt itself raises and the plain-prompt fallback
+            # runs instead. Carrying all four is what the pipeline asks
+            # for, and it leaves the fallback path untouched.
+            if len(encoded) > 2 and encoded[2] is not None:
+                call["pooled_prompt_embeds"] = encoded[2]
+                if len(encoded) > 3 and encoded[3] is not None:
+                    call["negative_pooled_prompt_embeds"] = encoded[3]
+                elif "negative_prompt_embeds" in call:
+                    # A negative embedding without its pooled half is
+                    # refused by the same check, so drop the half we have
+                    # rather than pass a pair the pipeline will reject.
+                    call.pop("negative_prompt_embeds")
     if video:
         call["num_frames"] = frames
     else:
@@ -330,10 +346,17 @@ def main() -> int:
         trials.append(row)
         left = row["left"].get("externality")
         right = row["right"].get("externality")
+        # A side with too few samples inside the overlap window has no
+        # externality at all. Printing it as a number crashed the run and
+        # threw away the trials that had already succeeded, which is the
+        # wrong response to a thin measurement.
+        def pct(value):
+            return "n/a" if value is None else f"{value * 100:+.1f}%"
+
         print(f"  trial {index}: solo "
               f"{row['solo_p50_s']['left']:.3f}/"
               f"{row['solo_p50_s']['right']:.3f}s  "
-              f"left {left * 100:+.1f}%  right {right * 100:+.1f}%  "
+              f"left {pct(left)}  right {pct(right)}  "
               f"cv {row['left'].get('cv', 0) * 100:.2f}%  "
               f"n {row['left'].get('n_in_overlap')}/"
               f"{row['right'].get('n_in_overlap')}", flush=True)

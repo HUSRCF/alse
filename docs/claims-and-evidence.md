@@ -147,6 +147,36 @@ The pre-registered predictors, all four reported: urgent request count
 explanation for the 405-cell grid's compression — moved from -0.012 at
 n = 10 to +0.126 at n = 30 and explains nothing at either.
 
+### 1.10 The partitioning gain has an optimum width on CDNA2 and none on RDNA4
+
+| | |
+| --- | --- |
+| **Claim** | Aggregate throughput from splitting the die into `n` equal ways rises monotonically in `n` on gfx1201 and **peaks at four ways on gfx90a**, falling below the whole die at eight for CogVideoX-2b. The Amdahl form the cost model assumes, and that Gate B's held-out prediction clause scores, holds on gfx1201 and is **refuted** on gfx90a. |
+| **Evidence** | Quota curves for both models on both devices, at the same die fractions. gfx90a measured 2026-09-03 through `hipExtStreamCreateWithCUMask`, every mask read back exactly, worst CV **0.11%**; `experiments/probes/gfx90a/`. Ways `1/2/4/8`: gfx1201 SDXL 1.000/1.467/1.719/1.772 and CogVideoX 1.000/1.280/1.310/1.323; gfx90a SDXL 1.000/1.312/**1.514**/1.122 and CogVideoX 1.000/1.066/**1.164**/0.793. The refutation is form, not fit: under `latency = serial + parallel/q` the unit-seconds `q x t(q)` must rise with `q`, and on gfx90a they **fall** from 13 to 26 units on both models. `fit_quota_latency` returns a negative serial term there (-0.0020 s, -0.2348 s); leave-one-out MAPE 24.9% and 28.1% against 5.6% and 4.6% on gfx1201, where **Gate B's bar is 10%**. |
+| **Scope** | **Solo curves** -- one tenant at a quota with the rest of the die idle. The co-run externality is not subtracted and is being measured; these are an upper bound on what a partition can deliver. SDXL 768x768, CogVideoX-2b 9 frames at 480x720, one MI250X GCD (104 units) against one R9700 (32 units). |
+| **Cross-check** | The 2026-08-25 overlap probe recorded its own solo p50s with a different script: 184.2 ms and 119.7 ms at 52 and 104 units against this curve's 182.5 and 119.7 -- 0.9% and 0.04% apart, nine days and two harnesses apart. |
+| **Falsifier** | A gfx90a curve at these quotas whose `q x t(q)` is monotone; or a measured four-way co-run externality large enough to erase the four-way peak, which would leave the *solo* shape intact but the *claim about partitioning* wrong. |
+
+**What it costs the rest of the project.** 1.5's five splits were chosen
+on gfx1201, and four of the five have no reason to be the right five
+here. A scheduler that carries a split across these two devices is
+carrying a number one of them contradicts, which is the same error class
+as 3.7 and 3.8 in a new place. The cost tables were therefore given a
+device dimension rather than a default, and `QuotaCostModel.for_model`
+raises for an unmeasured device instead of falling back.
+
+**And `serial_fraction` is recorded as 0.0 on gfx90a, which is not a
+fit.** It is the closest admissible value to a negative one.
+`step_seconds` is frozen under Gate C, so the response is not to loosen
+the model but to keep its fit unreachable: the measured quota set is
+closed under complement (13+91, 26+78, 52+52), so a two-tenant split has
+both sides measured. What is left of the Amdahl branch is not even
+conservative -- at 13 units it is 12% pessimistic for SDXL and 21%
+optimistic for CogVideoX-2b, two models on one device disagreeing about
+the sign. `tests/test_gfx90a_cost_tables.py` pins all of it.
+
+---
+
 ---
 
 ## 2. Negative results
@@ -745,6 +775,18 @@ partitioning pays +5.6% against rotation there. The **bistability does
 not**: 32 processes at 1.2336 with sd 0.0030 and none slow, where
 gfx1201 gives two states 50% apart. So 1.3 is now a claim about RDNA4,
 measured against a counter-example rather than asserted of one card.
+
+**On 2026-09-03 the second architecture stopped being only a control and
+became a second result, and it is a threat as much as a finding.** The
+full quota curve there (1.10) has a shape gfx1201's does not: the
+partitioning gain peaks at four ways and collapses at eight, and the
+Amdahl form the cost model assumes is refuted outright. Every scheduling
+number in this document was produced with a cost table whose functional
+form is wrong on the other card in the building. That does not make the
+gfx1201 results wrong — they were measured, not predicted — but it does
+mean the *policy* they evaluate reads a curve that is device-specific in
+shape and not only in constants, and no scheduling cell has yet run on
+gfx90a to see what that does.
 
 Still open, and it is the same shape as before one architecture became
 two: no NVIDIA measurement exists. Whether the SM-mask path behaves like

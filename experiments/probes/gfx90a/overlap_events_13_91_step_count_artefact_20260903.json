@@ -1,0 +1,153 @@
+{
+  "schema_version": "burstserve.amd-overlap-events/v1",
+  "question": "does the device timeline show the first two co-run episodes running without overlap",
+  "prediction_stated_before_reading": "first two episodes overlap near zero, later ones do not; if both overlap, the sum-of-solo-steps fit is right about the arithmetic and wrong about the cause",
+  "instrument": "the sides' own CUDA events against a common origin, one synchronise per episode and it is after the episode",
+  "sync_before_episode": true,
+  "full_die_mask_used": true,
+  "full_die_solo_before_episodes": false,
+  "models": [
+    "sdxl",
+    "sdxl"
+  ],
+  "split": "13+91",
+  "steps": 12,
+  "warmup_dropped": 3,
+  "solo_p50_s": {
+    "0": 0.855215576171875,
+    "1": 0.144410888671875
+  },
+  "solo_full_die_p50_s": {
+    "0": 0.11942034912109376,
+    "1": 0.1194273681640625
+  },
+  "solo_instrument": "device span, same as the co-run",
+  "episodes": [
+    {
+      "episode": 1,
+      "busy_ms": 8063.875732421875,
+      "overlapped_ms": 0.0,
+      "overlap_fraction": 0.0,
+      "steps_kept": {
+        "a": 8,
+        "b": 8
+      },
+      "elapsed_s": 10.861691078986041,
+      "sdxl#0": {
+        "step_ms": 858.34375,
+        "span_series_ms": [
+          858.517578125,
+          857.89697265625,
+          858.169921875,
+          857.6865234375,
+          858.53662109375,
+          857.34765625,
+          859.4306640625,
+          858.560546875
+        ],
+        "adapter_series_s": [
+          0.9571008911132812,
+          0.9571008911132812,
+          0.9571008911132812,
+          0.9571008911132812,
+          0.9571008911132812,
+          0.9571008911132812,
+          0.9571008911132812,
+          0.9571008911132812
+        ],
+        "externality": 1.0036577605872514,
+        "adapter_step_s": 0.9571008911132812,
+        "adapter_externality": 1.119134073068999
+      },
+      "sdxl#1": {
+        "step_ms": 149.59271240234375,
+        "span_series_ms": [
+          149.93115234375,
+          149.5863037109375,
+          149.1307373046875,
+          149.5621337890625,
+          150.2696533203125,
+          149.55224609375,
+          149.59912109375,
+          150.097900390625
+        ],
+        "adapter_series_s": [
+          0.9385413208007812,
+          0.9385413208007812,
+          0.9385413208007812,
+          0.9385413208007812,
+          0.9385413208007812,
+          0.9385413208007812,
+          0.9385413208007812,
+          0.9385413208007812
+        ],
+        "externality": 1.0358825001225684,
+        "adapter_step_s": 0.9385413208007812,
+        "adapter_externality": 6.499103560904605
+      }
+    },
+    {
+      "episode": 2,
+      "busy_ms": 8063.8524169921875,
+      "overlapped_ms": 0.0,
+      "overlap_fraction": 0.0,
+      "steps_kept": {
+        "a": 8,
+        "b": 8
+      },
+      "elapsed_s": 10.789256969001144,
+      "sdxl#0": {
+        "step_ms": 858.6126708984375,
+        "span_series_ms": [
+          858.463134765625,
+          858.76220703125,
+          857.50830078125,
+          859.0244140625,
+          858.923828125,
+          857.4951171875,
+          858.8720703125,
+          857.455078125
+        ],
+        "adapter_series_s": [
+          0.8585509033203125,
+          0.8585509033203125,
+          0.8585509033203125,
+          0.8585509033203125,
+          0.8585509033203125,
+          0.8585509033203125,
+          0.8585509033203125,
+          0.8585509033203125
+        ],
+        "externality": 1.003972208670203,
+        "adapter_step_s": 0.8585509033203125,
+        "adapter_externality": 1.0038999840991754
+      },
+      "sdxl#1": {
+        "step_ms": 149.6351318359375,
+        "span_series_ms": [
+          149.19464111328125,
+          149.11944580078125,
+          149.7821044921875,
+          150.619873046875,
+          149.9287109375,
+          149.5711669921875,
+          149.6990966796875,
+          149.4332275390625
+        ],
+        "adapter_series_s": [
+          0.15008828735351562,
+          0.15008828735351562,
+          0.15008828735351562,
+          0.15008828735351562,
+          0.15008828735351562,
+          0.15008828735351562,
+          0.15008828735351562,
+          0.15008828735351562
+        ],
+        "externality": 1.0361762413631623,
+        "adapter_step_s": 0.15008828735351562,
+        "adapter_externality": 1.039314200846313
+      }
+    }
+  ]
+}

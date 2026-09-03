@@ -35,6 +35,7 @@ about the cause.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import statistics
 import sys
@@ -112,8 +113,18 @@ def solo_span(adapter, pool, units, args, torch):
     return spans[args.warmup:]
 
 
-def episode(models, adapters, pool, units, args, torch, *, sync=True):
-    """One co-run, keeping every step's start and end event."""
+def episode(models, adapters, pool, units, args, torch, *, sync=True,
+            steps=None):
+    """One co-run, keeping every step's start and end event.
+
+    ``steps`` is per side. Giving both sides the same count is right only
+    when they cost the same: at 13+91 on gfx90a the wide side finishes its
+    nine kept steps in 1.3 s while the narrow side needs 7.7 s, so the two
+    kept windows never intersect, the measured overlap is 0.000 and the
+    reported externality is a solo measurement wearing a co-run's name.
+    """
+    if steps is None:
+        steps = {"a": args.steps, "b": args.steps}
     left, right = pool.disjoint_pair(units[0], units[1])
     streams = {"a": left, "b": right}
     marks: dict[str, list] = {"a": [], "b": []}
@@ -126,7 +137,7 @@ def episode(models, adapters, pool, units, args, torch, *, sync=True):
         adapter = adapters[index]
         adapter.stream = streams[name].handle
         wrappers[name] = torch.cuda.ExternalStream(streams[name].handle.value)
-        executor = StepExecutor(object(), adapter, total_steps=args.steps)
+        executor = StepExecutor(object(), adapter, total_steps=steps[name])
         executor.prepare()
         prepared[name] = (adapter, executor)
 
@@ -150,7 +161,7 @@ def episode(models, adapters, pool, units, args, torch, *, sync=True):
         # neither side's first step carries the other's start-up.
         executor.run_step(quota_units=quota)
         barrier.wait()
-        for _ in range(args.steps - 1):
+        for _ in range(steps[name] - 1):
             before = torch.cuda.Event(enable_timing=True)
             after = torch.cuda.Event(enable_timing=True)
             before.record(wrappers[name])
@@ -215,6 +226,15 @@ def main() -> int:
                         help="never create or use a 32-unit masked stream "
                              "in this process, as the matrix runner's state "
                              "probe does not")
+    parser.add_argument("--balance-steps", action="store_true",
+                        help="give each side a step count in proportion to "
+                             "its measured solo cost, so both sides run for "
+                             "about the same wall-clock and the kept windows "
+                             "intersect. Off by default, so every gfx1201 "
+                             "run reproduces; needed for any split whose "
+                             "sides differ much in width.")
+    parser.add_argument("--max-balanced-steps", type=int, default=400,
+                        help="ceiling on the fast side's balanced count")
     parser.add_argument("--also-solo-32", action="store_true",
                         help="run a full-die solo before the episodes, as "
                              "the mismatched harness does")
@@ -240,8 +260,14 @@ def main() -> int:
                 model, drop_text_encoders=False)
         adapters[index] = harness.make_adapter(model, pipelines[model], args,
                                                seed=args.seed + index)
-    for model in pipelines:
-        harness.free_text_encoders(pipelines[model])
+    # --balance-steps rebuilds one side's adapter after the solo costs are
+    # known, and an adapter is built by encoding its prompt, so the text
+    # encoders have to still be there. Freeing them first turns the
+    # rebuild into "'NoneType' object is not callable" -- the same trap
+    # the matrix runner hit when it built adapters lazily at admission.
+    if not args.balance_steps:
+        for model in pipelines:
+            harness.free_text_encoders(pipelines[model])
     # Whether the full die is ever masked in this process is a variable,
     # not a detail. The matrix runner's state probe never creates a
     # 32-unit stream and drew fast in 30 of 30 processes; this harness
@@ -274,12 +300,47 @@ def main() -> int:
               f"{solo[index] * 1000:8.1f} ms   "
               f"{args.maskable_units:3d}u: {full_txt}", flush=True)
 
+    # Per-side step counts, from the solo costs just measured. The slower
+    # side keeps --steps; the faster one gets as many as fit in the same
+    # wall-clock, so both are still running when the other is measured.
+    steps_per_side = {"a": args.steps, "b": args.steps}
+    if args.balance_steps and solo[0] > 0 and solo[1] > 0:
+        slower = 0 if solo[0] >= solo[1] else 1
+        faster = 1 - slower
+        ratio = solo[slower] / solo[faster]
+        count = min(args.max_balanced_steps,
+                    max(args.steps, int(round(args.steps * ratio))))
+        if count != args.steps:
+            # The adapter, not the executor, holds the request's timestep
+            # schedule. A side asked for more steps than its adapter was
+            # built with walks off the end of it -- IndexError at step 12
+            # of 12 -- so the adapter is rebuilt at the count it will
+            # actually run, re-warmed, and its solo re-measured with it.
+            side_args = copy.copy(args)
+            side_args.steps = count
+            adapters[faster] = harness.make_adapter(
+                models[faster], pipelines[models[faster]], side_args,
+                seed=args.seed + faster)
+            for width in sorted(set(widths)):
+                harness.warm(adapters[faster], pool, width, args)
+            spans = solo_span(adapters[faster], pool, units[faster], args,
+                              torch)
+            solo[faster] = statistics.median(spans) / 1000.0
+            if not args.no_warm_full_die:
+                full = solo_span(adapters[faster], pool,
+                                 args.maskable_units, args, torch)
+                solo_full[faster] = statistics.median(full) / 1000.0
+        steps_per_side["ab"[faster]] = count
+        print(f"  balanced steps: a={steps_per_side['a']} "
+              f"b={steps_per_side['b']} (solo ratio {ratio:.2f}, "
+              f"re-measured solo {solo[faster] * 1000:.1f} ms)", flush=True)
+
     rows = []
     for index in range(1, args.episodes + 1):
         began = time.perf_counter()
         intervals, reported = episode(
             models, adapters, pool, units, args, torch,
-            sync=not args.no_sync_before_episode)
+            sync=not args.no_sync_before_episode, steps=steps_per_side)
         kept = {name: values[args.warmup:]
                 for name, values in intervals.items()}
         busy, both = coverage(kept["a"], kept["b"])
@@ -336,6 +397,8 @@ def main() -> int:
         "models": models,
         "split": args.split,
         "steps": args.steps,
+        "steps_per_side": steps_per_side,
+        "balance_steps": args.balance_steps,
         "warmup_dropped": args.warmup,
         "solo_p50_s": {str(k): v for k, v in solo.items()},
         "solo_full_die_p50_s": {str(k): v

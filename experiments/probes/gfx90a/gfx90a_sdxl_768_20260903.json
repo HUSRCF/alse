@@ -1,0 +1,139 @@
+{
+ "schema_version": "burstserve.quota-curve/v1",
+ "model": "sdxl",
+ "maskable_units": 104,
+ "path": "hipExtStreamCreateWithCUMask",
+ "steps": 8,
+ "repeats": 5,
+ "workpoint": {
+  "height": 768,
+  "width": 768
+ },
+ "device": {
+  "name": "AMD Instinct MI250X / MI250",
+  "arch": "gfx90a:sramecc+:xnack-",
+  "multi_processor_count": 104
+ },
+ "torch": "2.12.0a0+git78258b9",
+ "hip": "7.14.60850",
+ "step_seconds_at_full": 0.11970515283802524,
+ "worst_cv": 0.0010479019667277367,
+ "all_masks_honoured": true,
+ "rows": [
+  {
+   "quota": 13,
+   "installed_units": 13,
+   "mask_honoured": true,
+   "requested_mask": "0x1fff",
+   "installed_mask": "0x1fff",
+   "service_s": 6.830720382205024,
+   "service_s_all": [
+    6.832677218727768,
+    6.829739655721933,
+    6.8305124870873986,
+    6.831519020175561,
+    6.829153529312461
+   ],
+   "step_p99_s": 0.85605565363653,
+   "step_seconds": 0.853840047775628,
+   "cv": 0.00020609183715646743,
+   "meets_cv_threshold": true
+  },
+  {
+   "quota": 26,
+   "installed_units": 26,
+   "mask_honoured": true,
+   "requested_mask": "0x3ffffff",
+   "installed_mask": "0x3ffffff",
+   "service_s": 2.5295396902672946,
+   "service_s_all": [
+    2.53033653466776,
+    2.529657736113295,
+    2.529933239609003,
+    2.5290468814447524,
+    2.5287240595016627
+   ],
+   "step_p99_s": 0.31709094148799777,
+   "step_seconds": 0.31619246128341183,
+   "cv": 0.00025862265077696613,
+   "meets_cv_threshold": true
+  },
+  {
+   "quota": 52,
+   "installed_units": 52,
+   "mask_honoured": true,
+   "requested_mask": "0xfffffffffffff",
+   "installed_mask": "0xfffffffffffff",
+   "service_s": 1.4597382751915604,
+   "service_s_all": [
+    1.4595967606883495,
+    1.4603624636959285,
+    1.4605723156742751,
+    1.4592446658685803,
+    1.4589151700306684
+   ],
+   "step_p99_s": 0.18364817118756474,
+   "step_seconds": 0.18246728439894505,
+   "cv": 0.00048759476847360457,
+   "meets_cv_threshold": true
+  },
+  {
+   "quota": 78,
+   "installed_units": 78,
+   "mask_honoured": true,
+   "requested_mask": "0x3fffffffffffffffffff",
+   "installed_mask": "0x3fffffffffffffffffff",
+   "service_s": 1.230144974509254,
+   "service_s_all": [
+    1.230307065034285,
+    1.2298429076261819,
+    1.2304679076261817,
+    1.2297989165373147,
+    1.230308075722307
+   ],
+   "step_p99_s": 0.1550495155248791,
+   "step_seconds": 0.15376812181365676,
+   "cv": 0.00024662266680411724,
+   "meets_cv_threshold": true
+  },
+  {
+   "quota": 91,
+   "installed_units": 91,
+   "mask_honoured": true,
+   "requested_mask": "0x7ffffffffffffffffffffff",
+   "installed_mask": "0x7ffffffffffffffffffffff",
+   "service_s": 1.1580591163557024,
+   "service_s_all": [
+    1.1582851150501519,
+    1.1577495713531971,
+    1.157910572944209,
+    1.158314283007756,
+    1.1580360394231974
+   ],
+   "step_p99_s": 0.1455385597150773,
+   "step_seconds": 0.1447573895444628,
+   "cv": 0.0002091242593225032,
+   "meets_cv_threshold": true
+  },
+  {
+   "quota": 104,
+   "installed_units": 104,
+   "mask_honoured": true,
+   "requested_mask": "0xffffffffffffffffffffffffff",
+   "installed_mask": "0xffffffffffffffffffffffffff",
+   "service_s": 0.9576412227042019,
+   "service_s_all": [
+    0.9593726138565689,
+    0.9574208558481186,
+    0.9575116776805371,
+    0.957024175280705,
+    0.9568767908550799
+   ],
+   "step_p99_s": 0.12077691301181911,
+   "step_seconds": 0.11970515283802524,
+   "cv": 0.0010479019667277367,
+   "meets_cv_threshold": true
+  }
+ ],
+ "wall_clock_s": 155.7466716929921
+}

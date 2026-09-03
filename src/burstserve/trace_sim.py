@@ -95,16 +95,63 @@ MEASURED_QUOTA_SECONDS: dict[str, dict[int, float]] = {
 # Cost tables by device. gfx1201 is the R9700's 32 maskable units, the
 # only device measured until the second SKU came back on 2026-09-03.
 #
-# gfx90a (MI250X, 104 units per GCD) is declared here with empty tables on
-# purpose: ``for_model`` raises for a device whose tables are empty rather
-# than reading gfx1201's numbers, because a 52-unit quota does not exist
-# on a 32-unit die and the answer would be an extrapolation of the wrong
-# hardware. The curve is being measured through the stream path --
-# ``scripts/measure_quota_curve.py`` -- because Gate B's sweep drives its
-# cells with ROC_GLOBAL_CU_MASK and that path silently rounds 52 up to 64
-# there. See experiments/probes/gfx90a/mask_contract_20260903.json.
-MEASURED_MODELS_GFX90A: dict[str, dict[str, float]] = {}
-MEASURED_QUOTA_SECONDS_GFX90A: dict[str, dict[int, float]] = {}
+# gfx90a (MI250X, 104 units per GCD) was measured on 2026-09-03 through
+# the stream path -- ``scripts/measure_quota_curve.py`` -- because Gate B's
+# sweep drives its cells with ROC_GLOBAL_CU_MASK and that path silently
+# rounds 52 up to 64 there, which would read as a cheap half-die rather
+# than as an error. Every mask below was read back and matched exactly;
+# worst CV 0.11%. See experiments/probes/gfx90a/.
+#
+# The quotas are gfx1201's die fractions, not its unit counts: 13/104 =
+# 4/32, 26 = 8, 52 = 16, 78 = 24, 91 = 28. The two architectures are
+# therefore comparable at equal shares, and the set is closed under
+# complement (13+91, 26+78, 52+52), so a two-tenant split has both sides
+# measured and never reaches the fit.
+#
+# ``serial_fraction`` is 0.0 on this device and that is NOT a fit. Amdahl
+# does not describe gfx90a: ``fit_quota_latency`` returns a NEGATIVE
+# serial term for both models (-0.0020 s for SDXL, -0.2348 s for
+# CogVideoX-2b), and the refutation is stronger than a bad fit -- under
+# latency = serial + parallel/q the unit-seconds per step, q*t(q), must
+# increase in q, and here it falls from 13 to 26 units before rising. The
+# die is least efficient at its narrowest mask AND at its widest, with a
+# minimum near a quarter of the die. Leave-one-out MAPE against the
+# Amdahl form is 24.9% and 28.1% here against 5.6% and 4.6% on gfx1201,
+# where Gate B's bar is 10%.
+#
+# 0.0 is the closest admissible value to the fit, and the error it leaves
+# does not even have a consistent SIGN. At 13 units the Amdahl branch
+# predicts 0.958 s for SDXL where 0.854 s was measured -- 12% pessimistic
+# -- and 3.384 s for CogVideoX-2b where 4.269 s was measured, 21%
+# optimistic. Two models, one device, opposite directions, because the
+# efficiency optimum sits at a different width for each. So an unmeasured
+# quota here cannot even be described as conservative. That is why the
+# measured set is closed under complement, and why
+# ``tests/test_gfx90a_cost_tables.py`` pins both directions.
+MEASURED_MODELS_GFX90A: dict[str, dict[str, float]] = {
+    "sdxl": {
+        # not a fit -- see above
+        "serial_fraction": 0.0,
+        # 768x768, 104 units, per denoising step, stream path, 2026-09-03
+        "step_seconds_at_full": 0.11971,
+        "maskable_units": 104,
+    },
+    "cogvideox-2b": {
+        # not a fit -- see above
+        "serial_fraction": 0.0,
+        # 9 frames, 480x720, 104 units, per denoising step, 2026-09-03
+        "step_seconds_at_full": 0.42295,
+        "maskable_units": 104,
+    },
+}
+MEASURED_QUOTA_SECONDS_GFX90A: dict[str, dict[int, float]] = {
+    # per denoising step, seconds, 768x768
+    "sdxl": {13: 0.85384, 26: 0.31619, 52: 0.18247,
+             78: 0.15377, 91: 0.14476, 104: 0.11971},
+    # per denoising step, seconds, 9 frames at 480x720
+    "cogvideox-2b": {13: 4.26942, 26: 1.45359, 52: 0.79353,
+                     78: 0.56741, 91: 0.48813, 104: 0.42295},
+}
 
 DEVICE_TABLES: dict[str, tuple[dict, dict]] = {
     "gfx1201": (MEASURED_MODELS, MEASURED_QUOTA_SECONDS),
