@@ -118,6 +118,39 @@ class TheSecondDeviceMissesByFarLessTest(unittest.TestCase):
             self.assertEqual(best["split"], expected, device)
 
 
+class TheSecondDeviceMissesUnconditionallyTest(unittest.TestCase):
+    """With the measured co-run penalty, gfx90a's 1.2% becomes 29.2%.
+
+    The floor rows are optimistic by construction. The bar for the second
+    SKU to join the first without qualification was a penalty above 1.012
+    at 78+26; the measured one is 1.2770.
+    """
+
+    def margin(self, device):
+        urgent = QuotaCostModel.for_model("sdxl", device=device)
+        video = QuotaCostModel.for_model("cogvideox-2b", device=device)
+        full = urgent.maskable_units
+        deadline = 1.5 * 8 * urgent.step_seconds(full) * 4
+        bursts = []
+        for quota in bf.splits_for(urgent):
+            try:
+                bursts.append(bf.row(urgent, video, quota, 8, 4, 16, True,
+                                     device=device)["burst_s"])
+            except Exception:
+                continue           # no measured pairing at this split
+        return (min(bursts) - deadline) / deadline
+
+    def test_gfx90a_misses_by_about_thirty_percent_once_co_run_is_real(self):
+        self.assertAlmostEqual(self.margin("gfx90a"), 0.292, delta=0.01)
+
+    def test_gfx1201_misses_by_about_fifty(self):
+        self.assertAlmostEqual(self.margin("gfx1201"), 0.484, delta=0.01)
+
+    def test_the_measured_penalty_clears_the_stated_bar(self):
+        from burstserve.trace_sim import externality
+        self.assertGreater(externality(26, 78, device="gfx90a"), 1.012)
+
+
 class ExternalityIsAFloorTest(unittest.TestCase):
     def test_applying_the_measured_penalty_never_shortens_a_burst(self):
         urgent = QuotaCostModel.for_model("sdxl", device="gfx1201")

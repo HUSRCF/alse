@@ -1,0 +1,118 @@
+{
+  "schema_version": "burstserve.amd-inproc-corun/v2",
+  "status": "ok",
+  "masks": {
+    "a": "0xfffffffffffff",
+    "b": "0xfffffffffffff0000000000000",
+    "units_a": 52,
+    "units_b": 52,
+    "disjoint": true
+  },
+  "overlap": {
+    "overlap_seconds": 148.6195569038391,
+    "overlap_fraction_of_longer_window": 0.990797046025594,
+    "sufficient_overlap": true,
+    "a": {
+      "externality": 0.21962089515386518,
+      "p50_s": 2.369671142578125,
+      "cv": 0.0018936268379812333
+    },
+    "b": {
+      "externality": 0.22581523969195505,
+      "p50_s": 2.395880126953125,
+      "cv": 0.002014551972073967
+    }
+  },
+  "trials_used": 3,
+  "question": "does the pairing bistability exist with two streams in one process, and does replacing the streams redraw it",
+  "arrangement": "one process, one context, two masked streams, two weight copies",
+  "shared_weights": false,
+  "units": {
+    "a": 52,
+    "b": 52
+  },
+  "workpoint": "768x768",
+  "trials": [
+    {
+      "solo_p50_s": {
+        "left": 1.9429571533203125,
+        "right": 1.954519775390625
+      },
+      "overlap_seconds": 148.6195569038391,
+      "left": {
+        "n_total": 63,
+        "n_in_overlap": 62,
+        "p50_s": 2.369671142578125,
+        "cv": 0.0018936268379812333,
+        "externality": 0.21962089515386518
+      },
+      "right": {
+        "n_total": 62,
+        "n_in_overlap": 61,
+        "p50_s": 2.395880126953125,
+        "cv": 0.002014551972073967,
+        "externality": 0.22581523969195505
+      },
+      "masks": [
+        "0xfffffffffffff",
+        "0xfffffffffffff0000000000000"
+      ],
+      "streams_replaced": true,
+      "trial": 0
+    },
+    {
+      "solo_p50_s": {
+        "left": 1.94243212890625,
+        "right": 1.948680419921875
+      },
+      "overlap_seconds": 148.45254755020142,
+      "left": {
+        "n_total": 63,
+        "n_in_overlap": 62,
+        "p50_s": 2.366362548828125,
+        "cv": 0.0016746841387592498,
+        "externality": 0.21824722398953655
+      },
+      "right": {
+        "n_total": 62,
+        "n_in_overlap": 61,
+        "p50_s": 2.39307666015625,
+        "cv": 0.001516001683361652,
+        "externality": 0.2280498308964336
+      },
+      "masks": [
+        "0xfffffffffffff",
+        "0xfffffffffffff0000000000000"
+      ],
+      "streams_replaced": true,
+      "trial": 1
+    },
+    {
+      "solo_p50_s": {
+        "left": 1.94401953125,
+        "right": 1.949508056640625
+      },
+      "overlap_seconds": 148.814213514328,
+      "left": {
+        "n_total": 63,
+        "n_in_overlap": 62,
+        "p50_s": 2.371945068359375,
+        "cv": 0.002231141158645433,
+        "externality": 0.22012409352400897
+      },
+      "right": {
+        "n_total": 62,
+        "n_in_overlap": 61,
+        "p50_s": 2.39910595703125,
+        "cv": 0.0015035667349856856,
+        "externality": 0.23062120664705943
+      },
+      "masks": [
+        "0xfffffffffffff",
+        "0xfffffffffffff0000000000000"
+      ],
+      "streams_replaced": true,
+      "trial": 2
+    }
+  ]
+}

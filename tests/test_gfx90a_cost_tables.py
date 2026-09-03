@@ -17,10 +17,13 @@ sys.dont_write_bytecode = True
 
 from burstserve.quota_model import fit_quota_latency
 from burstserve.trace_sim import (
+    MEASURED_EXTERNALITY,
+    MEASURED_EXTERNALITY_GFX90A,
     MEASURED_MODELS_GFX90A,
     MEASURED_QUOTA_SECONDS,
     MEASURED_QUOTA_SECONDS_GFX90A,
     QuotaCostModel,
+    externality,
 )
 
 MODELS = ("sdxl", "cogvideox-2b")
@@ -144,6 +147,71 @@ class PartitioningGainHasAnOptimumHereTest(unittest.TestCase):
     def test_eight_ways_loses_to_the_whole_die_on_cogvideox_gfx90a(self):
         curve = MEASURED_QUOTA_SECONDS_GFX90A["cogvideox-2b"]
         self.assertLess(self.aggregate(curve, MASKABLE, 8), 1.0)
+
+
+class TheCoRunPenaltyTravelsTest(unittest.TestCase):
+    """The externality curve is nearly gfx1201's; the quota curve is not.
+
+    Measured at the same die fractions with the harness that built
+    gfx1201's table. The two agree to within 0.03 everywhere, while the
+    quota curves disagree in functional form. Whatever produces the
+    penalty is therefore not what makes gfx90a's efficiency peak at a
+    quarter of the die -- which is why a scheduler carrying a split
+    across these devices is wrong about the curve and not about the
+    contention.
+    """
+
+    FRACTIONS = ((13, 91, 4, 28), (26, 78, 8, 24), (52, 52, 16, 16),
+                 (78, 26, 24, 8), (91, 13, 28, 4))
+
+    def test_both_tables_are_monotone_in_own_quota(self):
+        for table, maskable in ((MEASURED_EXTERNALITY_GFX90A, 104),
+                                (MEASURED_EXTERNALITY, 32)):
+            keys = sorted(table, key=lambda k: k[0])
+            values = [table[k] for k in keys]
+            self.assertEqual(values, sorted(values, reverse=True),
+                             str(maskable))
+
+    def test_the_two_devices_agree_within_four_points(self):
+        # 0.039 at the widest slice is the largest gap; "within 0.03"
+        # was written first and is not true of 26+78 or 91+13.
+        for own90, peer90, own12, peer12 in self.FRACTIONS:
+            with self.subTest(f"{own90}+{peer90} vs {own12}+{peer12}"):
+                self.assertAlmostEqual(
+                    MEASURED_EXTERNALITY_GFX90A[(own90, peer90)],
+                    MEASURED_EXTERNALITY[(own12, peer12)], delta=0.04)
+
+    def test_gfx90a_is_higher_only_at_the_narrowest_slice(self):
+        # The shape of the small disagreement, which is more informative
+        # than its size: gfx90a's penalty curve is the steeper one.
+        self.assertGreater(MEASURED_EXTERNALITY_GFX90A[(13, 91)],
+                           MEASURED_EXTERNALITY[(4, 28)])
+        for own90, peer90, own12, peer12 in self.FRACTIONS[1:]:
+            self.assertLess(MEASURED_EXTERNALITY_GFX90A[(own90, peer90)],
+                            MEASURED_EXTERNALITY[(own12, peer12)],
+                            f"{own90}+{peer90}")
+
+    def test_the_fractions_really_are_the_same(self):
+        for own90, peer90, own12, peer12 in self.FRACTIONS:
+            self.assertAlmostEqual(own90 / 104, own12 / 32, places=6)
+            self.assertAlmostEqual(peer90 / 104, peer12 / 32, places=6)
+
+    def test_the_device_argument_is_required_to_reach_the_new_table(self):
+        # The default stays gfx1201, so every existing caller is
+        # unchanged and the Gate C behavioural digests hold.
+        self.assertEqual(externality(16, 16), MEASURED_EXTERNALITY[(16, 16)])
+        self.assertEqual(externality(52, 52, device="gfx90a"),
+                         MEASURED_EXTERNALITY_GFX90A[(52, 52)])
+        with self.assertRaises(Exception):
+            externality(52, 52)
+
+    def test_the_model_specific_table_is_not_borrowed_across_devices(self):
+        # (16, 16) is CogVideoX-2b's own entry on gfx1201. On gfx90a
+        # there is no 16+16 at all, and the model table must not stand in.
+        self.assertNotEqual(externality(16, 16, model="cogvideox-2b"),
+                            MEASURED_EXTERNALITY[(16, 16)])
+        with self.assertRaises(Exception):
+            externality(16, 16, model="cogvideox-2b", device="gfx90a")
 
 
 if __name__ == "__main__":  # pragma: no cover

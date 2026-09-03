@@ -4323,3 +4323,49 @@ is answered by the **number of parts** in the shape, which the sort does
 not affect. The tenant-ordered version goes to X570 before the next
 campaign, and the run-2 attestation records which version wrote its
 cells.
+
+### 2026-09-04 -- the co-run penalty travels; the scaling does not
+
+The gfx90a pairwise externality table is complete: three splits at
+gfx1201's die fractions, six trials each across GCD 4 and GCD 5 (twelve
+at 52+52), worst per-trial cv 0.58%, every mask read back and every pair
+disjoint. Measured with `run_amd_inproc_corun.py`, which is what built
+gfx1201's table -- checked against the stored probe rather than assumed.
+
+    fraction   1/8     1/4     1/2     3/4     7/8
+    gfx90a   1.3559  1.2770  1.2176  1.1016  1.0317
+    gfx1201  1.3383  1.3070  1.2367  1.1259  1.0706
+    diff     +1.3%   -2.3%   -1.5%   -2.2%   -3.6%
+
+**Monotone in own-quota on both, and agreeing to within 0.039 absolute
+and 3.6% relative at every fraction.** gfx90a is higher only at the
+narrowest slice, so its penalty curve is slightly the steeper.
+
+That is a sharper cross-architecture statement than either table alone.
+The two dice **contend almost identically and scale completely
+differently**: gfx90a's quota curve refutes the Amdahl form outright
+(1.10) while its co-run penalty is gfx1201's curve to a few parts in a
+hundred. Whatever produces the penalty is not what makes gfx90a's
+efficiency peak at a quarter of the die. A scheduler that carries a
+split from one device to the other is wrong about the curve, not about
+the contention -- which also says which of the two tables is worth
+re-measuring per SKU and which is not.
+
+Cross-check: the 2026-08-25 overlap probe put 52+52 at 1.2336 with a
+different harness and a per-step instrument; this is 1.2176, 1.3% apart.
+GCD 4 and GCD 5 differ by 0.4% to 0.6%, the deterministic
+device-to-device effect that probe also resolved and the reason the
+campaign rotates.
+
+**And it settles 3.8 on the second SKU.** The floor said gfx90a's best
+partitioned burst was 5.81 s against a 5.75 s deadline, over by 1.2%,
+and named the bar: a penalty above 1.012 at 78+26. The measured penalty
+is 1.2770, and with the table applied the best partitioned burst is
+**7.42 s, over by 29.2%**, against gfx1201's 8.23 s and +48.4%.
+**No spatial split meets this deadline on either architecture.** CDNA2
+is the closer of the two and it is not close.
+
+An error corrected in the same breath: this was first written as "the
+two agree to within 0.03 everywhere", which is false at 26+78 (0.030)
+and 91+13 (0.039). The test that pins the agreement found it before the
+sentence had been published anywhere but this file.

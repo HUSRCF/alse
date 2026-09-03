@@ -160,6 +160,26 @@ n = 10 to +0.126 at n = 30 and explains nothing at either.
 | **Cross-check** | The 2026-08-25 overlap probe recorded its own solo p50s with a different script: 184.2 ms and 119.7 ms at 52 and 104 units against this curve's 182.5 and 119.7 -- 0.9% and 0.04% apart, nine days and two harnesses apart. |
 | **Falsifier** | A gfx90a curve at these quotas whose `q x t(q)` is monotone; or a measured four-way co-run externality large enough to erase the four-way peak, which would leave the *solo* shape intact but the *claim about partitioning* wrong. |
 
+**The co-run penalty travels and the scaling does not, which sharpens
+this.** The pairwise externality was measured on gfx90a on 2026-09-04 at
+the same die fractions, with the harness that built gfx1201's table:
+
+    fraction   1/8     1/4     1/2     3/4     7/8
+    gfx90a   1.3559  1.2770  1.2176  1.1016  1.0317
+    gfx1201  1.3383  1.3070  1.2367  1.1259  1.0706
+
+Monotone in own-quota on both, and agreeing to within **0.039 absolute
+and 3.6% relative** at every fraction. gfx90a is 1.3% higher at the
+narrowest slice and 1.5-3.6% lower at every other, so its penalty curve
+is slightly the steeper of the two -- a small difference beside the
+quota curves, which disagree in functional form.
+
+So the two architectures **contend almost identically and scale
+differently**: whatever produces the penalty is not what makes gfx90a's
+efficiency peak at a quarter of the die. A scheduler carrying a split
+across these devices is wrong about the curve, not about the
+contention.
+
 **What it costs the rest of the project.** 1.5's five splits were chosen
 on gfx1201, and four of the five have no reason to be the right five
 here. A scheduler that carries a split across these two devices is
@@ -740,16 +760,20 @@ pins every published row to within 10 ms. Pointed at gfx90a:
     104+0   8 steps     x 0.120 s           -> burst  3.83 s
 
 Against a deadline of 5.75 s the best partitioned burst is **5.81 s** --
-**over by 1.2%**, where gfx1201 is over by 13.6%. So the structural
-result stands on both architectures, and on CDNA2 the margin is more
-than ten times thinner. That is a different sentence from the one 3.8
-started as, and what decides which one is right is the **measured co-run
-externality**, which the table above does not include: every partitioned
-row is a floor, because a co-run is slower than a solo and the exclusive
-row is the only exact one. On gfx1201, applying the measured table moves
-the best split from 6.30 s to 8.23 s. The gfx90a externality table is
-being measured now; if its penalty at 78+26 exceeds 1.012, the second
-SKU joins the first without qualification.
+over by 1.2%, where gfx1201 is over by 13.6%. Those rows are a **floor**:
+a co-run is slower than a solo, and the exclusive row is the only exact
+one. The bar for the second SKU to join the first without qualification
+was a penalty above **1.012** at 78+26.
+
+**Settled 2026-09-04. The measured penalty is 1.2770 and the margin is
++29.2%.** With `MEASURED_EXTERNALITY_GFX90A` applied:
+
+    13+91  37.05 s     52+52   7.73 s     91+13  23.16 s
+    26+78  20.00 s     78+26   7.42 s     104+0   3.83 s
+
+Best partitioned **7.42 s** against 5.75 s; gfx1201's is 8.23 s against
+5.54 s, +48.4%. **3.8 holds on both architectures without qualification.**
+CDNA2 remains the closer of the two, and it is not close.
 
 The best split is three quarters of the die on both devices -- 24+8 and
 78+26 -- so the *fraction* travels even though the margin does not.

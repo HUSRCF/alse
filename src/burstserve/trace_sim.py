@@ -388,7 +388,36 @@ MEASURED_EXTERNALITY_BY_MODEL: dict[str, dict[tuple[int, int], float]] = {
 # The splits are gfx1201's die fractions rather than its unit counts --
 # 13/104 = 4/32, 26 = 8, 52 = 16 -- so the two architectures are compared
 # at equal shares, and each co-run fills two entries.
-MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {}
+# Twelve trials at 52+52 and six at each asymmetric split, across GCD 4
+# and GCD 5, worst per-trial cv 0.58%, every mask read back and the two
+# sides disjoint.
+#
+# **It is monotone in own-quota, and it is nearly gfx1201's.** At the same
+# die fractions the two agree to within 0.039 absolute and 3.6% relative
+# -- gfx90a 1.3% higher at the narrowest slice, 1.5-3.6% lower at every
+# other, so its curve is slightly the steeper:
+#
+#     fraction   1/8     1/4     1/2     3/4     7/8
+#     gfx90a   1.3559  1.2770  1.2176  1.1016  1.0317
+#     gfx1201  1.3383  1.3070  1.2367  1.1259  1.0706
+#
+# So the contention travels and the scaling does not. gfx90a's quota
+# curve has a different *shape* from gfx1201's -- 1.10, where the Amdahl
+# form is refuted outright -- while its co-run penalty is the same curve
+# to a few parts in a hundred. Whatever the penalty is, it is not a
+# property of how the die scales with width.
+#
+# Cross-check: the 2026-08-25 overlap probe measured 52+52 at 1.2336 with
+# a different harness and a per-step instrument; this is 1.2176, 1.3%
+# apart. GCD 4 and GCD 5 differ by 0.4% to 0.6%, the deterministic
+# device-to-device effect that probe also resolved.
+MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {
+    (13, 91): 1.3559,
+    (26, 78): 1.2770,
+    (52, 52): 1.2176,
+    (78, 26): 1.1016,
+    (91, 13): 1.0317,
+}
 
 EXTERNALITY_TABLES: dict[str, dict[tuple[int, int], float]] = {
     "gfx1201": MEASURED_EXTERNALITY,
