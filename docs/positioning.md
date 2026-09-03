@@ -161,20 +161,29 @@ is the only thing that can shorten a serial burst. `expC` is running
 against it. Its arithmetic couples the scheduling result to (2) for the
 first time -- it survives the fast co-run state at a 6% margin and misses
 in the slow one -- and the number it turns on, the same-model penalty
-with **three** peers rather than one, has never been measured. It is
-being measured now (`scripts/run_amd_nway_corun.py`).
+with **three** peers rather than one, had never been measured.
 
-On the measured curves the striking case is not partitioning between
-tenants at all: the **whole die split four ways within the priority
-tenant** finishes the burst in 2.79 s against 3.70 s serial on gfx1201,
-and 3.12 s against 3.83 s on gfx90a. At a burst of eight, where eight
-slices can be used at all, gfx1201 keeps improving to 5.41 s while gfx90a
-peaks at four ways and eight costs 8.43 s -- worse than not splitting,
-which is 7.66 s. **The optimum concurrency is the architecture's.** If that survives measurement, the shape of the result is: between
-tenants, partitioning loses to priority; *within* the priority tenant it
-wins, and the measured curve predicts by how much and where the optimum
-is. That is a scoping result rather than a defeat, and (3) is what makes
-it a claim about hardware instead of about one card.
+**It has been now, and it did not survive at the size it was written
+at.** On the solo curves with a pairwise stand-in, the whole die split
+four ways within the priority tenant finished the burst in 2.79 s against
+3.70 s serial on gfx1201 and 3.12 s against 3.83 s on gfx90a. With the
+N-way penalty measured -- contribution (4), claim 1.11 -- gfx90a's best
+is **two** ways at 3.55 s, **7.3%** over serial rather than 18.5%; four
+ways is 3.70 s and eight is 5.30 s.
+
+So the shape of the result holds and its size does not: between tenants,
+partitioning loses to priority; *within* the priority tenant it helps,
+by single digits rather than by tens of percent. **And where the optimum
+sits is not what a pairwise model predicts** -- which is the contribution
+rather than the disappointment. The model everyone uses is pairwise, and
+the error it makes grows with the number of slices, which is exactly the
+regime a partitioning scheduler operates in.
+
+gfx1201's N-way penalty is still unmeasured and is queued behind `expC`.
+If it behaves like gfx90a's, `prereg-intra-tenant.md`'s predicted 5.01 s
+grows and `concurrent_quota_c4` misses the deadline rather than meeting
+it with a 6% margin. The pre-registered verdicts do not move; the
+prediction the pre-registration itself declined to back does.
 
 The title's second half -- "a scheduler that measures can ride it" -- has
 no evidence and goes. So does "the boundary where it wins": there is no
