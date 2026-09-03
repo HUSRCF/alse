@@ -616,6 +616,70 @@ fastest at `24+8`, not at `4+28`. A policy built on this arithmetic has
 never been run.
 
 
+### 3.8 That any spatial split can meet this burst deadline
+
+**Verdict 3 of `docs/prereg-boundary.md`, fixed before the run.** 160
+cells, 40 groups, 10 seeds, cap 16, all safe, every group `fast`.
+
+`fixed_split_24` is the persistent `24+8` the derivation was about. It is
+**dominated on both axes, at both loads, in both regimes**, every
+interval excluding zero under the seed cluster bootstrap:
+
+    arrivals 0.6   miss +250.4%  video -13.3%
+    arrivals 1.05  miss +160.6%  video -23.1%
+    backlog  0.6   miss +524.1%  video -43.5%
+    backlog  1.05  miss +206.6%  video -36.7%
+
+**The pre-registered invalidity condition fired.** `pipelined_quota` was
+required to issue `24+8` and never did: over 40 cells its urgent-quota
+histogram is `{4: 394, 8: 255, 16: 58, 32: 12173}`. The diagnosis is the
+same confusion for the third time, one level up. A burst's four requests
+share **one absolute deadline**, and the policy computes feasibility for
+**one request's eight steps**. At `4+28` a single request needs 4.42 s
+against 5.34 s, so the search returns it first -- but the other three
+requests of the burst queue behind it and the burst needs 17.7 s. The
+condition did its job: the adaptive arm tested something else, and the
+static arm is what tested the derivation.
+
+**The derivation was wrong, and wrong by the error 3.7 named.** It put
+the crossover at an inter-burst period `T < 4.95 s` by comparing
+**unit-seconds** -- die share times time. Die-seconds are not throughput
+any more than they are deadlines. Comparing steps per second instead:
+priority gives the batch tenant `(1 - rho_u) / 0.515` and `24+8` gives it
+`1 / 1.574`, so partitioning wins on throughput when **`rho_u > 0.673`**,
+about offered load 1.35. Neither load tested reaches it. The corrected
+model tracks the backlog measurements it applies to -- predicted 1.36
+against measured 1.341 for priority at load 0.6.
+
+**And a structural result that supersedes the boundary question.** The
+registry offers **one request per tenant per round**, so a burst of four
+is served serially whatever the split, and a request with 8 steps cannot
+use a per-round budget larger than 8. Burst completion by split, on the
+measured cost model with pipelining at cap 16:
+
+    4+28   8 rounds/req x 0.552 s = 4.41 -> burst 17.66 s
+    8+24   4 rounds/req x 0.608 s = 2.43 -> burst  9.73 s
+    16+16  2 rounds/req x 0.805 s = 1.61 -> burst  6.44 s
+    24+8   1 round /req x 1.574 s = 1.57 -> burst  6.30 s
+    28+4   1 round /req x 3.116 s = 3.12 -> burst 12.47 s
+    32+0   8 steps    x 0.116 s          -> burst  3.70 s
+
+Against a 5.34 s deadline the best partitioned burst is **6.30 s** and
+exclusive is **3.70 s**. **No split can meet this deadline at any cap** --
+raising the cap cannot help, because a request only has eight steps and
+`24+8` already grants twelve. This is a property of the runtime's
+architecture, not of any policy: the deadline is on a burst, bursts are
+served serially, and only width shortens a serial burst.
+
+**What this makes 3.6 and 3.7.** They are not "our scheduler was bad".
+On this workload, under this runtime, spatial partitioning cannot meet
+the SLO by construction, and every campaign that measured it losing was
+measuring that. The claim that spatial partitioning is worth something
+for deadline-bound bursts requires **intra-tenant concurrency** -- serving
+several requests of one tenant on one mask at once -- which this runtime
+does not do and which no experiment here has tested.
+
+
 ## 4. Open
 
 - **What predicts the co-run draw.** Five candidates retracted. The rate

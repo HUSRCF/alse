@@ -138,6 +138,28 @@ rate, video goodput up at least 10%. Grants are now counted per cell
 (`ledger.grant_shapes`), because the 2x2 could not tell whether its
 policy ever issued an asymmetric grant.
 
+### The structural result, 2026-09-03
+
+**No spatial split can meet this workload's burst deadline, at any
+pipelining cap.** The registry offers one request per tenant per round,
+so a burst of four is serial whatever the split, and an 8-step request
+cannot use a budget larger than 8. Best partitioned burst **6.30 s**
+(`24+8`), exclusive **3.70 s**, deadline **5.34 s**. See 3.8.
+
+That reframes 3.6 and 3.7: they are not "the scheduler was bad". Under
+this runtime spatial partitioning cannot meet this SLO by construction,
+and every campaign that measured it losing was measuring that. Making
+partitioning viable for deadline-bound bursts needs **intra-tenant
+concurrency**, which this runtime does not do and no experiment here has
+tested.
+
+**Three times now the same error has been made, twice by us and once by
+me in this file's own derivation:** computing a deadline in a currency
+that is not time-to-completion. Die-seconds (3.7), unit-seconds (the
+boundary derivation), and per-request feasibility against a per-burst
+deadline (`pipelined_quota`, 3.8). When a policy or a derivation reasons
+about a deadline, check what unit the deadline is actually on.
+
 ## Gates
 
 * **Gate A** — **accepted**, and it is Gate A-AMD. All clauses passed

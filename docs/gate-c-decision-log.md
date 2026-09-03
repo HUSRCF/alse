@@ -3869,3 +3869,81 @@ here issues a persistent 24+8 and the barrier made it impossible anyway.
 
 That is a computable, falsifiable boundary rather than a verdict, and it
 is what the next pre-registration should be about.
+
+### 2026-09-03 -- expB: verdict 3, an invalidity condition that fired, and the result underneath both
+
+160 cells, 40 groups, 10 seeds, cap 16, all safe, every group `fast`.
+
+**Verdict 3.** `fixed_split_24` -- the persistent `24+8` the derivation
+was about -- is dominated on both axes at both loads in both regimes,
+every interval excluding zero: miss +250%/+161%/+524%/+207% and video
+-13.3%/-23.1%/-43.5%/-36.7%.
+
+**The invalidity condition fired and it was worth having.**
+`pipelined_quota` never issued `24+8`: its urgent-quota histogram over 40
+cells is `{4: 394, 8: 255, 16: 58, 32: 12173}`. The `grant_shapes`
+counter added for exactly this purpose is what caught it. The cause is
+the same class of confusion for the third time, one level up: a burst's
+four requests share one absolute deadline and the policy tests
+feasibility for one request's eight steps. `4+28` fits one request
+(4.42 s < 5.34 s) so the search returns it first; the burst then needs
+17.7 s.
+
+**My own derivation was wrong, by the error 3.7 named.** It placed the
+crossover at `T < 4.95 s` by comparing unit-seconds. Die share times time
+is not throughput. In steps per second, priority gives the batch tenant
+`(1 - rho_u)/0.515` and `24+8` gives `1/1.574`, so partitioning wins on
+throughput at `rho_u > 0.673`, about offered load 1.35 -- outside both
+loads tested. The corrected model predicts 1.36 against a measured 1.341
+in the backlog cells it applies to.
+
+**The result underneath, which supersedes the boundary question.** The
+registry offers one request per tenant per round. A burst of four is
+therefore serial whatever the split, and an 8-step request cannot use a
+per-round budget above 8. Burst completion by split at cap 16: 17.66 s,
+9.73 s, 6.44 s, **6.30 s**, 12.47 s, against **3.70 s** exclusive and a
+**5.34 s** deadline. **No split meets it, and no cap can change that** --
+`24+8` already grants a budget of twelve to a request with eight steps.
+
+So 3.6 and 3.7 are not a verdict on a scheduler. Under this runtime,
+spatial partitioning cannot meet this SLO by construction, and every
+campaign that measured it losing was measuring that construction. What
+would change it is **intra-tenant concurrency** -- several requests of one
+tenant on one mask at once -- which the runtime explicitly does not do
+and which nothing here has tested.
+
+### 2026-09-03 -- the second SKU is back, and what it costs to use it
+
+User decision, reversing the 2026-08-09 single-SKU decision that had been
+extended to Gate B on 2026-08-26. DiamondHill (8x MI250X, gfx90a, CDNA2)
+is reachable from dd directly as `pc@10.120.16.9`, all eight GCDs idle,
+no KFD processes. Work stays in `/media/PM983/alse` by decision; 2.4 TB
+free.
+
+What already works there: the `alse` conda env (torch 2.12.0a0 + HIP
+7.14, 8 devices visible), diffusers 0.40.0, transformers 5.15.1, and
+**SDXL cached at revision `462165984030d82259a11f4367a4eed129e94a7b` --
+byte-identical to X570's**, so a cross-SKU comparison rests on the same
+weights. CogVideoX-2b is being rsynced from X570 rather than downloaded:
+the mirror's Xet path returns 401, and more importantly a fresh download
+could land a different revision and break commensurability with every
+prior campaign.
+
+What does not work yet, and both are real:
+
+* `run_amd_matrix_cell.py` has **no `--maskable-units` flag**. gfx90a has
+  104 CUs per GCD against gfx1201's 32 maskable units; the mask
+  machinery is already parameterised (`run_amd_overlap_events.py` takes
+  `--maskable-units 104`) but the scheduling runner is not.
+* **The cost model is gfx1201's.** `MEASURED_QUOTA_SECONDS` and
+  `MEASURED_MODELS` carry `maskable_units = 32` and a measured curve at
+  `{4..32}`; `step_seconds` raises outside that range. Every policy reads
+  `predicted_step_seconds`, so no scheduling cell can run on gfx90a until
+  a quota table is **measured** there. That is Gate B-AMD profiling for
+  the new SKU, not a port.
+
+So the honest answer to "can experiments run there" is: the mechanism
+experiments can, today, and one already has (`xarch.sh`, 32 processes at
+52+52). The scheduling experiments cannot until a gfx90a quota table and
+externality table exist. Diffusers is 0.40.0 there against 0.39.0 on
+X570, which is a second thing to hold fixed or to report.
