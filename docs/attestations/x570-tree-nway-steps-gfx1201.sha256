@@ -67,3 +67,11 @@ b141a260888158f98ebfb6a54aa6973f7e324aab7efaf786f3837c7ebd8140ee  src/burstserve
 59ea30986ab82df8ce6281a956690cf02914ba0c5d983cbbb0276ab5f28f9e02  src/burstserve/runtime.py
 842fb82bb2b0823227f0bb04c7a129085e5924823c58fea277e1385c28561e2b  src/burstserve/policies.py
 # (registry lives elsewhere in this tree and is not used by this sweep)
+
+# 2026-09-04, after the sweep above completed (11 runs) and before the
+# control below: scripts/run_amd_nway_steps.py gains --diagnose. The
+# sweep's own drift guard showed the post-episode solo coming back equal
+# to the co-run in all 14 runs across both devices, so every N-way number
+# is on hold and this measures the same solo again with the allocator's
+# cache dropped, then again with the peer streams destroyed.
+7b6e6291301ced33426ec77cfb56b7181423468b28351b8f776357c7a25dbf89  scripts/run_amd_nway_steps.py
