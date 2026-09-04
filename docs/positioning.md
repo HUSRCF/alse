@@ -135,6 +135,14 @@ rather than derived on one.
    devices, because their curves have different shapes and not merely
    different constants.
 
+   Those two figures are the **floor** -- the arithmetic with the co-run
+   penalty switched off -- and that is deliberate, because on 2026-09-04
+   the co-run table turned out to be harness-dependent for exactly the
+   narrow slices this row reads. A floor is something no table can go
+   below. So gfx1201's half is unconditional; gfx90a's best split lands
+   *on* its deadline, 5.81 s against 5.75 s, and the honest word is
+   "marginal" rather than "misses by 29%". See 3.8.
+
 ## What gets cut
 
 The probe, the sticky probe, the SLO-aware layer, the dual ledger and the
@@ -168,9 +176,11 @@ at.** On the solo curves with a pairwise stand-in, the whole die split
 four ways within the priority tenant finished the burst in 2.79 s against
 3.70 s serial on gfx1201 and 3.12 s against 3.83 s on gfx90a. With the
 N-way penalty measured -- contribution (4), claim 1.11 -- gfx90a's best
-is **two** ways at 3.55 s, **7.3%** over serial rather than 18.5%, and
-four ways is 3.70 s. Eight ways needs a burst of eight to be reachable at
-all, and there it costs **14.30 s** against 7.66 s for not splitting.
+is **two** ways at 3.49 s, **8.9%** over serial rather than 18.5%, and
+four ways is 3.63 s. Eight ways needs a burst of eight to be reachable at
+all, and there it costs **14.12 s** against 7.66 s for not splitting.
+(Regenerated 2026-09-04 on the step-level penalties, which are the
+smaller ones; on the call-level penalties it read 3.55 s and 7.3%.)
 
 So the shape of the result holds and its size does not: between tenants,
 partitioning loses to priority; *within* the priority tenant it helps,

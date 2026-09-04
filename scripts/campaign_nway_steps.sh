@@ -43,8 +43,14 @@ fi
 # ways, and reversing the layout moved the gradient with the position.
 REVERSED=${REVERSED:-"4 8"}
 
+# Match the python invocation, not the harness name on its own. The
+# first version matched "run_amd_nway" anywhere in a command line, and
+# the shell that launched this campaign happened to carry
+# `sha256sum ... run_amd_nway_steps.py` in its own -- so the guard waited
+# on its own launcher and the campaign sat at "waiting for the card"
+# forever. A guard that can match the thing it is guarding is not a guard.
 echo "waiting for the card"
-while pgrep -f "run_amd_matrix_cell[.]py|run_amd_nway|run_amd_mismatched" \
+while pgrep -f "python .*(run_amd_matrix_cell|run_amd_nway|run_amd_mismatched)" \
       > /dev/null; do sleep 60; done
 echo "card free at $(date)"
 
