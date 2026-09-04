@@ -32,7 +32,7 @@ When adding an arm, read what the arm does rather than what it is called.
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
 | 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
 | 1.10 | The partitioning gain has an **optimum width on CDNA2 and none on RDNA4** — aggregate solo throughput peaks at four ways on gfx90a and falls below the whole die at eight; the Amdahl form the cost model assumes is **refuted** there | `experiments/probes/gfx90a/`, 2026-09-03 |
-| 1.11 | **AT RISK, do not use.** The co-run penalty was measured to **count peers, not busy die** (+14.5% at four ways, +54.4% at eight over the pairwise entry) — but the harness that produced it charges `hipMalloc`-class **device drains** as contention, proven on 2026-09-04. Not withdrawn, not usable, awaiting a step-level re-measurement | `experiments/probes/gfx90a/nway/`; the proof is in `docs/claims-and-evidence.md` under 1.11 |
+| 1.11 | The co-run penalty **counts peers, not busy die**: the same slice with N−1 peers costs **+12.5% at four ways and +52.5% at eight** over the pairwise entry. A pairwise table cannot express it, and every intra-tenant arithmetic here used one. Held at risk for four hours on 2026-09-04 when the harness that made it turned out to charge device drains as contention, then **confirmed by an independent step-level harness within 1.8% at all four widths** | `experiments/probes/gfx90a/nway_steps/`, `scripts/summarise_nway_steps.py` |
 | 1.5b | **1.5 travels to CDNA2.** SDXL beside CogVideoX-2b at `52+52` of gfx90a costs **0.995** and **1.011**, inside the gfx1201 band, and both sides beat rotation (+31.0% / +6.1%) | `runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json`, 2026-09-04 |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
@@ -161,10 +161,14 @@ with no table **raises rather than falling back**.
   wrote to the same path and the last overwrote the other three. Both
   guards looked at the wrong name. Fixed in the library
   (`matrix_results.output_path`) and in the campaign, pinned by a test.
-* **A 300 s-window replication of the eight-way point** on gfx90a. The
-  sweep itself is done (1.11): the eight-way cell is its weakest, with 5
-  to 7 samples per slice inside the overlap window and sd 0.12, and the
-  replication is kept **beside** it rather than replacing it.
+* **Harness-matched pairwise cells** on gfx90a, `26+78` and `13+91`,
+  step-level. 1.11's "+12.5% and +52.5% over pairwise" currently compares
+  a step-level N-way against a whole-call pairwise; at the one width
+  where both exist they agree to 1.8%, and these close the other two.
+* **The slice-position falsifier.** The N-way penalty is monotone in the
+  slice's offset -- 1.474 at offset 0 against 1.377 at the top, four ways
+  -- and the same sweep laid out from the top down says whether that
+  follows the position or the thread.
 * **Queued behind expC: the same sweep on gfx1201.** That is the number
   `prereg-intra-tenant.md`'s prediction actually turns on, and it is
   unmeasured. Nothing is synced into X570's tree while run 2 is in
@@ -173,11 +177,11 @@ with no table **raises rather than falling back**.
 
 **What 1.11 does to the one open path.** 3.8 left intra-tenant
 concurrency as the only way to shorten a serial burst. On gfx90a, whole
-die, burst of four: serial 3.83 s, two ways **3.55 s**, four ways
-3.70 s. (Eight ways is unreachable at a burst of four -- the policy takes
-`critical[:concurrency]` -- and at a burst of eight it costs **14.30 s**
+die, burst of four: serial 3.83 s, two ways **3.49 s**, four ways
+3.63 s. (Eight ways is unreachable at a burst of four -- the policy takes
+`critical[:concurrency]` -- and at a burst of eight it costs **14.12 s**
 against 7.66 s for not splitting.) The optimum is **two, not four**, and
-the gain over serial is **7.3%** where the pairwise stand-in promised
+the gain over serial is **8.9%** where the pairwise stand-in promised
 18.5%. The stand-in erred in the direction that flattered the mechanism,
 and by more the further it was extrapolated.
 
@@ -201,10 +205,27 @@ own measured curves **and** its own measured co-run penalty:
     gfx90a   best partitioned 7.42 s vs deadline 5.75 s   +29.2%
 
 The *fraction* travels -- three quarters of the die is the best split on
-both -- and the margin does not. Before the penalty was measured, gfx90a
-was over by only 1.2%, and the bar for it to join gfx1201
-unconditionally was stated in advance as a penalty above 1.012. It is
-1.2770.
+both -- and the margin does not.
+
+**Re-opened on gfx90a hours later, 2026-09-04.** Both margins above are
+read off **whole-call** co-run tables, and at `78+26` the round is paced
+by the *video* tenant, so the deciding entry is `externality(26, 78)` --
+a **narrow slice**, the shape the step-level harness contradicts by 0.28
+absolute. With `--externality-source steps` gfx90a's best partitioned
+burst is **5.81 s against 5.75 s, +1.1%** -- its floor. So:
+
+* **gfx1201 holds unconditionally**: with the externality **off**
+  entirely, the best split is 6.30 s against 5.54 s, **+13.6%**. No table
+  can go below the floor, so no harness question touches it.
+* **gfx90a is unresolved**: floor +1.2%, call-level +29.2%, step-level
+  +1.1%. The best spatial split lands *on* the deadline there, not
+  outside it.
+
+The exclusive/partitioned ordering is untouched on both -- 3.83 s against
+5.81 s is not a 1% margin. And the pre-registered bar ("a penalty above
+1.012 at 78+26") named the urgent tenant's side; the side that decides is
+the video tenant's. That is the **fourth** time a derivation here turned
+on a quantity other than the one it named.
 
 That reframes 3.6 and 3.7: they are not "the scheduler was bad". Under
 this runtime spatial partitioning cannot meet this SLO by construction,

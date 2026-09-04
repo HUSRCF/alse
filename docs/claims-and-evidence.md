@@ -230,18 +230,23 @@ four, gfx90a:
 
     ways   measured   with the pairwise stand-in
        1     3.83 s        3.83 s
-       2     3.55 s        3.60 s     <- measured optimum
-       4     3.70 s        3.12 s
+       2     3.49 s        3.60 s     <- measured optimum
+       4     3.63 s        3.12 s
        8       --            --       a burst of four uses only four
                                       slices; identical to the 4-way row
 
 At a burst of **eight**, where eight slices can be used at all: serial
-7.66 s, two ways **7.09 s**, four ways 7.40 s, eight ways **14.30 s**.
+7.66 s, two ways **6.98 s**, four ways 7.27 s, eight ways **14.12 s**.
 The ordering is the same and eight ways costs nearly twice not splitting
 at all.
 
 The optimum concurrency is **two, not four**, and the advantage over
-serving the burst serially is **7.3%** where the stand-in promised 18.5%.
+serving the burst serially is **8.9%** where the stand-in promised 18.5%.
+
+*(Regenerated 2026-09-04 on the step-level penalties, which are the
+smaller ones. The call-level penalties gave 3.55 s / 3.70 s and a 7.3%
+advantage; every conclusion here is unchanged and the advantage is
+slightly larger.)*
 The stand-in erred in the direction that flattered the mechanism, and by
 more the further it was extrapolated. **The penalty does not merely scale
 the answer; it moves the optimum.**
@@ -268,30 +273,61 @@ the number in the direction that strengthens the claim being made from
 it, so the conservative value is the published one and the clean value is
 stated here.
 
-**AT RISK, 2026-09-04 -- the harness that produced this is now known to
-charge device drains as contention.** The mismatched pair measured with
-this same N-way harness read **7.3x** on gfx90a and the same pair
-measured with 1.5's step-level harness read **0.995**; the step series
-identified the difference as one `hipMalloc`-class device drain per
-step, and `run_side` warms with a single whole `pipeline(...)` call where
-1.5's harness needed 28 steps to leave the transient behind. See the
-decision log for 2026-09-04.
+**AT RISK for four hours on 2026-09-04, then confirmed by an independent
+harness.** The harness that produced the numbers above -- whole
+`pipeline()` calls from N threads of one process -- was shown that day to
+charge `hipMalloc`-class **device drains** as contention: the same
+mismatched pair read 7.3x through it and 0.995 through a resident step
+adapter. Same-model slices bound the exposure to one peer step rather
+than 4.4 of them, but a drain waits for **every** in-flight peer, so an
+artefact would grow with N in precisely the shape reported here. It could
+not be told apart by inspection, so it was re-measured.
 
-What that does and does not do to this claim. Same-model slices step at
-the same length, so a drain costs one peer step rather than the 4.4 of
-them the mismatched case paid -- the exposure is bounded. But a device
-drain waits for **every** in-flight peer, so an artefact would grow with
-N in precisely the shape reported here, and the two cannot be separated
-by inspection. The 2-way agreement recorded under **Control** does not
-settle it either: `run_amd_inproc_corun.py` also issues whole calls, so
-both harnesses in that comparison share the exposure.
+`scripts/run_amd_nway_steps.py` runs the same arrangement the way 1.5's
+harness runs it: one resident step adapter per slice, stepped in place on
+its own mask, no activation graph allocated per call, six episodes with
+**every** episode reported. gfx90a, SDXL at 768x768, 14 steps an episode,
+first four dropped, masks read back and pairwise-disjoint:
 
-The claim is **not withdrawn** -- nothing has been measured that
-contradicts it -- and it is **not usable** until the re-measurement
-lands: N resident step adapters on N disjoint masks, stepped
-concurrently, timed per step, transient reported rather than dropped. Any
-arithmetic that turns on the N-way penalty, including the 7.3%-at-two-
-ways figure above, inherits this hold.
+    ways  slice   solo ms   steady   episode 1   call-level (above)
+       1    104     118.8   1.0007      1.665         1.0001
+       2     52     182.5   1.1954      1.813         1.2146
+       4     26     314.8   1.4365      2.185         1.4625
+       8     13     857.7   2.0671      2.860         2.0940
+
+**The claim survives.** Every point lands within 1.8% of the call-level
+value it was measured to check, and all four land *below* it -- the
+direction a residual drain would push, and small. The transient is there
+and it is large (episode 1 at eight ways is 2.86 against a steady 2.07),
+which is why it is now reported rather than warmed away in silence.
+
+The table published above is the call-level one. **The step-level column
+is the conservative one and is what any arithmetic should use**, because
+it is measured through the harness with no known defect and it is lower,
+so it weakens rather than strengthens the claim being made from it.
+
+**What still rests on a cross-harness comparison.** The pairwise column
+these are compared against -- 1.2176 / 1.2770 / 1.3559 -- is whole-call.
+For the equal split the two harnesses can be checked directly and agree:
+2-way step-level is 1.1954 against pairwise 1.2176, **-1.8%**. For
+`26+78` and `13+91` no step-level pair had been measured, so the
+**+12.5% at four ways and +52.5% at eight** stated here are step-level
+over call-level. Harness-matched pairs at those two widths are running.
+
+**A gradient across slice position, not previously seen.** The penalty is
+monotone in the slice's offset within the mask, and by a wide margin:
+
+    four ways   1.474  1.459  1.436  1.377   (offsets 0, 26, 52, 78)
+    eight ways  2.136  2.118  2.124  2.122  2.043  2.076  2.056  1.862
+
+The slice at offset 0 pays 7.0% more than the slice at the top of the
+die at four ways, and 14.7% more at eight. This is recorded as an
+observation, not a claim: it has one obvious falsifier, laying the same
+slices out from the top down, and that run is in flight. If it follows
+the position it reverses; if it follows the thread it does not. A
+scheduler that hands out contiguous masks from offset 0 -- which is what
+`MaskedStreamPool.for_quota` does by default -- would be systematically
+loading its first tenant.
 
 ---
 
@@ -878,6 +914,58 @@ direction is known even though the number is not.
 
 The best split is three quarters of the die on both devices -- 24+8 and
 78+26 -- so the *fraction* travels even though the margin does not.
+
+**Re-opened on gfx90a the same day, 2026-09-04, by the table underneath
+it.** The +29.2% above is `externality(26, 78)` = **1.2770** applied to
+the video tenant, and at `78+26` the round is paced by the video tenant,
+not the urgent one -- `round_cost = max(own, peer)` and `peer` is 1.856 s
+against `own` 0.169 s. That entry is a **narrow-slice, whole-call**
+measurement, and the narrow-slice entries are exactly the ones the
+step-level harness contradicts: 0.999 against 1.2770. Recomputed with
+`--externality-source steps`:
+
+    13+91  27.27 s     52+52   7.61 s     91+13  17.04 s
+    26+78  10.16 s     78+26   5.81 s     104+0   3.83 s
+
+Best partitioned **5.81 s against 5.75 s: +1.1%**, which is the floor
+row, because a co-run penalty of 0.999 *is* no penalty. gfx90a goes back
+to being over by a margin no measurement here can resolve.
+
+**And the pre-registered bar pointed at the wrong side.** It was "a
+penalty above 1.012 at 78+26", which reads as the urgent tenant's. The
+urgent tenant's is 1.119 step-level and clears it; the number that
+decides the margin is the *video* tenant's at a quarter of the die, and
+that is the one that fell to 0.999. This is the fourth time in this
+project a derivation has turned on a quantity other than the one it named
+-- die-seconds, unit-seconds, per-request feasibility against a per-burst
+deadline, and now which side of a split a penalty is charged to.
+
+**What this does and does not put in doubt, checked rather than
+assumed.** Run the arithmetic with the externality **off** -- a co-run
+is never faster than a solo, so that row is a hard floor no table can go
+below:
+
+    gfx1201  floor  best 24+8   6.30 s  vs 5.54 s   +13.6%   misses
+    gfx90a   floor  best 78+26  5.81 s  vs 5.75 s    +1.2%   misses
+
+**gfx1201's half of 3.8 does not depend on any co-run table.** Even at
+zero penalty no split meets the deadline, by 13.6%. That is
+harness-independent and it stands.
+
+**gfx90a's half is entirely the table.** Its floor is +1.2%, the
+call-level table put it at +29.2%, the step-level table puts it back at
++1.1%. 5.81 s against 5.75 s is a 1% margin on a simulated arithmetic
+built from measured curves, which is not a margin at all. The honest
+statement for CDNA2 is that the best spatial split lands **on** the
+deadline, not clearly outside it, and that the +29.2% was reading a
+narrow-slice whole-call entry.
+
+So 3.8 is restated: **on gfx1201 it holds unconditionally and at the
+floor; on gfx90a it is unresolved, and the deciding entry is
+`externality(26, 78)` for CogVideoX-2b, which has never been measured
+per model on that device at all.** The exclusive/partitioned *ordering* is
+untouched everywhere -- 3.83 s against 5.81 s is not a 1% margin.
+
 
 
 ## 4. Open

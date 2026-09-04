@@ -4802,3 +4802,86 @@ reported rather than dropped. If the penalties survive, 1.11 stands and
 they collapse toward 1.0 the way this pair did, then the N-way penalty
 was never measured and the intra-tenant arithmetic goes back to the
 pairwise table.
+
+## 2026-09-04 1.11 survives its falsifier, and the pairwise table does not
+
+`scripts/run_amd_nway_steps.py` -- N resident step adapters on N disjoint
+masks, stepped in place, six episodes, every episode reported -- was
+written as 1.11's falsifier and run on gfx90a. It confirms 1.11 and
+refutes something else.
+
+**1.11 stands.** Every point within 1.8% of the call-level value, and
+every point *below* it, which is the direction a residual drain pushes:
+
+    ways  slice   solo ms   steady   episode 1   call-level
+       1    104     118.8   1.0007      1.665       1.0001
+       2     52     182.5   1.1954      1.813       1.2146
+       4     26     314.8   1.4365      2.185       1.4625
+       8     13     857.7   2.0671      2.860       2.0940
+
+The transient is there, it is large, and it is now published beside the
+steady state rather than warmed away. The table in `trace_sim` holds the
+step-level values because they are the smaller and therefore the
+conservative ones; `MEASURED_NWAY_PENALTY_GFX90A` records the call-level
+value beside each. The intra-tenant arithmetic regenerates to **8.9%**
+at two ways where it read 7.3%, against a stand-in that promised 18.5%.
+
+**But the pairwise entries the N-way penalties are compared against are
+wrong for narrow slices.** Harness-matched pairs, same masks, same model
+on both sides:
+
+    pair      slice   step-level   call-level   delta
+    13+91      13u       0.998       1.3559     -0.358
+    13+91      91u       1.031       1.0317     -0.001
+    26+78      26u       0.999       1.2770     -0.278
+    26+78      78u       1.119       1.1016     +0.017
+    52+52      52u      1.1983       1.2176     -0.019
+
+The two wide-slice entries agree to 0.001 and 0.017. The two narrow-slice
+entries are out by 0.28 and 0.36. It fits the drain mechanism exactly: a
+narrow slice's step is long (855 ms at 13 units) and a fast peer's step
+is short (144 ms at 91), so one drain per step is a large fraction of it;
+a wide slice's step is short and it turns out not to drain at all.
+
+`MEASURED_EXTERNALITY_GFX90A_STEPS` is added beside the call-level table
+rather than replacing it, and `externality()` and
+`scripts/burst_feasibility.py` gain a `source`. The default stays
+`"calls"`, so every published number is still reproducible, and it will
+not be switched until gfx1201's pairs are measured the same way --
+otherwise the two architectures' tables would be measuring different
+quantities, which is the error 1.10 was found by avoiding.
+
+**This re-opens half of 3.8, and the floor decides which half.** At
+`78+26` the round is paced by the **video** tenant, so the entry that
+sets gfx90a's margin is `externality(26, 78)` -- a narrow slice. With the
+step-level table gfx90a's best partitioned burst is 5.81 s against a
+5.75 s deadline, **+1.1%**, which is exactly its floor. So the arithmetic
+was run with the externality off, and a floor is something no table can
+go below:
+
+    gfx1201  floor  best 24+8   6.30 s  vs 5.54 s   +13.6%   misses
+    gfx90a   floor  best 78+26  5.81 s  vs 5.75 s    +1.2%   misses
+
+**gfx1201's half of 3.8 is harness-independent and stands.** gfx90a's is
+unresolved: floor +1.2%, call-level +29.2%, step-level +1.1%. On CDNA2
+the best spatial split lands *on* the deadline. The
+exclusive-beats-partitioned ordering is untouched on both -- 3.83 s
+against 5.81 s is not a 1% margin.
+
+And the bar pre-registered for gfx90a -- "a penalty above 1.012 at
+78+26" -- named the urgent tenant's side. The urgent tenant's is 1.119
+step-level and clears it; the side that decides the margin is the video
+tenant's at a quarter of the die. That is the fourth time a derivation
+here has turned on a quantity other than the one it named.
+
+**A gradient across slice position, and its falsifier came back
+positive.** The N-way penalty is monotone in where the slice sits on the
+die, and laying the same slices out from the top down reverses it:
+
+    four ways, offsets 0/26/52/78    1.474  1.459  1.436  1.377
+    four ways, offsets 78/52/26/0    1.362  1.406  1.439  1.453
+
+Offset 0 pays 1.45-1.47 in both layouts and offset 78 pays 1.36-1.38 in
+both. It follows the mask's position, not the thread. `for_quota` hands
+out contiguous masks from offset 0, so a scheduler using it loads its
+first tenant by about 7% at four ways for no reason it can see.

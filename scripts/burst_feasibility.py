@@ -50,7 +50,8 @@ def splits_for(model: QuotaCostModel) -> list[int]:
 def row(urgent: QuotaCostModel, video: QuotaCostModel, quota: int,
         steps: int, burst: int, cap: int, use_externality: bool,
         concurrency: int = 1, same_model_penalty: float = 1.0,
-        peer_penalty: float = 1.0, device: str = "gfx1201") -> dict:
+        peer_penalty: float = 1.0, device: str = "gfx1201",
+        externality_source: str = "calls") -> dict:
     """One split's burst completion, optionally with intra-tenant slices.
 
     ``concurrency`` divides the urgent tenant's own quota among that many
@@ -70,9 +71,10 @@ def row(urgent: QuotaCostModel, video: QuotaCostModel, quota: int,
     own = urgent.step_seconds(slice_quota)
     peer = video.step_seconds(peer_quota)
     if use_externality:
-        own *= externality(quota, peer_quota, device=device)
+        own *= externality(quota, peer_quota, device=device,
+                           source=externality_source)
         peer *= externality(peer_quota, quota, model="cogvideox-2b",
-                            device=device)
+                            device=device, source=externality_source)
     else:
         peer *= peer_penalty
     if active > 1:
@@ -164,6 +166,13 @@ def main() -> int:
     parser.add_argument("--peer-penalty", type=float, default=1.0,
                         help="mismatched penalty charged to the video "
                              "tenant when --externality is not used")
+    parser.add_argument("--externality-source", default="calls",
+                        choices=("calls", "steps"),
+                        help="which harness measured the co-run table. "
+                             "`calls` is every published number; `steps` "
+                             "is the 2026-09-04 resident-adapter "
+                             "re-measurement, gfx90a only, and is the "
+                             "quantity this arithmetic is actually in.")
     parser.add_argument("--externality", action="store_true",
                         help="apply the measured co-run penalty; without "
                              "it every partitioned row is a floor")
@@ -181,7 +190,7 @@ def main() -> int:
             rows.append(row(urgent, video, quota, args.steps, args.burst,
                             args.cap, args.externality, args.concurrency,
                             args.same_model_penalty, args.peer_penalty,
-                            args.device))
+                            args.device, args.externality_source))
         except UnmeasuredPairing:
             # Named rather than dropped: a table that quietly loses its
             # widest split reads as coverage it does not have.
@@ -195,8 +204,13 @@ def main() -> int:
              f"{args.same_model_penalty}" if args.concurrency > 1 else ""))
     derived = "measured" if args.deadline_s is not None else (
         f"{args.slack} x {args.steps} x {full:.5f} s x {args.burst}")
+    source_note = ("" if not args.externality
+                   or args.externality_source == "calls"
+                   else f"   [externality from "
+                        f"{args.externality_source}]")
     print(f"deadline = {derived} = {deadline:.2f} s"
-          f"{'' if args.externality else '   [externality OFF: floor]'}")
+          f"{'' if args.externality else '   [externality OFF: floor]'}"
+          f"{source_note}")
     print(f"  {'split':>8}  {'own':>7}  {'peer':>7}  {'bud':>3}  "
           f"{'rnds':>4}  {'burst':>7}   verdict")
     best = None

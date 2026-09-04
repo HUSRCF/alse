@@ -464,27 +464,68 @@ MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {
 # 2.0940 is recorded because dropping a trial after seeing it would raise
 # the number in the direction that strengthens the claim being made from
 # it. The clean value is stated here so nobody has to rediscover it.
-# AT RISK 2026-09-04, and every arithmetic below that reads it inherits
-# the hold. The harness that produced this table -- whole `pipeline()`
-# calls from N threads of one process -- was shown that day to charge
-# device drains (`hipMalloc` misses stalling the stream) as co-run
-# contention: the same mismatched pair read 7.3x through it and 0.995
-# through a resident step-adapter harness, and the difference resolved
-# into one drain per step, exactly one peer step long. Same-model slices
-# bound the exposure to one peer step rather than 4.4, but a drain waits
-# for *all* peers, so an artefact grows with N in the shape recorded
-# here. Not withdrawn -- nothing contradicts it -- and not usable until
-# the step-level re-measurement lands.
+# Held at risk on 2026-09-04 and confirmed the same day. The harness that
+# produced these -- whole `pipeline()` calls from N threads of one
+# process -- charges `hipMalloc`-class device drains as contention: the
+# same mismatched pair read 7.3x through it and 0.995 through a resident
+# step adapter. `run_amd_nway_steps.py` re-measured the arrangement with
+# resident adapters and got 1.0007 / 1.1954 / 1.4365 / 2.0671, within
+# 1.8% at every width and *below* every call-level value.
+#
+# The step-level numbers are the ones below, because they are measured
+# through the harness with no known defect and they are the smaller, so
+# they weaken rather than flatter every arithmetic that reads them. The
+# call-level values are kept beside them rather than deleted.
 MEASURED_NWAY_PENALTY_GFX90A: dict[int, float] = {
-    1: 1.0001,     # control: a solo, and it must read 1.000
-    2: 1.2146,
-    4: 1.4625,
-    8: 2.0940,     # six trials over two runs; clean-trial value 2.1635
+    1: 1.0007,     # control: a solo, and it must read 1.000
+    2: 1.1954,     # call-level harness read 1.2146
+    4: 1.4365,     # call-level harness read 1.4625
+    8: 2.0671,     # call-level harness read 2.0940 (clean trials 2.1635)
+}
+
+# Measured 2026-09-04 with `run_amd_nway_steps.py --widths`: the same
+# same-model pairs, on the same masks, but stepped on resident adapters
+# instead of issued as whole `pipeline()` calls. That harness difference
+# is not cosmetic. The call-level harness charges `hipMalloc`-class
+# device drains as contention, and the drains fall almost entirely on the
+# NARROW slice:
+#
+#     pair      slice   step-level   call-level
+#     13+91      13u       0.998       1.3559
+#     13+91      91u       1.031       1.0317
+#     26+78      26u       0.999       1.2770
+#     26+78      78u       1.119       1.1016
+#     52+52      52u      1.1983       1.2176
+#
+# The two wide-slice entries agree to 0.01 and 1.6%. The two narrow-slice
+# entries are out by 0.36 and 0.28 absolute. A narrow slice's step is
+# long, so one drain of a fast peer's step is a large fraction of it; a
+# wide slice's step is short, and it turns out not to drain.
+#
+# The project's arithmetic is in DENOISING STEPS -- 3.8 says so in as
+# many words -- so this is the table that measures the quantity being
+# used. It is not yet the default: gfx1201's pairs have not been measured
+# this way (X570 is running expC), and switching the default before both
+# devices are covered would leave the two architectures' tables measuring
+# different quantities, which is the error 1.10 was found by avoiding.
+MEASURED_EXTERNALITY_GFX90A_STEPS: dict[tuple[int, int], float] = {
+    (13, 91): 0.998,
+    (26, 78): 0.999,
+    (52, 52): 1.1983,   # two runs, 1.1954 and 1.2012
+    (78, 26): 1.119,
+    (91, 13): 1.031,
 }
 
 EXTERNALITY_TABLES: dict[str, dict[tuple[int, int], float]] = {
     "gfx1201": MEASURED_EXTERNALITY,
     "gfx90a": MEASURED_EXTERNALITY_GFX90A,
+}
+
+# Which harness measured a table. "calls" is every number published
+# before 2026-09-04; "steps" is the resident-adapter re-measurement.
+EXTERNALITY_TABLES_BY_SOURCE: dict[str, dict] = {
+    "calls": EXTERNALITY_TABLES,
+    "steps": {"gfx90a": MEASURED_EXTERNALITY_GFX90A_STEPS},
 }
 
 
@@ -587,7 +628,8 @@ MEASURED_WORKPOINT: dict[str, str] = {
 
 def externality(own_units: int, peer_units: int | None,
                 model: str | None = None,
-                device: str = "gfx1201") -> float:
+                device: str = "gfx1201",
+                source: str = "calls") -> float:
     """Slowdown factor for a tenant sharing the die with one peer.
 
     Uses the model's own measurement where one exists and the shared
@@ -611,23 +653,34 @@ def externality(own_units: int, peer_units: int | None,
     The per-model table is gfx1201's only. It is not consulted on another
     device, because a model-specific penalty measured on one architecture
     is not a correction to apply on a different one.
+
+    ``source`` selects which harness measured the table. ``"calls"`` is
+    every number published before 2026-09-04 and stays the default;
+    ``"steps"`` is the resident-adapter measurement, which is the
+    quantity this project's burst arithmetic is actually in, and which
+    covers gfx90a only so far. The per-model correction is a call-level
+    measurement and is not applied to a step-level lookup.
     """
     if peer_units is None:
         return 1.0
     key = (own_units, peer_units)
-    if device == "gfx1201" and model is not None:
+    tables = EXTERNALITY_TABLES_BY_SOURCE.get(source)
+    if tables is None:
+        raise KeyError(f"no externality tables measured by {source!r}; "
+                       f"have {sorted(EXTERNALITY_TABLES_BY_SOURCE)}")
+    if source == "calls" and device == "gfx1201" and model is not None:
         own_table = MEASURED_EXTERNALITY_BY_MODEL.get(model)
         if own_table and key in own_table:
             return own_table[key]
-    table = EXTERNALITY_TABLES.get(device)
+    table = tables.get(device)
     if table is None:
         raise KeyError(
-            f"no measured externality table for device {device!r}; "
-            f"have {sorted(EXTERNALITY_TABLES)}"
+            f"no {source} externality table for device {device!r}; "
+            f"have {sorted(tables)}"
         )
     if key not in table:
         raise UnmeasuredPairing(
-            f"no measured externality for {own_units}+{peer_units} on "
+            f"no {source} externality for {own_units}+{peer_units} on "
             f"{device}; measured pairs are {sorted(table)}"
         )
     return table[key]
