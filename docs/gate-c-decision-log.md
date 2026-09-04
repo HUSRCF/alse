@@ -5013,6 +5013,37 @@ solo drops back to 855 ms the N-way penalty is allocator behaviour and
 1.11 is finished. If it stays at 1810 ms the cost is real and the
 question becomes what to call it.
 
+**Two candidate causes are already dead, from data in hand.**
+
+*Thermal or clock state is out.* The **one-way** run puts SDXL on the
+whole die for six episodes of fourteen steps -- the most power the card
+draws in this whole sweep, more than eight slices of thirteen units -- and
+its post-episode solo is 118.97 ms against 118.85 before, a drift of
+**0.1%**. A card that throttled 2x after eight narrow slices would
+throttle at least as hard after that. It does not.
+
+*"Peers running" is out too, and this is the part that matters.*
+`run_solo` after the episodes walks the adapters **sequentially**: while
+slice 0 is measured, slices 1..N-1 are idle. The cost is still there. So
+the elevated step time does not require peers to be running, only to
+have run, and a co-run externality is by definition the former.
+
+**And one candidate is in trouble.** If the cause were simply allocator
+churn proportional to adapters x episodes, then gfx90a's two 2-way runs
+-- `13+91` and `52+52`, both two adapters, both six episodes, both the
+same number of `prepare()` calls -- would drift equally. They drift
+**0.4%** and **19.5%**. Whatever accumulates, it accumulates in
+proportion to how much the slices actually interfered, which is not what
+a fragmenting pool does on a fixed number of allocations.
+
+So the honest position before the control is: the effect is process-local
+software state (thermal and true concurrency are both excluded), it
+scales with interference rather than with allocation count, and it is
+**not** the quantity `externality()` is multiplied by. Whether it is
+nonetheless a real cost that BurstServe would pay -- the runtime does run
+N adapters concurrently in one process, exactly like this harness -- is a
+different and more interesting question than the one 1.11 asked.
+
 Three times today a number has turned out to be the harness. The reason
 this one was caught is that the harness was built with a control it did
 not need to have -- a solo measured *after* as well as before. Keep
