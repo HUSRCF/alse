@@ -163,10 +163,14 @@ negative result with a structural explanation** -- strengthened by
 having named and falsified three defences of our own method, and by the
 explanation being arithmetic on measured costs rather than a story.
 
-The remaining open path is **intra-tenant concurrency**: dividing the
+The remaining open path was **intra-tenant concurrency**: dividing the
 critical tenant's quota among its own requests on disjoint masks, which
-is the only thing that can shorten a serial burst. `expC` is running
-against it. Its arithmetic couples the scheduling result to (2) for the
+is the only thing that can shorten a serial burst. `expC` ran against it
+and returned **verdict 3** -- `concurrent_quota_c4` loses to its own
+c=1 control, +17.2% on miss and -21.3% on video, and to priority by
++262.5%. The path is closed. What survived is smaller and sharper: `c2`
+beats the control on miss by -9.0% and **dominates c4 on both axes**, so
+two slices beat four exactly as 1.11 says they must. See 3.9. Its arithmetic couples the scheduling result to (2) for the
 first time -- it survives the fast co-run state at a 6% margin and misses
 in the slow one -- and the number it turns on, the same-model penalty
 with **three** peers rather than one, had never been measured.

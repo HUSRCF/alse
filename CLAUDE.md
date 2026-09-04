@@ -32,7 +32,7 @@ When adding an arm, read what the arm does rather than what it is called.
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
 | 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
 | 1.10 | The partitioning gain has an **optimum width on CDNA2 and none on RDNA4** — aggregate solo throughput peaks at four ways on gfx90a and falls below the whole die at eight; the Amdahl form the cost model assumes is **refuted** there | `experiments/probes/gfx90a/`, 2026-09-03 |
-| 1.11 | The co-run penalty **counts peers, not busy die**: the same slice with N−1 peers costs **+12.5% at four ways and +52.5% at eight** over the pairwise entry. A pairwise table cannot express it, and every intra-tenant arithmetic here used one. Held at risk for four hours on 2026-09-04 when the harness that made it turned out to charge device drains as contention, then **confirmed by an independent step-level harness within 1.8% at all four widths** | `experiments/probes/gfx90a/nway_steps/`, `scripts/summarise_nway_steps.py` |
+| 1.11 | The co-run penalty **counts peers, not busy die**: the same slice with N−1 peers costs **+43.8% at four ways and +107.1% at eight** over the same slice with **one** peer filling the same units, harness-matched — a single peer costs a 13-unit slice **nothing** and seven of them cost it 107%. A pairwise table cannot express it, and every intra-tenant arithmetic here used one. Held at risk for four hours on 2026-09-04 when the harness that made it turned out to charge device drains as contention, then **confirmed by an independent step-level harness within 1.8% at all four widths** | `experiments/probes/gfx90a/nway_steps/`, `scripts/summarise_nway_steps.py` |
 | 1.5b | **1.5 travels to CDNA2.** SDXL beside CogVideoX-2b at `52+52` of gfx90a costs **0.995** and **1.011**, inside the gfx1201 band, and both sides beat rotation (+31.0% / +6.1%) | `runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json`, 2026-09-04 |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
@@ -153,14 +153,20 @@ with no table **raises rather than falling back**.
 
 ### Running now
 
-* **expC run 2** on X570 (`docs/prereg-intra-tenant.md`), 160 cells.
-  Run 1 was stopped at group 28 of 40 and preserved as
+* **expC run 2 is done: 160/160, verdict 3.** `concurrent_quota_c4` loses
+  to its own c=1 control by +17.2% on miss and -21.3% on video, and to
+  priority by +262.5% / -44.9%, 0 wins in 40. The last path 3.8 left open
+  is closed. But `c2` -- predicted to do nothing -- beats the control on
+  miss by -9.0% and **dominates c4** (-22.3% miss, +13.3% video). Two
+  slices beat four, which is what 1.11 predicted from gfx90a hardware.
+  See 3.9.
+  (Run 1 was stopped at group 28 of 40 and preserved as
   `experiments/runs/expC_run1_overwritten/`: its four arms each ran in
   their own process, `run_amd_matrix_cell` substituted `POLICY` into
   `--out` only when given *more* than one policy, so every arm of a group
   wrote to the same path and the last overwrote the other three. Both
   guards looked at the wrong name. Fixed in the library
-  (`matrix_results.output_path`) and in the campaign, pinned by a test.
+  (`matrix_results.output_path`) and in the campaign, pinned by a test.)
 * **Harness-matched pairwise cells** on gfx90a, `26+78` and `13+91`,
   step-level. 1.11's "+12.5% and +52.5% over pairwise" currently compares
   a step-level N-way against a whole-call pairwise; at the one width

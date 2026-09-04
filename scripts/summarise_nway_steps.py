@@ -24,11 +24,13 @@ sys.dont_write_bytecode = True
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
-from burstserve.trace_sim import EXTERNALITY_TABLES  # noqa: E402
+from burstserve.trace_sim import (  # noqa: E402
+    EXTERNALITY_TABLES_BY_SOURCE,
+)
 
 
-def pairwise(units: int, die: int, device: str):
-    table = EXTERNALITY_TABLES.get(device)
+def pairwise(units: int, die: int, device: str, source: str):
+    table = EXTERNALITY_TABLES_BY_SOURCE.get(source, {}).get(device)
     if not table:
         return None
     return table.get((units, die - units))
@@ -38,6 +40,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--device", default="gfx90a")
+    parser.add_argument("--pairwise-source", default="calls",
+                        choices=("calls", "steps"),
+                        help="which harness measured the pairwise column "
+                             "the N-way values are compared against. "
+                             "`steps` makes the comparison harness-matched, "
+                             "which is the only way the excess is a "
+                             "measurement rather than two quantities "
+                             "subtracted.")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
 
@@ -61,7 +71,8 @@ def main() -> int:
         # Each slice against the pairwise entry for its OWN width. For an
         # equal N-way split those are all the same entry; for a measured
         # pair they are the two entries the table actually holds.
-        pairs = [pairwise(w, die, args.device) for w in widths]
+        pairs = [pairwise(w, die, args.device,
+                          args.pairwise_source) for w in widths]
         vs = [(e / q - 1) * 100 if q else None
               for e, q in zip(per_slice, pairs)]
         shown = statistics.mean(v for v in vs if v is not None) \

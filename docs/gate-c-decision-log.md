@@ -4900,3 +4900,43 @@ reversed spread is 0.079, so most of the forward gradient at eight ways
 is one slice. **The gradient is claimed at four ways, where both layouts
 trace the same monotone function of offset, and is directional only at
 eight.**
+
+## 2026-09-04 Experiment C: verdict 3, and the arm that was not predicted to work
+
+160 cells, all four arms, no safety failure and no unmasked cell in any
+of them, ten seeds at every (regime, load). Analysed with
+`scripts/analyse_campaign.py`; the JSON is in
+`experiments/runs/expC_analysis/`.
+
+**Verdict 3.** `concurrent_quota_c4` does not beat `fixed_split_24`. It
+loses to it by **+17.2%** on urgent miss [+0.0804, +0.1927] and by
+**-21.3%** on video goodput [-0.1992, -0.0668], and it loses to
+`exclusive_priority` by +262.5% and -44.9%, 0 wins in 40 cells. The last
+path 3.8 left open is closed and 3.6 stands unconditional.
+
+159 of the 160 cells drew the fast co-run state, so the fast-only
+recomputation declared in the pre-registration is the pooled one. The
+prediction -- `c4` meets the deadline in fast cells -- is falsified where
+it was supposed to hold.
+
+**And `c2`, which the pre-registration predicted would do neither, does
+one of them.** It beats the c=1 control on miss, -9.0%
+[-0.1193, -0.0270], 23 wins 3 losses 14 ties; it pays -10.8% in video, so
+it is not a Pareto win, and it is 181.7% worse than priority. Against
+`c4` it **dominates**: -22.3% miss and +13.3% video, both intervals
+excluding zero, 38 wins to 1.
+
+**Two slices beat four, and 1.11 said so first.** The pre-registration
+charged the four-way arrangement 1.297, which is 1.3's *pair* at 16+16,
+and said in the document that this stand-in was the number its prediction
+turned on. Measured on gfx90a a slice with three same-model peers pays
+**+43.8%** over the same slice with one, and the burst arithmetic puts
+the optimum at two ways. expC found two beating four on gfx1201, in a
+scheduling campaign with no cost model in the loop. That is a hardware
+measurement predicting a scheduling outcome across architectures, which
+is the first time in this project the two have agreed in advance.
+
+**What is still missing.** gfx1201's N-way penalty is unmeasured, so the
+*explanation* for c4's loss is inference from the other device. The
+step-level sweep at 32 units is queued next and it is the thing that
+turns this from agreement into evidence.

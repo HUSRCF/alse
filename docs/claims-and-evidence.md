@@ -217,9 +217,9 @@ the sign. `tests/test_gfx90a_cost_tables.py` pins all of it.
 
 | | |
 | --- | --- |
-| **Claim** | The same-model co-run penalty is **not** a function of how much of the die is busy. A slice of width `w` with `N-1` peers filling `104-w` units pays materially more than the same slice with **one** peer filling exactly those units: **+14.5% at four ways and +54.4% at eight**. A pairwise externality table cannot express this, and every arithmetic in this project about intra-tenant concurrency had been using one as a stand-in. |
+| **Claim** | The same-model co-run penalty is **not** a function of how much of the die is busy. A slice of width `w` with `N-1` peers filling `104-w` units pays far more than the same slice with **one** peer filling exactly those units: **+43.8% at four ways and +107.1% at eight**, harness-matched. A pairwise externality table cannot express this, and every arithmetic in this project about intra-tenant concurrency had been using one as a stand-in. |
 | **Evidence** | `scripts/run_amd_nway_corun.py`, gfx90a, SDXL self-paired at 768x768, denoising only, one GCD, three trials per point, slice widths all measured quotas. Penalty 1.0001 / 1.2146 / 1.4625 / 2.0933 at 1 / 2 / 4 / 8 ways against pairwise 1.2176 / 1.2770 / 1.3559 at the same slices. `experiments/probes/gfx90a/nway/`. |
-| **Control** | One way is a solo and reads **1.0001**, sd 0.0004. Two ways *is* the pairwise arrangement and reads 0.998 of it -- two harnesses, one number, so the 4- and 8-way divergences are the result and the 2-way agreement is what licenses reading them. |
+| **Control** | One way is a solo and reads **1.0007**. Two ways *is* the pairwise arrangement, and harness-matched it reads **0.998 of it** -- 1.1954 against a `52+52` pair measured the same way at 1.1983. Same arrangement, same harness, same number, so the 4- and 8-way divergences are the result and the 2-way agreement is what licenses reading them. |
 | **Direction of the drift** | The sweep ran 1, 2, 4, 8 in order on a warming die, which inflates the later points' solo baselines and therefore **deflates** their externality. The growth is if anything understated. Solo baselines reproduce the quota curve to within 1% at 104, 52 and 26 units. |
 | **Scope** | N slices of one model with **no other tenant** -- the `8+8+8+8` grant `concurrent_quota` issues when the video tenant is idle. The `8+6+6+6+6` arrangement adds a mismatched peer to each slice and is a different number, not measured. gfx1201's N-way penalty is **not measured**; that run is queued behind expC. |
 | **Falsifier** | A longer-window replication at eight ways landing near the pairwise 1.3559; or a gfx1201 sweep whose ratios are flat at 1.0, which would make this CDNA2's alone. |
@@ -306,13 +306,23 @@ is the conservative one and is what any arithmetic should use**, because
 it is measured through the harness with no known defect and it is lower,
 so it weakens rather than strengthens the claim being made from it.
 
-**What still rests on a cross-harness comparison.** The pairwise column
-these are compared against -- 1.2176 / 1.2770 / 1.3559 -- is whole-call.
-For the equal split the two harnesses can be checked directly and agree:
-2-way step-level is 1.1954 against pairwise 1.2176, **-1.8%**. For
-`26+78` and `13+91` no step-level pair had been measured, so the
-**+12.5% at four ways and +52.5% at eight** stated here are step-level
-over call-level. Harness-matched pairs at those two widths are running.
+**Harness-matched, the excess is more than twice what a cross-harness
+comparison said.** The pairwise column originally used here --
+1.2176 / 1.2770 / 1.3559 -- is whole-call, and its narrow-slice entries
+are the ones the step-level harness contradicts. Measured the same way as
+the N-way column:
+
+    ways  slice  N-way   pairwise, same harness   excess
+       2    52u  1.1954         1.1983            -0.2%   <- the control
+       4    26u  1.4365         0.9990           +43.8%
+       8    13u  2.0671         0.9980          +107.1%
+
+Cross-harness those read -1.8%, +12.5% and +52.5%. **A single peer
+filling the same units costs a 13-unit slice nothing at all; seven of
+them cost it 107%.** The two-way control lands at -0.2% rather than
+-1.8%, which is what a control should look like. `--pairwise-source` on
+`scripts/summarise_nway_steps.py` prints either column, so the
+substitution is visible rather than assumed.
 
 **A gradient across slice position, not previously seen.** The penalty is
 monotone in the slice's offset within the mask, and by a wide margin:
@@ -978,6 +988,69 @@ floor; on gfx90a it is unresolved, and the deciding entry is
 per model on that device at all.** The exclusive/partitioned *ordering* is
 untouched everywhere -- 3.83 s against 5.81 s is not a 1% margin.
 
+
+
+### 3.9 That intra-tenant concurrency makes partitioning viable
+
+Experiment C, pre-registered in `docs/prereg-intra-tenant.md` on
+2026-09-03 before any cell ran, 160 cells on X570 (gfx1201), arms
+`exclusive_priority`, `fixed_split_24`, `concurrent_quota_c2`,
+`concurrent_quota_c4`, ten seeds x two regimes x two loads, cap 16,
+burst 4. Attested by `docs/attestations/x570-tree-expC-run2.sha256`,
+captured before the run. All intervals are the seed cluster bootstrap
+over ten seeds; every number here comes from
+`scripts/analyse_campaign.py`.
+
+**Verdict 3, as the pre-registration defined it.** `concurrent_quota_c4`
+does not beat `fixed_split_24`, the c=1 control that is the same `24+8`
+split with the serialisation left in. It is **worse**:
+
+    concurrent_quota_c4 against    urgent miss                  video goodput
+    fixed_split_24 (c=1)   +0.1246 (+17.2%) [+0.0804, +0.1927]  -0.1303 (-21.3%) [-0.1992, -0.0668]
+    exclusive_priority     +0.6158 (+262.5%) [+0.5101, +0.7313] -0.3934 (-44.9%) [-0.4794, -0.3047]
+
+Every interval excludes zero. Against the control, 2 wins and 38 losses;
+against priority, **0 wins and 40 losses**. The last open path 3.8 left
+is closed, and 3.6 stands unconditional.
+
+**The prediction was falsified in both directions at once.** It said
+`c4` would meet the deadline in fast-state cells and `c2` would do
+neither. 159 of the 160 cells drew the fast state, so the declared
+fast-only recomputation is the pooled one to three decimal places, and in
+it `c4` is worse than the control. Meanwhile **`c2` beats the control on
+the miss axis**: -0.0650 (-9.0%) [-0.1193, -0.0270], 23 wins, 3 losses,
+14 exact ties. It pays for it in video, -0.0664 (-10.8%)
+[-0.0931, -0.0372], so it is not a Pareto improvement, and it is nowhere
+near priority (+181.7% miss).
+
+**`c2` dominates `c4` on both axes**, which is the part that matters:
+
+    concurrent_quota_c2 against c4   urgent miss  -0.1896 (-22.3%) [-0.2777, -0.1189]
+                                     video goodput +0.0640 (+13.3%) [+0.0143, +0.1148]
+
+38 wins, 1 loss, 1 tie on miss. **Two slices beat four**, and the
+pre-registration predicted four.
+
+**1.11 predicted exactly this, from hardware, on the other
+architecture.** `prereg-intra-tenant.md` charged its four-way arrangement
+1.297 -- 1.3's *pair* at 16+16 -- and said out loud that the
+approximation was the number its prediction turned on. Measured, a slice
+with three same-model peers pays **+43.8%** over the same slice with one,
+and the burst arithmetic on gfx90a's measured curves puts the optimum at
+**two** ways, 3.49 s against 3.63 s at four. expC found two beating four
+on a different device, in a scheduling campaign, with no cost model in
+the loop. The mechanism and the scheduler agree.
+
+**Design validity, checked rather than assumed.** No cell recorded a
+safety failure and none ran unmasked, across all 160. Forty cells per
+arm, ten seeds at every (regime, load). `c4` did issue the grant it
+exists to issue -- `8+6+6+6+6` 1626 times and `8+8+8+8` 840 times -- so
+the invalidator "never granting four requests at once" did not fire; the
+arm worked and lost. `c2` issued `16+16` 2113 times and `12+12+8` 602.
+
+**What it does not show.** gfx1201's N-way penalty is still unmeasured,
+so *why* four slices lose is inference from gfx90a rather than
+measurement on the device the campaign ran on. That sweep is next.
 
 
 ## 4. Open
