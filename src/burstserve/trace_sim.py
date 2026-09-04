@@ -464,6 +464,17 @@ MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {
 # 2.0940 is recorded because dropping a trial after seeing it would raise
 # the number in the direction that strengthens the claim being made from
 # it. The clean value is stated here so nobody has to rediscover it.
+# AT RISK 2026-09-04, and every arithmetic below that reads it inherits
+# the hold. The harness that produced this table -- whole `pipeline()`
+# calls from N threads of one process -- was shown that day to charge
+# device drains (`hipMalloc` misses stalling the stream) as co-run
+# contention: the same mismatched pair read 7.3x through it and 0.995
+# through a resident step-adapter harness, and the difference resolved
+# into one drain per step, exactly one peer step long. Same-model slices
+# bound the exposure to one peer step rather than 4.4, but a drain waits
+# for *all* peers, so an artefact grows with N in the shape recorded
+# here. Not withdrawn -- nothing contradicts it -- and not usable until
+# the step-level re-measurement lands.
 MEASURED_NWAY_PENALTY_GFX90A: dict[int, float] = {
     1: 1.0001,     # control: a solo, and it must read 1.000
     2: 1.2146,

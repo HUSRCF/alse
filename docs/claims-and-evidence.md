@@ -60,8 +60,21 @@ CogVideoX-2b at 480x720x9 frames.
 | --- | --- |
 | **Claim** | SDXL beside CogVideoX-2b costs 1.00–1.06 per side at every split, and partitioning Pareto-dominates rotation: both tenants advance faster than under an equal share of the whole die. |
 | **Evidence** | Five splits, five processes each, three episodes, solo and co-run both by device span; 15 measurements per entry, every range within 0.005. Gains: 4+28 gives +71.4% and +1.4%; 8+24 +65.3% and +8.5%; 16+16 +42.2% and +22.8%; 24+8 +17.7% and +29.5%; 28+4 +3.6% and +30.9%. |
+| **Travels to CDNA2, 2026-09-04** | The same harness at `52+52` of gfx90a's 104 units, six episodes: SDXL **0.995**, CogVideoX-2b **1.011**, both inside the gfx1201 band measured at `16+16`. Both sides still beat rotation, **+31.0%** and **+6.1%**. `runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json` on DiamondHill. The first two episodes read 5.36 and 5.28 and are a warm-up transient with a named cause -- see below; the published verdict is the steady state, as it was on gfx1201. |
 | **Scope** | These two models at these workpoints. The split decides how the gain divides, not whether there is one. |
 | **Falsifier** | Any split where a side loses against its rotation share. |
+
+**The transient is worth its own line, because it is large and it
+has a mechanism.** Every SDXL step in the first co-run episode takes
+988 ms, which is *exactly* its own 183 ms solo step plus one whole
+805 ms CogVideoX step, with no spread at all; by the third episode
+every step is 183 ms and it stays there. The stream is not losing
+units, it is waiting for the device to **drain**, once per step,
+which is what the caching allocator's misses cost. 28 co-run steps
+are enough to stop them. A runtime that reaches steady state pays
+1.00; one whose allocation pattern keeps changing pays 5x, and that
+is a fact about serving two models from one process, not about CU
+masks.
 
 ### 1.6 Step-matched pairing carries the method
 
@@ -254,6 +267,31 @@ The table records **2.0940**. Dropping a trial after seeing it would move
 the number in the direction that strengthens the claim being made from
 it, so the conservative value is the published one and the clean value is
 stated here.
+
+**AT RISK, 2026-09-04 -- the harness that produced this is now known to
+charge device drains as contention.** The mismatched pair measured with
+this same N-way harness read **7.3x** on gfx90a and the same pair
+measured with 1.5's step-level harness read **0.995**; the step series
+identified the difference as one `hipMalloc`-class device drain per
+step, and `run_side` warms with a single whole `pipeline(...)` call where
+1.5's harness needed 28 steps to leave the transient behind. See the
+decision log for 2026-09-04.
+
+What that does and does not do to this claim. Same-model slices step at
+the same length, so a drain costs one peer step rather than the 4.4 of
+them the mismatched case paid -- the exposure is bounded. But a device
+drain waits for **every** in-flight peer, so an artefact would grow with
+N in precisely the shape reported here, and the two cannot be separated
+by inspection. The 2-way agreement recorded under **Control** does not
+settle it either: `run_amd_inproc_corun.py` also issues whole calls, so
+both harnesses in that comparison share the exposure.
+
+The claim is **not withdrawn** -- nothing has been measured that
+contradicts it -- and it is **not usable** until the re-measurement
+lands: N resident step adapters on N disjoint masks, stepped
+concurrently, timed per step, transient reported rather than dropped. Any
+arithmetic that turns on the N-way penalty, including the 7.3%-at-two-
+ways figure above, inherits this hold.
 
 ---
 

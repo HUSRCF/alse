@@ -254,6 +254,14 @@ def main() -> int:
     parser.add_argument("--frames", type=int, default=9)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--split", default="16+16")
+    parser.add_argument("--full-die", type=int, default=32,
+                        help="maskable units in the whole die. The "
+                             "rotation comparison needs it: a tenant "
+                             "holding `quota` of it runs alone on all "
+                             "of it for that share of the clock. 32 is "
+                             "gfx1201 and was the only value this "
+                             "script could express until 2026-09-04; "
+                             "gfx90a is 104.")
     parser.add_argument("--episodes", type=int, default=6,
                         help="co-run episodes in one process; the first "
                              "carries a surcharge over the drawn state, so "
@@ -266,7 +274,8 @@ def main() -> int:
 
     units = [int(u) for u in args.split.split("+")]
     models = ["sdxl", "cogvideox-2b"]
-    pool = MaskedStreamPool(make_stream)
+    pool = MaskedStreamPool(make_stream,
+                            maskable_units=args.full_die)
 
     pipelines = {}
     adapters = {}
@@ -286,7 +295,7 @@ def main() -> int:
     print(f"  resident {torch.cuda.memory_allocated() / 2**30:.2f} GB",
           flush=True)
 
-    widths = sorted({units[0], units[1], 32})
+    widths = sorted({units[0], units[1], args.full_die})
     print(f"warming widths {widths} for both models ...", flush=True)
     for model in models:
         for width in widths:
@@ -294,7 +303,7 @@ def main() -> int:
 
     solo: list[dict] = []
     for index, model in enumerate(models):
-        for width in (units[index], 32):
+        for width in (units[index], args.full_die):
             samples = run_solo(adapters[model], pool, width, args)
             solo.append({"model": model, "units": width,
                          "p50_s": p50(samples), "samples": len(samples)})
@@ -324,8 +333,8 @@ def main() -> int:
             corun = p50(paired[f"{name}_all"])
             overlap = p50(paired[f"{name}_overlap"])
             alone_at_quota = solo_at(model, quota)
-            alone_full = solo_at(model, 32)
-            share = quota / 32.0
+            alone_full = solo_at(model, args.full_die)
+            share = quota / float(args.full_die)
             # Under rotation this tenant runs alone on the whole die for
             # `share` of the wall clock; under partitioning it holds
             # `share` of the die all the time.
@@ -358,7 +367,7 @@ def main() -> int:
     # measured before the episodes is a ratio against a colder card.
     solo_after = []
     for index, model in enumerate(models):
-        for width in (units[index], 32):
+        for width in (units[index], args.full_die):
             samples = run_solo(adapters[model], pool, width, args)
             solo_after.append({"model": model, "units": width,
                                "p50_s": p50(samples)})
@@ -372,6 +381,7 @@ def main() -> int:
                              "and observed describe the same quantity"),
         "models": models,
         "split": args.split,
+        "full_die_units": args.full_die,
         "steps": args.steps,
         "warmup_dropped": args.warmup,
         "sdxl_workpoint": f"{args.width}x{args.height}",

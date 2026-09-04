@@ -32,7 +32,8 @@ When adding an arm, read what the arm does rather than what it is called.
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
 | 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
 | 1.10 | The partitioning gain has an **optimum width on CDNA2 and none on RDNA4** — aggregate solo throughput peaks at four ways on gfx90a and falls below the whole die at eight; the Amdahl form the cost model assumes is **refuted** there | `experiments/probes/gfx90a/`, 2026-09-03 |
-| 1.11 | The co-run penalty **counts peers, not busy die**: the same slice with N−1 peers filling the same units costs +14.5% at four ways and +54.4% at eight over the pairwise entry. A pairwise table cannot express it, and every intra-tenant arithmetic here used one | `experiments/probes/gfx90a/nway/`, 2026-09-04 |
+| 1.11 | **AT RISK, do not use.** The co-run penalty was measured to **count peers, not busy die** (+14.5% at four ways, +54.4% at eight over the pairwise entry) — but the harness that produced it charges `hipMalloc`-class **device drains** as contention, proven on 2026-09-04. Not withdrawn, not usable, awaiting a step-level re-measurement | `experiments/probes/gfx90a/nway/`; the proof is in `docs/claims-and-evidence.md` under 1.11 |
+| 1.5b | **1.5 travels to CDNA2.** SDXL beside CogVideoX-2b at `52+52` of gfx90a costs **0.995** and **1.011**, inside the gfx1201 band, and both sides beat rotation (+31.0% / +6.1%) | `runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json`, 2026-09-04 |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
 losses, 9 exact ties, sign test p = 0.383 — but the worst loss is +0.046

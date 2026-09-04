@@ -4651,3 +4651,154 @@ It also predicts the direction for `8+6+6+6+6`, which is the grant
 `concurrent_quota` issues most: the urgent tenant's slices sit beside a
 video tenant, and if this holds they are paying far more than either the
 pairwise or the N-way table says.
+
+## 2026-09-04 The mismatched pair on gfx90a: 7.3x again, and a confound the pair exposed
+
+The decisive check named above has reported. One SDXL slice at 52 units
+beside one CogVideoX-2b slice at 52, three trials, overlap 143.4-144.7 s
+of a 150 s window, `runs/nway_mixed/nway_sdxl1_cog1_104u_2way.json` on
+DiamondHill:
+
+    slice           solo      co-run   externality   n_in_overlap
+    sdxl           1.465 s   10.76 s     7.344        12
+    sdxl           1.462 s   10.05 s     6.872        13
+    sdxl           1.465 s   10.71 s     7.320        12
+    cogvideox-2b   6.426 s    6.555 s    1.0201       21
+    cogvideox-2b   6.425 s    6.552 s    1.0198       20
+    cogvideox-2b   6.427 s    6.552 s    1.0194       21
+
+Both solos check against the measured quota curves: SDXL 52u is
+0.18247 s/step x 8 = 1.460 s against 1.465 measured, CogVideoX 52u is
+0.79353 x 8 = 6.348 against 6.426. So the baselines are the right ones
+and the ratios are not an artefact of a mispriced solo.
+
+**By the rule written before the numbers were read, this is the branch
+where the four-way structure is not needed.** One peer is enough. SDXL
+pays 6.87-7.34 at half the die against one CogVideoX, and CogVideoX pays
+1.019-1.020. The crowding explanation is dead: at two ways there is no
+crowding.
+
+**But the pair also killed the arrangement explanation in a way that
+exposes a confound I had not checked.** Reading
+`run_amd_mismatched_corun.py` -- the harness that produced 1.5 -- it is
+*also* one process with two threads (`threading.Thread` x2, line 215),
+also SDXL beside CogVideoX-2b, also 9 frames at 720x480, also
+denoising-only. So process-versus-thread is **not** what separates
+1.5 from this. Two things still do:
+
+1. **Device.** gfx1201, 16+16 of 32, against gfx90a, 52+52 of 104.
+2. **What is timed.** 1.5 steps one resident `StepExecutor` in place and
+   records `adapter.last_step_seconds`. The N-way harness issues whole
+   `pipeline(...)` calls back to back. A whole call allocates and frees
+   its activation graph every time, and the PyTorch caching allocator is
+   **one per device, behind a mutex**, with cache misses calling
+   `hipMalloc`/`hipFree`, which synchronise the device. Two threads doing
+   that against each other is a mechanism for a large asymmetric stall
+   that has nothing to do with CU masks.
+
+That is a real alternative to the bandwidth story and it predicts the
+same sign. It cannot be argued away from the numbers in hand.
+
+**The control, and its rule, written before it reports.** Running now on
+DiamondHill GCD 4: **1.5's own harness**, unmodified except for a
+`--full-die` argument that lets it express a die that is not 32 units
+wide, at `--split 52+52 --full-die 104`, six episodes,
+`runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json`. Same program that
+produced the published claim, different device. Reading SDXL's
+`externality` in the last episode's verdict:
+
+* **>= 3.0** -- the device is the factor. Mismatched co-run on CDNA2
+  costs the small-step tenant several times its solo, 1.5 does not
+  travel, and both gfx90a mixed measurements stand.
+* **<= 1.5** -- the harness is the factor. The 7.3x is a property of
+  running whole `pipeline()` calls from two threads of one process, not
+  of the architecture, and **both** gfx90a mixed results are withdrawn as
+  measurements of co-run. The follow-up is then the N-way harness on
+  gfx1201 at 16+16 mixed, which on this hypothesis must also show ~7x.
+* **between 1.5 and 3.0** -- neither factor alone accounts for it and the
+  fourth cell of the 2x2 has to be run before anything is claimed.
+
+The `--full-die` change is additive and defaults to 32, so every
+gfx1201 invocation of this script is byte-identical in behaviour to the
+one that produced 1.5.
+
+## 2026-09-04 The control fired the second branch: the 7.3x is the harness, and it names a mechanism
+
+`runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json`, DiamondHill GCD 4,
+1.5's own harness at `--split 52+52 --full-die 104`, six episodes, every
+mask read back and disjoint:
+
+    episode   sdxl@52 co-run   ext     cogvideox@52 co-run   ext
+       1          988.4 ms    5.362         806.4 ms       1.014
+       2          973.0 ms    5.278         809.5 ms       1.018
+       3          183.3 ms    0.994         805.9 ms       1.013
+       4          183.3 ms    0.994         806.3 ms       1.014
+       5          182.9 ms    0.992         804.8 ms       1.012
+       6          183.4 ms    0.995         804.1 ms       1.011
+
+The verdict the script reports is the last episode's, which is what 1.5
+published: SDXL **0.995**, CogVideoX **1.011**. That is the `<= 1.5`
+branch of the rule written before the run. **The harness is the factor.
+The 7.3x is withdrawn as a measurement of co-run.**
+
+**The step series says what the mechanism is, and it is not subtle.**
+Every SDXL step in episode 1 is 988 ms and every step in episode 3 is
+183 ms -- no spread, no drift, a square wave:
+
+    ep 1   sdxl  988 988 988 988 988 988 988 988 988 183
+    ep 3   sdxl  183 183 183 183 183 183 183 183 183 183
+    ep 1   cog   830 808 808 808 805 805 804 804 805 808
+
+183 ms is SDXL's solo step at 52 units. 805 ms is CogVideoX's. And
+**988 = 805 + 183**: an SDXL step is costing exactly one whole CogVideoX
+step plus its own. The SDXL stream is not being slowed by contention for
+units; it is **waiting for the device to drain** once per step. That is
+what `hipMalloc`/`hipFree` do when the caching allocator misses. After
+two episodes -- 28 steps -- the allocator has cached what SDXL needs, the
+misses stop, and the number falls to solo and stays there for four more
+episodes. The last SDXL step of episodes 1 and 2 is 183 ms because
+CogVideoX has already finished its 14 and there is nothing left to drain.
+
+**Why the N-way harness never escapes it.** `run_side` warms with **one**
+whole `pipeline(...)` call before the window; 1.5's harness needed 28
+steps. And a whole call allocates its activation graph from scratch every
+time rather than stepping a resident executor in place, so the misses
+keep coming: SDXL's call goes 1.465 s solo to 10.76 s co-run, and the
+9.3 s difference is **11.5 CogVideoX steps** -- about one drain per
+denoising step of an 8-step call. The stall is inside the CUDA-event span
+by construction, so it is measured as if it were contention.
+
+**What this withdraws, and what it leaves standing.**
+
+* Both gfx90a mixed measurements -- the 3+1 four-way (7.06-7.42) and the
+  1+1 pair (6.87-7.34) -- are **withdrawn as co-run externalities**. The
+  raw runs are kept. The bandwidth-isolation story built on them yesterday
+  has no support; nothing about CU masks and HBM was shown.
+* **1.5 travels to CDNA2, and this is the evidence.** SDXL 0.995 and
+  CogVideoX 1.011 at 52+52 on gfx90a sit inside 1.5's 1.00-1.06 band
+  measured at 16+16 on gfx1201, and both sides still beat rotation:
+  **+31.0%** and **+6.1%**. The claim is stronger than it was yesterday,
+  on a second architecture.
+* **1.11 is at risk and is not withdrawn.** Its 1/2/4/8 same-model
+  penalties (1.0001, 1.2146, 1.4625, 2.0940) came from the N-way harness,
+  the one now known to carry drains. Same-model slices have equal step
+  lengths, so a drain costs one peer step rather than 4.4 of them, which
+  bounds the contamination -- but a device drain waits for **all** peers,
+  so the artefact grows with N in exactly the shape 1.11 reports. It
+  cannot be told apart from the real effect by staring at it.
+* The pairwise externality tables for **both** devices are whole-call
+  ratios and so share the exposure. Two things argue they are largely
+  real: the narrow slice pays **more** (gfx90a 1.3559 at 13+91 against
+  1.0317 at 91+13), and a drain artefact predicts the opposite -- the
+  slice with the long steps waits proportionally less. That is an
+  argument, not a measurement.
+
+**The re-measurement.** 1.11's falsifier is the same N-way arrangement
+run the way 1.5's harness runs it: N resident step adapters on N disjoint
+masks, stepped concurrently for a window, timed per step, with enough
+warm-up to leave the allocator's transient behind and the transient
+reported rather than dropped. If the penalties survive, 1.11 stands and
+`prereg-intra-tenant.md`'s central approximation is still refuted. If
+they collapse toward 1.0 the way this pair did, then the N-way penalty
+was never measured and the intra-tenant arithmetic goes back to the
+pairwise table.
