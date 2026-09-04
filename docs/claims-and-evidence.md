@@ -321,13 +321,25 @@ monotone in the slice's offset within the mask, and by a wide margin:
     eight ways  2.136  2.118  2.124  2.122  2.043  2.076  2.056  1.862
 
 The slice at offset 0 pays 7.0% more than the slice at the top of the
-die at four ways, and 14.7% more at eight. This is recorded as an
-observation, not a claim: it has one obvious falsifier, laying the same
-slices out from the top down, and that run is in flight. If it follows
-the position it reverses; if it follows the thread it does not. A
-scheduler that hands out contiguous masks from offset 0 -- which is what
-`MaskedStreamPool.for_quota` does by default -- would be systematically
-loading its first tenant.
+die at four ways, and 14.7% more at eight. The falsifier -- lay the same
+slices out from the top down -- was run, and at four ways it came back
+positive: both layouts trace the **same monotone function of the
+offset**, not of the thread.
+
+    offset          0      26      52      78
+    forward       1.474   1.459   1.436   1.377
+    reversed      1.453   1.439   1.406   1.362
+
+At eight ways the direction agrees -- offset 91 is cheapest in both --
+but the forward spread is 0.274 against a reversed 0.079, so most of the
+forward gradient there is a single slice. **The gradient is a finding at
+four ways and a direction at eight.**
+
+`MaskedStreamPool.for_quota` hands out contiguous masks from offset 0, so
+a scheduler using it loads its first tenant by about 7% for no reason it
+can see. That is a fixable defect, and it is the only thing in this
+project so far that suggests *where* on the die a slice sits is a
+scheduling variable at all.
 
 ---
 

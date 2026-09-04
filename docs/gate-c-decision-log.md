@@ -4885,3 +4885,18 @@ Offset 0 pays 1.45-1.47 in both layouts and offset 78 pays 1.36-1.38 in
 both. It follows the mask's position, not the thread. `for_quota` hands
 out contiguous masks from offset 0, so a scheduler using it loads its
 first tenant by about 7% at four ways for no reason it can see.
+
+**The eight-way layout does not reverse as cleanly, and that is
+reported rather than smoothed.** Mapping each slice to the offset it
+occupied:
+
+    offset      0    13    26    39    52    65    78    91
+    forward   2.136 2.118 2.124 2.122 2.043 2.076 2.056 1.862
+    reversed  2.113 2.101 2.130 2.093 2.108 2.121 2.076 2.051
+
+The direction agrees -- offset 91 is the cheapest slice in both layouts
+and offset 0 among the dearest -- but the forward spread is 0.274 and the
+reversed spread is 0.079, so most of the forward gradient at eight ways
+is one slice. **The gradient is claimed at four ways, where both layouts
+trace the same monotone function of offset, and is directional only at
+eight.**
