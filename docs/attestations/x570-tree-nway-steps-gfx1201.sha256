@@ -1,0 +1,69 @@
+# Code identity of the X570 tree that ran the step-level co-run sweep on
+# gfx1201
+#
+# Captured 2026-09-04, after Experiment C run 2 finished at 160/160 and
+# before this sweep started. Four files were synced in beforehand; every
+# other file is as expC run 2 left it, and in particular
+# src/burstserve/runtime.py is still 139b944^ -- before the
+# max_steps_per_round flag -- which is the pin that keeps every hardware
+# campaign here commensurable. This sweep does not use the runtime at
+# all.
+#
+# What this sweep exists to settle. On 2026-09-04 the whole-call co-run
+# harness was shown to charge `hipMalloc`-class device drains as
+# contention: a mismatched pair that reads 7.3x through it reads 0.995
+# when the same masks are stepped on resident adapters, and the step
+# series resolved the difference into one device drain per step, exactly
+# one peer step long. On gfx90a the damage is confined to NARROW slices
+# -- 13+91 reads 1.3559 whole-call and 0.998 stepped, while 91+13 reads
+# 1.0317 and 1.031 -- and gfx1201's table has never been checked.
+#
+# Two things turn on it. `docs/prereg-intra-tenant.md` charged its
+# four-way arrangement 1.297, which is a PAIR at 16+16, and said in the
+# document that this stand-in was the number its prediction turned on;
+# expC has now returned verdict 3 with c2 dominating c4, which is what
+# 1.11 predicts, but 1.11 is a gfx90a measurement. And 3.8's gfx1201 row
+# reads externality(8, 24) = 1.3383, a narrow-slice entry, for the tenant
+# that paces the round.
+#
+# Files synced in from dd immediately before this capture:
+#   scripts/run_amd_nway_steps.py      new -- the step-level N-way harness
+#   scripts/campaign_nway_steps.sh     new -- this sweep
+#   scripts/summarise_nway_steps.py    new -- its analysis
+#   scripts/run_amd_mismatched_corun.py  gains --full-die, default 32, so
+#                                      gfx1201 behaviour is unchanged
+#   scripts/run_amd_matrix_cell.py     _grant_shapes is tenant-ordered
+#                                      now. Held back all through expC on
+#                                      purpose; expC's shapes are
+#                                      width-sorted and its attestation
+#                                      says so.
+#
+# The adapters, executor, masked_streams and provenance hash IDENTICALLY
+# to DiamondHill's copies, so the two architectures' step-level tables
+# are produced by the same code and not merely by the same procedure.
+64c8f1ec6f3719f52ed873242ca8d18c9e5edc2aa3d3d39460b97a0fc067c6fc  scripts/run_amd_nway_steps.py
+e2b888ffe3c35060dfeb931767509197e8460a79e9a95b70fea79192cad466db  scripts/campaign_nway_steps.sh
+21f71bf73e53d10018becec3c8d97046d4c0e67c119527afad9a7f68cac408bc  scripts/summarise_nway_steps.py
+57edd0f96a443a14a86a750e1052583f999f6d111a212bf9021f1ab650afaecd  scripts/run_amd_mismatched_corun.py
+c407874d9bce6a9d6dea4b9d5616146c139b7479747a2a5ed5b8b77f71a3c083  scripts/run_amd_matrix_cell.py
+07d0a0d7b418c369e644c9bfe56843c8e6b2bb1f9ba3220eaef6c3c0d25eae3b  scripts/amd_sdxl_adapter.py
+f2dbc867708337eb1da6276560f55159d2941dc7b965e73ba22f6ccc6b840af4  scripts/amd_cogvideox_adapter.py
+78d2e831b812c19fc2f5b5bb0f0c5de2621322809fbd2ebdda610b353a8e31a9  src/burstserve/executor.py
+b141a260888158f98ebfb6a54aa6973f7e324aab7efaf786f3837c7ebd8140ee  src/burstserve/masked_streams.py
+50309f7c25f9dd1d56be64dbb1ffc1c678060af5cc195049aeb9a380c00c8f81  src/burstserve/provenance.py
+59ea30986ab82df8ce6281a956690cf02914ba0c5d983cbbb0276ab5f28f9e02  src/burstserve/runtime.py
+842fb82bb2b0823227f0bb04c7a129085e5924823c58fea277e1385c28561e2b  src/burstserve/policies.py
+sha256sum: src/burstserve/registry.py: 没有那个文件或目录
+64c8f1ec6f3719f52ed873242ca8d18c9e5edc2aa3d3d39460b97a0fc067c6fc  scripts/run_amd_nway_steps.py
+e2b888ffe3c35060dfeb931767509197e8460a79e9a95b70fea79192cad466db  scripts/campaign_nway_steps.sh
+21f71bf73e53d10018becec3c8d97046d4c0e67c119527afad9a7f68cac408bc  scripts/summarise_nway_steps.py
+57edd0f96a443a14a86a750e1052583f999f6d111a212bf9021f1ab650afaecd  scripts/run_amd_mismatched_corun.py
+c407874d9bce6a9d6dea4b9d5616146c139b7479747a2a5ed5b8b77f71a3c083  scripts/run_amd_matrix_cell.py
+07d0a0d7b418c369e644c9bfe56843c8e6b2bb1f9ba3220eaef6c3c0d25eae3b  scripts/amd_sdxl_adapter.py
+f2dbc867708337eb1da6276560f55159d2941dc7b965e73ba22f6ccc6b840af4  scripts/amd_cogvideox_adapter.py
+78d2e831b812c19fc2f5b5bb0f0c5de2621322809fbd2ebdda610b353a8e31a9  src/burstserve/executor.py
+b141a260888158f98ebfb6a54aa6973f7e324aab7efaf786f3837c7ebd8140ee  src/burstserve/masked_streams.py
+50309f7c25f9dd1d56be64dbb1ffc1c678060af5cc195049aeb9a380c00c8f81  src/burstserve/provenance.py
+59ea30986ab82df8ce6281a956690cf02914ba0c5d983cbbb0276ab5f28f9e02  src/burstserve/runtime.py
+842fb82bb2b0823227f0bb04c7a129085e5924823c58fea277e1385c28561e2b  src/burstserve/policies.py
+# (registry lives elsewhere in this tree and is not used by this sweep)

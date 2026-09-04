@@ -476,6 +476,12 @@ MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {
 # through the harness with no known defect and they are the smaller, so
 # they weaken rather than flatter every arithmetic that reads them. The
 # call-level values are kept beside them rather than deleted.
+# ON HOLD 2026-09-04. The harness's own drift guard -- a solo per
+# slice measured AFTER the episodes -- comes back equal to the
+# co-run in all 14 runs on both architectures, slice by slice. A
+# co-run penalty must vanish when the peers stop. Do not read
+# these into an arithmetic until the allocator control has run;
+# see docs/gate-c-decision-log.md, 2026-09-04.
 MEASURED_NWAY_PENALTY_GFX90A: dict[int, float] = {
     1: 1.0007,     # control: a solo, and it must read 1.000
     2: 1.1954,     # call-level harness read 1.2146
@@ -508,6 +514,12 @@ MEASURED_NWAY_PENALTY_GFX90A: dict[int, float] = {
 # this way (X570 is running expC), and switching the default before both
 # devices are covered would leave the two architectures' tables measuring
 # different quantities, which is the error 1.10 was found by avoiding.
+# ON HOLD 2026-09-04. The harness's own drift guard -- a solo per
+# slice measured AFTER the episodes -- comes back equal to the
+# co-run in all 14 runs on both architectures, slice by slice. A
+# co-run penalty must vanish when the peers stop. Do not read
+# these into an arithmetic until the allocator control has run;
+# see docs/gate-c-decision-log.md, 2026-09-04.
 MEASURED_EXTERNALITY_GFX90A_STEPS: dict[tuple[int, int], float] = {
     (13, 91): 0.998,
     (26, 78): 0.999,

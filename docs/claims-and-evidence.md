@@ -215,6 +215,19 @@ the sign. `tests/test_gfx90a_cost_tables.py` pins all of it.
 
 ### 1.11 The co-run penalty counts peers, not busy die
 
+> **HOLD, 2026-09-04 (later the same day).** Every step-level number in
+> this section is suspended. The harness measures a solo per slice
+> *after* the episodes as a drift guard, and across **14 runs on two
+> architectures** that post-episode solo comes back equal to the co-run
+> -- slice by slice, distinctive outliers included, and
+> `solo_after / solo_before` tracks the measured externality to within a
+> percent. A co-run penalty must vanish when the peers stop; this one
+> does not. So what was measured is one slice's cost *after N slices have
+> been exercised in this process*, which is not the quantity a table
+> keyed `(own, peer)` holds. The control -- the same solo with the
+> allocator's cache dropped -- is queued. See the decision log for
+> 2026-09-04, "HOLD on every N-way number".
+
 | | |
 | --- | --- |
 | **Claim** | The same-model co-run penalty is **not** a function of how much of the die is busy. A slice of width `w` with `N-1` peers filling `104-w` units pays far more than the same slice with **one** peer filling exactly those units: **+43.8% at four ways and +107.1% at eight**, harness-matched. A pairwise externality table cannot express this, and every arithmetic in this project about intra-tenant concurrency had been using one as a stand-in. |
@@ -937,6 +950,12 @@ direction is known even though the number is not.
 The best split is three quarters of the die on both devices -- 24+8 and
 78+26 -- so the *fraction* travels even though the margin does not.
 
+> **The re-opening below is itself on hold.** It reads
+> `externality(26, 78)` = 0.999 off `MEASURED_EXTERNALITY_GFX90A_STEPS`,
+> and that table is suspended -- see the HOLD under 1.11. What is not on
+> hold is the **floor** computation two paragraphs down, which uses no
+> co-run table at all.
+
 **Re-opened on gfx90a the same day, 2026-09-04, by the table underneath
 it.** The +29.2% above is `externality(26, 78)` = **1.2770** applied to
 the video tenant, and at `78+26` the round is paced by the video tenant,
@@ -1047,6 +1066,15 @@ arm, ten seeds at every (regime, load). `c4` did issue the grant it
 exists to issue -- `8+6+6+6+6` 1626 times and `8+8+8+8` 840 times -- so
 the invalidator "never granting four requests at once" did not fire; the
 arm worked and lost. `c2` issued `16+16` 2113 times and `12+12+8` 602.
+
+Those shapes are **width-sorted**, not tenant-ordered: X570's tree still
+carried the old `_grant_shapes` during this run, deliberately, so the
+campaign stayed commensurable with expB and the 2x2. The urgent-quota
+histogram is the authority and it agrees -- urgent held 6 units 6504
+times and 8 units 3360 times, and 3360 is exactly 4 x 840, so
+`8+8+8+8` is the urgent tenant four ways across the whole die with the
+video tenant idle, and `8+6+6+6+6` is `24+8` with urgent split four ways.
+The two counters are consistent, which is the check that caught expB.
 
 **What it does not show.** gfx1201's N-way penalty is still unmeasured,
 so *why* four slices lose is inference from gfx90a rather than

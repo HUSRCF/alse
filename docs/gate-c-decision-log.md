@@ -4940,3 +4940,80 @@ is the first time in this project the two have agreed in advance.
 *explanation* for c4's loss is inference from the other device. The
 step-level sweep at 32 units is queued next and it is the thing that
 turns this from agreement into evidence.
+
+## 2026-09-04 HOLD on every N-way number: the post-episode solo IS the co-run
+
+Checking the drift guard I built into `run_amd_nway_steps.py` -- a solo
+per slice before the episodes and again after, because the die warms --
+turned up something the guard was not looking for. Across **14 runs on
+two architectures**, `solo_after / solo_before` equals the measured
+externality:
+
+    device   ways  widths          externality   solo_after/before
+    gfx90a      1  104                 1.0007          1.0010
+    gfx90a      2  52+52               1.1954          1.1950
+    gfx90a      4  26 x4               1.4365          1.4388
+    gfx90a      8  13 x8               2.0671          2.0729
+    gfx90a      2  13+91               1.0147          1.0038
+    gfx90a      2  26+78               1.0591          1.0378
+    gfx1201     2  16+16               1.1842          1.1937
+    gfx1201     2  4+28                1.0524          1.0215
+    gfx1201     4  8 x4                2.1984          2.1919
+    gfx1201     8  4 x8                3.9227          3.8232
+
+Slice by slice, not just in the mean: gfx90a's eight-way co-run reads
+1828/1813/1817/1825/1764/1779/1763/**1596** ms and the solo taken
+afterwards reads 1822/1791/1826/1814/1769/1791/1801/**1609**. The
+distinctive last slice is there in both.
+
+**A co-run penalty must vanish when the peers stop, and this one does
+not.** `run_solo` after the episodes runs one adapter, alone, on its own
+mask, with every peer thread joined. It reads the co-run number. So what
+is being measured is not one slice's cost while N-1 peers run; it is one
+slice's cost **after N slices have been exercised in this process**, and
+that is a different quantity from the one every arithmetic here
+multiplies.
+
+Two readings survive the table and they are not close:
+
+* **The step cost really does rise and stay risen** once N slices have
+  run. Then the number is real but mislabelled -- it is not an
+  externality, it does not belong in a table keyed `(own, peer)`, and
+  `burst_feasibility` is multiplying the wrong thing by it.
+* **`solo_before` is the anomaly**, taken before some steady state, and
+  the true solo is the higher number all along. Then every N-way
+  externality is ~1.0 and 1.11 evaporates.
+
+The second reading has to explain why the **one-way** run does not drift
+(1.001) and why the extreme pair `13+91` does not (1.004) while `52+52`
+drifts 19.7% -- the rise tracks the arrangement, not the passage of
+time. That argues for the first reading. It is an argument, not a
+measurement.
+
+**On hold until the control runs, in this file and in the repository:**
+
+* 1.11's step-level column, 1.0007 / 1.1954 / 1.4365 / 2.0671;
+* the harness-matched +43.8% and +107.1%;
+* `MEASURED_EXTERNALITY_GFX90A_STEPS`, and with it 3.8's re-opening on
+  gfx90a, which read `externality(26, 78)` = 0.999 off that table;
+* gfx1201's 2.1984 at four ways and 3.9227 at eight, and the reading of
+  expC's verdict 3 that leans on them.
+
+What is **not** on hold: expC's verdict itself, which is a scheduling
+campaign with no cost table in it; 1.5's mismatched pair at 0.995, which
+comes from a different harness whose post-episode steps return to
+*exactly* solo; and the call-level tables, which have their own separate
+problem and are not rehabilitated by this one.
+
+**The control.** `torch.cuda.empty_cache()` before the final solo. Every
+episode builds a fresh `StepExecutor` and calls `prepare()`, so 8
+adapters over 7 episodes is 56 preparations' worth of allocator churn,
+and today's other finding was that this allocator stalls streams. If the
+solo drops back to 855 ms the N-way penalty is allocator behaviour and
+1.11 is finished. If it stays at 1810 ms the cost is real and the
+question becomes what to call it.
+
+Three times today a number has turned out to be the harness. The reason
+this one was caught is that the harness was built with a control it did
+not need to have -- a solo measured *after* as well as before. Keep
+building those.

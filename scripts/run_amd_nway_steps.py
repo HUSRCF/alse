@@ -39,6 +39,7 @@ penalty, which reads as good news.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import statistics
 import sys
@@ -58,6 +59,11 @@ from burstserve.provenance import canonical_json        # noqa: E402
 import run_amd_mismatched_corun as harness              # noqa: E402
 
 SCHEMA_VERSION = "burstserve.amd-nway-steps/v1"
+
+# `harness` loads libamdhip64 and declares the calls it uses; this
+# one is only needed by --diagnose, so it is declared here.
+harness.hip.hipStreamDestroy.restype = ctypes.c_int
+harness.hip.hipStreamDestroy.argtypes = [ctypes.c_void_p]
 
 
 def p50(values):
@@ -174,6 +180,14 @@ def main() -> int:
     parser.add_argument("--frames", type=int, default=9)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--keep-text-encoders", action="store_true")
+    parser.add_argument("--diagnose", action="store_true",
+                        help="after the episodes, measure the solo a third "
+                             "time with the allocator's cache dropped, and "
+                             "a fourth after destroying every peer stream. "
+                             "Added 2026-09-04 because solo_after came back "
+                             "equal to the co-run in all 14 runs on both "
+                             "architectures -- a co-run penalty must vanish "
+                             "when the peers stop, and this one did not.")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
@@ -266,6 +280,46 @@ def main() -> int:
         samples = run_solo(adapter, streams[index], widths[index], args)
         solo_after.append({"slice": index, "units": widths[index],
                            "p50_s": p50(samples)})
+    print("  solo after episodes: "
+          + " ".join(f"{r['p50_s'] * 1000:.1f}" for r in solo_after),
+          flush=True)
+
+    # Two more solos, each with one candidate cause removed. This is the
+    # 2026-09-04 control: solo_after equalled the co-run everywhere, and
+    # a penalty that survives the peers stopping is not an externality.
+    solo_emptied: list[dict] = []
+    solo_streams_gone: list[dict] = []
+    if args.diagnose:
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache()
+        for index, adapter in enumerate(adapters):
+            samples = run_solo(adapter, streams[index], widths[index], args)
+            solo_emptied.append({"slice": index, "units": widths[index],
+                                 "p50_s": p50(samples)})
+        print("  solo, allocator cache dropped: "
+              + " ".join(f"{r['p50_s'] * 1000:.1f}" for r in solo_emptied),
+              flush=True)
+
+        # Slice 0 alone with every peer stream destroyed. If N live
+        # masked streams cost something by merely existing, this is where
+        # it shows; solo_after already covers "peers resident but idle".
+        # Wrapped because destroying a stream out from under the pool is
+        # a one-way door and the two solos above are the result that
+        # matters.
+        try:
+            for stream in streams[1:]:
+                harness.hip.hipStreamDestroy(stream.handle)
+            gc.collect()
+            torch.cuda.empty_cache()
+            samples = run_solo(adapters[0], streams[0], widths[0], args)
+            solo_streams_gone.append({"slice": 0, "units": widths[0],
+                                      "p50_s": p50(samples)})
+            print("  solo, peer streams destroyed: "
+                  f"{solo_streams_gone[0]['p50_s'] * 1000:.1f}", flush=True)
+        except Exception as failure:            # noqa: BLE001
+            solo_streams_gone.append({"error": repr(failure)})
+            print(f"  peer-stream drop failed: {failure!r}", flush=True)
 
     verdict = episodes[-1]["rows"]
     values = [row["externality"] for row in verdict if row["externality"]]
@@ -294,6 +348,8 @@ def main() -> int:
         "stream_attestation": pool.attestation(),
         "solo_before": solo_before,
         "solo_after": solo_after,
+        "solo_after_empty_cache": solo_emptied,
+        "solo_after_peers_dropped": solo_streams_gone,
         "per_episode": episodes,
         "verdict": verdict,
         "externality_mean_last_episode": (statistics.mean(values)
