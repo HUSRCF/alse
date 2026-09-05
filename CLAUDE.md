@@ -32,7 +32,8 @@ When adding an arm, read what the arm does rather than what it is called.
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
 | 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
 | 1.10 | The partitioning gain has an **optimum width on CDNA2 and none on RDNA4** — aggregate solo throughput peaks at four ways on gfx90a and falls below the whole die at eight; the Amdahl form the cost model assumes is **refuted** there | `experiments/probes/gfx90a/`, 2026-09-03 |
-| ~~1.11~~ | **WITHDRAWN 2026-09-04, the same day it was measured.** It said the co-run penalty counts peers rather than busy die. It was measuring how badly N concurrent adapters fragment **one process's caching allocator**: `torch.cuda.empty_cache()` restores every slice to its solo exactly, peers still resident. See 3.10 | `experiments/probes/gfx1201/nway_steps_diag/`, `docs/claims-and-evidence.md` 3.10 |
+| 1.11 | The co-run penalty **counts peers, not busy die**. gfx1201, one process, wall clock: **1.05 / 1.37** at 1 / 2 ways and rising with N; four ways is +75% over the pairwise entry for a slice of the same width. Withdrawn 2026-09-04 and restored 2026-09-05 — the withdrawal was a stale-timing artefact, see 3.10, which is the withdrawn entry now | `experiments/probes/gfx1201/`, `scripts/summarise_nway_steps.py` |
+| 1.12 | **A mismatched peer costs the image tenant ~4x what a same-model peer costs.** SDXL at 52 units beside CogVideoX-2b pays **4.87–4.94** against **1.27** beside another SDXL; the video tenant pays **1.02**. Three runs, both offsets — it follows the model, not the die position. This contradicts 1.5 | `experiments/probes/gfx90a/walled_quiet/` |
 | 1.5b | **1.5 travels to CDNA2.** SDXL beside CogVideoX-2b at `52+52` of gfx90a costs **0.995** and **1.011**, inside the gfx1201 band, and both sides beat rotation (+31.0% / +6.1%) | `runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json`, 2026-09-04 |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
@@ -167,14 +168,19 @@ with no table **raises rather than falling back**.
   wrote to the same path and the last overwrote the other three. Both
   guards looked at the wrong name. Fixed in the library
   (`matrix_results.output_path`) and in the campaign, pinned by a test.)
-* **The co-run penalty, measured across two PROCESSES.** Every co-run
-  number in this project -- both pairwise tables, 1.5 included -- comes
-  from threads of one process sharing one caching allocator, which 3.10
-  showed charging allocator state as contention. Two processes on
-  disjoint masks removes the shared allocator and is what a deployed
-  system looks like. Until it lands, the co-run penalty on either
-  architecture is **unmeasured**, and `MEASURED_EXTERNALITY*` is
-  provisional.
+* **The cross-process control.** Two processes at `16+16` on gfx1201 read
+  **2.12** where two threads of one process read 1.37 -- close enough to
+  exactly 2x to be the hardware scheduler time-slicing them rather than
+  partitioning them. The control is `--allow-overlap`: give **both**
+  processes the whole die. If that costs the same, the CU mask buys
+  nothing between processes, which is the deployed arrangement.
+* **gfx90a's corrected 4- and 8-way cells.** Only 1 and 2 ways have been
+  re-measured there since the timing fix.
+* **Everything timed before 2026-09-05 through `last_step_seconds`** is
+  suspect: that attribute goes stale when the CPU runs ahead, so a loop
+  that appends it every step records one reading N times. That is 1.5's
+  harness and the first step-level sweeps. The call-level harnesses
+  synchronise and are not affected.
 * **Queued behind expC: the same sweep on gfx1201.** That is the number
   `prereg-intra-tenant.md`'s prediction actually turns on, and it is
   unmeasured. Nothing is synced into X570's tree while run 2 is in
