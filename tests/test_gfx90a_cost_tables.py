@@ -20,7 +20,7 @@ from burstserve.trace_sim import (
     MEASURED_EXTERNALITY,
     MEASURED_EXTERNALITY_GFX90A,
     MEASURED_MODELS_GFX90A,
-    MEASURED_NWAY_PENALTY_GFX90A,
+    WITHDRAWN_NWAY_PENALTY_GFX90A,
     MEASURED_QUOTA_SECONDS,
     MEASURED_QUOTA_SECONDS_GFX90A,
     QuotaCostModel,
@@ -215,77 +215,50 @@ class TheCoRunPenaltyTravelsTest(unittest.TestCase):
             externality(16, 16, model="cogvideox-2b", device="gfx90a")
 
 
-class ThePenaltyCountsPeersNotBusyDieTest(unittest.TestCase):
-    """N-1 peers cost more than one peer filling the same units.
+class TheNWayPenaltyWasTheAllocatorTest(unittest.TestCase):
+    """1.11, withdrawn 2026-09-04. These pin the withdrawal, not the claim.
 
-    A slice of width w at N ways has N-1 peers occupying maskable-w
-    units. The pairwise entry (w, maskable-w) has ONE peer occupying
-    exactly those units. Same slice, same busy fraction, different number
-    of independent contexts.
+    The table measured how badly N concurrent adapters fragment one
+    process's caching allocator. `torch.cuda.empty_cache()` restored
+    every slice to its solo exactly, with the peers still resident. See
+    docs/claims-and-evidence.md 3.10.
     """
 
-    SLICE = {2: 52, 4: 26, 8: 13}
+    # gfx1201, --diagnose, means over the slices, milliseconds.
+    CONTROL = {
+        2: {"solo": 152.3, "corun": 180.9, "after": 181.5, "emptied": 155.8},
+        4: {"solo": 262.4, "corun": 580.0, "after": 581.7, "emptied": 268.4},
+        8: {"solo": 499.2, "corun": 1913.8, "after": 1953.9, "emptied": 503.1},
+    }
 
-    def ratio(self, ways):
-        width = self.SLICE[ways]
-        return (MEASURED_NWAY_PENALTY_GFX90A[ways]
-                / externality(width, MASKABLE - width, device="gfx90a"))
+    def test_the_post_episode_solo_is_the_corun_not_the_solo(self):
+        # A co-run penalty must vanish when the peers stop. This one
+        # does not: the solo taken afterwards reads the co-run.
+        for ways, r in self.CONTROL.items():
+            with self.subTest(ways=ways):
+                self.assertAlmostEqual(r["after"] / r["corun"], 1.0,
+                                       delta=0.05)
 
-    def test_the_one_way_control_is_a_solo(self):
-        self.assertAlmostEqual(MEASURED_NWAY_PENALTY_GFX90A[1], 1.0,
-                               delta=0.005)
+    def test_dropping_the_allocator_cache_restores_the_solo(self):
+        for ways, r in self.CONTROL.items():
+            with self.subTest(ways=ways):
+                self.assertAlmostEqual(r["emptied"] / r["solo"], 1.0,
+                                       delta=0.03)
 
-    def test_two_ways_is_the_pairwise_arrangement_and_agrees(self):
-        # Not a finding: it is the same arrangement measured by two
-        # harnesses, so it is the cross-check that licenses the rest.
-        # The table now holds the step-level value and the pairwise
-        # entry is still whole-call, so the two differ by 1.8% rather
-        # than by 0.2%. That gap IS the harness difference, measured at
-        # the one width where both arrangements exist.
-        self.assertAlmostEqual(self.ratio(2), 1.0, delta=0.025)
+    def test_the_effect_grows_with_ways_which_is_why_it_looked_real(self):
+        ratios = [self.CONTROL[w]["corun"] / self.CONTROL[w]["solo"]
+                  for w in (2, 4, 8)]
+        self.assertEqual(ratios, sorted(ratios))
+        self.assertGreater(ratios[-1], 3.5)
 
-    def test_more_peers_cost_more_at_the_same_busy_fraction(self):
-        self.assertGreater(self.ratio(4), 1.10)
-        self.assertGreater(self.ratio(8), 1.40)
-        self.assertGreater(self.ratio(8), self.ratio(4))
+    def test_the_table_is_renamed_so_a_reader_has_to_notice(self):
+        from burstserve import trace_sim
+        self.assertFalse(hasattr(trace_sim, "MEASURED_NWAY_PENALTY_GFX90A"))
+        self.assertTrue(hasattr(trace_sim, "WITHDRAWN_NWAY_PENALTY_GFX90A"))
 
-    def test_the_penalty_grows_with_ways(self):
-        values = [MEASURED_NWAY_PENALTY_GFX90A[w] for w in (1, 2, 4, 8)]
-        self.assertEqual(values, sorted(values))
-
-    def test_the_pairwise_stand_in_flatters_the_mechanism(self):
-        # 1.2336 is what every intra-tenant arithmetic used for gfx90a.
-        for ways in (4, 8):
-            self.assertGreater(MEASURED_NWAY_PENALTY_GFX90A[ways], 1.2336)
-
-
-class TheConcurrencyOptimumMovesWhenTheStandInGoesTest(unittest.TestCase):
-    """Measured, the best concurrency on gfx90a is two, not four."""
-
-    def burst(self, ways, penalty, burst=4, steps=8):
-        model = QuotaCostModel.for_model("sdxl", device="gfx90a")
-        active = max(1, min(ways, burst))
-        width = model.maskable_units // active
-        batches = -(-burst // active)
-        return batches * steps * model.step_seconds(width) * (
-            penalty if active > 1 else 1.0)
-
-    def test_two_ways_wins_on_the_measured_penalties(self):
-        measured = {w: self.burst(w, MEASURED_NWAY_PENALTY_GFX90A[w])
-                    for w in (1, 2, 4, 8)}
-        self.assertEqual(min(measured, key=measured.get), 2)
-
-    def test_the_stand_in_would_have_picked_four(self):
-        stand_in = {w: self.burst(w, 1.2336) for w in (1, 2, 4)}
-        self.assertEqual(min(stand_in, key=stand_in.get), 4)
-
-    def test_the_advantage_over_serial_is_much_smaller_than_promised(self):
-        serial = self.burst(1, 1.0)
-        best = self.burst(2, MEASURED_NWAY_PENALTY_GFX90A[2])
-        promised = self.burst(4, 1.2336)
-        self.assertAlmostEqual((serial - best) / serial, 0.089, delta=0.005)
-        self.assertAlmostEqual((serial - promised) / serial, 0.185,
-                               delta=0.005)
+    def test_the_withdrawn_values_are_kept_rather_than_deleted(self):
+        # The raw runs are evidence either way and the shape may recur.
+        self.assertEqual(sorted(WITHDRAWN_NWAY_PENALTY_GFX90A), [1, 2, 4, 8])
 
 
 if __name__ == "__main__":  # pragma: no cover

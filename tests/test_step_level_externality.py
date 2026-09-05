@@ -1,13 +1,16 @@
-"""The step-level co-run table, and what it does to 3.8.
+"""The step-level co-run table, withdrawn the day it was measured.
 
-Measured 2026-09-04 after the whole-call harness was shown to charge
-`hipMalloc`-class device drains as contention. These pin the finding that
-matters: the drains fall on the NARROW slice, and the entry that paces
-gfx90a's best split is a narrow-slice entry.
+Measured 2026-09-04 after the whole-call harness was caught charging
+`hipMalloc`-class device drains as contention, and withdrawn hours later
+when its own control showed it charging *allocator fragmentation* as
+contention. These pin the withdrawal and the control that produced it.
+
+See docs/claims-and-evidence.md 3.10.
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import unittest
@@ -16,106 +19,107 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
-from burstserve.trace_sim import (  # noqa: E402
+from burstserve import trace_sim                       # noqa: E402
+from burstserve.trace_sim import (                     # noqa: E402
     EXTERNALITY_TABLES_BY_SOURCE,
-    MEASURED_EXTERNALITY_GFX90A,
-    MEASURED_EXTERNALITY_GFX90A_STEPS,
+    WITHDRAWN_EXTERNALITY_GFX90A_STEPS,
+    WITHDRAWN_SOURCES,
     externality,
 )
 
-
-class TheTwoHarnessesDisagreeOnNarrowSlicesOnlyTest(unittest.TestCase):
-    """Wide slices agree; narrow slices are out by a quarter and more."""
-
-    WIDE = ((78, 26), (91, 13))
-    NARROW = ((13, 91), (26, 78))
-
-    def test_wide_slices_agree(self):
-        for key in self.WIDE:
-            with self.subTest(key=key):
-                self.assertAlmostEqual(
-                    MEASURED_EXTERNALITY_GFX90A_STEPS[key],
-                    MEASURED_EXTERNALITY_GFX90A[key], delta=0.02)
-
-    def test_narrow_slices_do_not(self):
-        for key in self.NARROW:
-            with self.subTest(key=key):
-                self.assertGreater(
-                    MEASURED_EXTERNALITY_GFX90A[key]
-                    - MEASURED_EXTERNALITY_GFX90A_STEPS[key], 0.25)
-
-    def test_the_narrow_step_level_entries_are_no_penalty_at_all(self):
-        for key in self.NARROW:
-            with self.subTest(key=key):
-                self.assertAlmostEqual(
-                    MEASURED_EXTERNALITY_GFX90A_STEPS[key], 1.0, delta=0.005)
-
-    def test_the_even_split_is_the_one_place_they_nearly_agree(self):
-        # 1.1954 and 1.2012 over two runs against a call-level 1.2176.
-        self.assertAlmostEqual(MEASURED_EXTERNALITY_GFX90A_STEPS[(52, 52)],
-                               MEASURED_EXTERNALITY_GFX90A[(52, 52)],
-                               delta=0.02)
+DIAG = REPO / "experiments" / "probes" / "gfx1201" / "nway_steps_diag"
 
 
-class TheSourceSelectorTest(unittest.TestCase):
+class TheControlThatKilledItTest(unittest.TestCase):
+    """Read from the raw runs, so the pin cannot drift from the evidence."""
 
-    def test_calls_is_the_default_so_every_prior_caller_is_unchanged(self):
-        self.assertEqual(externality(26, 78, device="gfx90a"),
-                         MEASURED_EXTERNALITY_GFX90A[(26, 78)])
+    @classmethod
+    def setUpClass(cls):
+        if not DIAG.is_dir():
+            raise unittest.SkipTest(f"{DIAG} not present")
+        cls.runs = {}
+        for path in DIAG.glob("*.json"):
+            d = json.loads(path.read_text())
+            mean = lambda rows: sum(r["p50_s"] for r in rows) / len(rows)
+            cls.runs[d["ways"]] = {
+                "solo": mean(d["solo_before"]),
+                "corun": sum(r["corun_p50_s"] for r in d["verdict"])
+                / len(d["verdict"]),
+                "after": mean(d["solo_after"]),
+                "emptied": mean(d["solo_after_empty_cache"]),
+            }
 
-    def test_gfx1201_has_no_step_level_table_and_says_so(self):
+    def test_all_three_widths_are_present(self):
+        self.assertEqual(sorted(self.runs), [2, 4, 8])
+
+    def test_the_post_episode_solo_reads_the_corun(self):
+        # The peers are idle -- run_solo walks the adapters one at a
+        # time -- so a penalty that is still there is not contention.
+        for ways, r in self.runs.items():
+            with self.subTest(ways=ways):
+                self.assertAlmostEqual(r["after"] / r["corun"], 1.0,
+                                       delta=0.05)
+
+    def test_empty_cache_restores_the_solo_at_every_width(self):
+        for ways, r in self.runs.items():
+            with self.subTest(ways=ways):
+                self.assertAlmostEqual(r["emptied"] / r["solo"], 1.0,
+                                       delta=0.03)
+
+    def test_the_apparent_penalty_was_large_before_the_control(self):
+        self.assertGreater(self.runs[8]["corun"] / self.runs[8]["solo"], 3.5)
+
+
+class TheWithdrawalIsEnforcedInCodeTest(unittest.TestCase):
+
+    def test_asking_for_the_step_source_raises_with_the_reason(self):
         with self.assertRaises(KeyError) as caught:
-            externality(16, 16, device="gfx1201", source="steps")
-        self.assertIn("gfx90a", str(caught.exception))
+            externality(26, 78, device="gfx90a", source="steps")
+        self.assertIn("allocator", str(caught.exception))
 
-    def test_an_unknown_source_raises_rather_than_falling_back(self):
+    def test_it_does_not_silently_fall_back_to_the_call_level_table(self):
         with self.assertRaises(KeyError):
-            externality(26, 78, device="gfx90a", source="guess")
+            externality(78, 26, device="gfx90a", source="steps")
 
-    def test_the_per_model_correction_is_call_level_and_stays_there(self):
-        # It is a whole-call measurement; applying it to a step-level
-        # lookup would mix the two quantities silently.
-        self.assertEqual(
-            externality(16, 16, model="cogvideox-2b", device="gfx1201"),
-            1.2891)
+    def test_calls_is_the_only_live_source(self):
+        self.assertEqual(sorted(EXTERNALITY_TABLES_BY_SOURCE), ["calls"])
+        self.assertIn("steps", WITHDRAWN_SOURCES)
 
-    def test_both_sources_are_registered(self):
-        self.assertEqual(sorted(EXTERNALITY_TABLES_BY_SOURCE),
-                         ["calls", "steps"])
+    def test_the_table_is_renamed_so_a_reader_has_to_notice(self):
+        self.assertFalse(hasattr(trace_sim,
+                                 "MEASURED_EXTERNALITY_GFX90A_STEPS"))
+        self.assertEqual(len(WITHDRAWN_EXTERNALITY_GFX90A_STEPS), 5)
 
 
-class WhatItDoesToTheBurstArithmeticTest(unittest.TestCase):
-    """3.8's rows, as the program prints them, from each table."""
+class WhatSurvivesInTheBurstArithmeticTest(unittest.TestCase):
+    """The floor rows read no co-run table, so 3.10 does not touch them."""
 
     def best(self, *flags):
         out = subprocess.run(
             [sys.executable, str(REPO / "scripts" / "burst_feasibility.py"),
              *flags],
             capture_output=True, text=True, check=True).stdout
-        line = [l for l in out.splitlines() if "best partitioned" in l][-1]
-        return line
+        return [l for l in out.splitlines() if "best partitioned" in l][-1]
 
-    def test_gfx1201_misses_even_at_the_floor(self):
-        # No co-run table can go below a solo, so gfx1201's half of 3.8
-        # is harness-independent.
+    def test_gfx1201_misses_at_the_floor(self):
         self.assertIn("6.30 s, +13.6%", self.best("--device", "gfx1201"))
 
-    def test_gfx90a_is_at_its_floor_under_the_step_level_table(self):
-        floor = self.best("--device", "gfx90a")
-        steps = self.best("--device", "gfx90a", "--externality",
-                          "--externality-source", "steps")
-        self.assertIn("5.81 s, +1.2%", floor)
-        self.assertIn("5.81 s, +1.1%", steps)
-
-    def test_the_call_level_table_put_gfx90a_at_29_percent(self):
-        self.assertIn("7.42 s, +29.2%",
-                      self.best("--device", "gfx90a", "--externality"))
+    def test_gfx90a_is_marginal_at_the_floor(self):
+        self.assertIn("5.81 s, +1.2%", self.best("--device", "gfx90a"))
 
     def test_exclusive_still_beats_every_split_by_far(self):
         for device, exclusive in (("gfx1201", "3.70 s"), ("gfx90a", "3.83 s")):
             with self.subTest(device=device):
                 self.assertIn(f"exclusive {exclusive}",
                               self.best("--device", device))
+
+    def test_the_withdrawn_source_is_refused_by_the_script(self):
+        done = subprocess.run(
+            [sys.executable, str(REPO / "scripts" / "burst_feasibility.py"),
+             "--device", "gfx90a", "--externality",
+             "--externality-source", "steps"],
+            capture_output=True, text=True)
+        self.assertNotEqual(done.returncode, 0)
 
 
 if __name__ == "__main__":  # pragma: no cover

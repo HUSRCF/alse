@@ -213,158 +213,15 @@ the sign. `tests/test_gfx90a_cost_tables.py` pins all of it.
 
 ---
 
-### 1.11 The co-run penalty counts peers, not busy die
+### 1.11 WITHDRAWN 2026-09-04 -- it was the memory allocator
 
-> **HOLD, 2026-09-04 (later the same day).** Every step-level number in
-> this section is suspended. The harness measures a solo per slice
-> *after* the episodes as a drift guard, and across **14 runs on two
-> architectures** that post-episode solo comes back equal to the co-run
-> -- slice by slice, distinctive outliers included, and
-> `solo_after / solo_before` tracks the measured externality to within a
-> percent. A co-run penalty must vanish when the peers stop; this one
-> does not. So what was measured is one slice's cost *after N slices have
-> been exercised in this process*, which is not the quantity a table
-> keyed `(own, peer)` holds. The control -- the same solo with the
-> allocator's cache dropped -- is queued. See the decision log for
-> 2026-09-04, "HOLD on every N-way number".
+This claimed that the same-model co-run penalty counts peers rather than
+busy die. It was measuring how badly N concurrent adapters fragment one
+process's PyTorch caching allocator: `torch.cuda.empty_cache()` puts
+every slice back to its solo exactly, with the peers still resident and
+nothing about the hardware changed. Moved to **3.10**, which carries the
+control that killed it and the full list of what went with it.
 
-| | |
-| --- | --- |
-| **Claim** | The same-model co-run penalty is **not** a function of how much of the die is busy. A slice of width `w` with `N-1` peers filling `104-w` units pays far more than the same slice with **one** peer filling exactly those units: **+43.8% at four ways and +107.1% at eight**, harness-matched. A pairwise externality table cannot express this, and every arithmetic in this project about intra-tenant concurrency had been using one as a stand-in. |
-| **Evidence** | `scripts/run_amd_nway_corun.py`, gfx90a, SDXL self-paired at 768x768, denoising only, one GCD, three trials per point, slice widths all measured quotas. Penalty 1.0001 / 1.2146 / 1.4625 / 2.0933 at 1 / 2 / 4 / 8 ways against pairwise 1.2176 / 1.2770 / 1.3559 at the same slices. `experiments/probes/gfx90a/nway/`. |
-| **Control** | One way is a solo and reads **1.0007**. Two ways *is* the pairwise arrangement, and harness-matched it reads **0.998 of it** -- 1.1954 against a `52+52` pair measured the same way at 1.1983. Same arrangement, same harness, same number, so the 4- and 8-way divergences are the result and the 2-way agreement is what licenses reading them. |
-| **Direction of the drift** | The sweep ran 1, 2, 4, 8 in order on a warming die, which inflates the later points' solo baselines and therefore **deflates** their externality. The growth is if anything understated. Solo baselines reproduce the quota curve to within 1% at 104, 52 and 26 units. |
-| **Scope** | N slices of one model with **no other tenant** -- the `8+8+8+8` grant `concurrent_quota` issues when the video tenant is idle. The `8+6+6+6+6` arrangement adds a mismatched peer to each slice and is a different number, not measured. gfx1201's N-way penalty is **not measured**; that run is queued behind expC. |
-| **Falsifier** | A longer-window replication at eight ways landing near the pairwise 1.3559; or a gfx1201 sweep whose ratios are flat at 1.0, which would make this CDNA2's alone. |
-
-**What it costs the one open path.** 3.8 left intra-tenant concurrency as
-the only way to shorten a serial burst. On the whole die at a burst of
-four, gfx90a:
-
-    ways   measured   with the pairwise stand-in
-       1     3.83 s        3.83 s
-       2     3.49 s        3.60 s     <- measured optimum
-       4     3.63 s        3.12 s
-       8       --            --       a burst of four uses only four
-                                      slices; identical to the 4-way row
-
-At a burst of **eight**, where eight slices can be used at all: serial
-7.66 s, two ways **6.98 s**, four ways 7.27 s, eight ways **14.12 s**.
-The ordering is the same and eight ways costs nearly twice not splitting
-at all.
-
-The optimum concurrency is **two, not four**, and the advantage over
-serving the burst serially is **8.9%** where the stand-in promised 18.5%.
-
-*(Regenerated 2026-09-04 on the step-level penalties, which are the
-smaller ones. The call-level penalties gave 3.55 s / 3.70 s and a 7.3%
-advantage; every conclusion here is unchanged and the advantage is
-slightly larger.)*
-The stand-in erred in the direction that flattered the mechanism, and by
-more the further it was extrapolated. **The penalty does not merely scale
-the answer; it moves the optimum.**
-
-**The eight-way cell had a reproducible instrument artefact, and the
-replication found the same one rather than removing it.** A
-300-second-window run with a different seed reproduced the 120-second run
-trial for trial, to 0.1%:
-
-    trial      120 s run              300 s run
-        0   2.1675  solo 6.794     2.1662  solo 6.796   n 6 -> 18
-        1   2.1582  solo 6.827     2.1622  solo 6.817   n 6 -> 18
-        2   1.9542  solo 7.720     1.9555  solo 7.716   n 5 -> 16
-
-In **both** runs the third trial's solo baseline sits 13.5% above the
-first's while its co-run p50 does not move with it. The solo is measured
-immediately after the previous trial's co-run window, so by the third it
-is taken on a hot die, while the co-run itself is at steady state in
-every trial. That deflates trial 2's ratio: the six-trial mean is
-**2.0940** and the clean-trial value is **2.1635**, sd 0.0042.
-
-The table records **2.0940**. Dropping a trial after seeing it would move
-the number in the direction that strengthens the claim being made from
-it, so the conservative value is the published one and the clean value is
-stated here.
-
-**AT RISK for four hours on 2026-09-04, then confirmed by an independent
-harness.** The harness that produced the numbers above -- whole
-`pipeline()` calls from N threads of one process -- was shown that day to
-charge `hipMalloc`-class **device drains** as contention: the same
-mismatched pair read 7.3x through it and 0.995 through a resident step
-adapter. Same-model slices bound the exposure to one peer step rather
-than 4.4 of them, but a drain waits for **every** in-flight peer, so an
-artefact would grow with N in precisely the shape reported here. It could
-not be told apart by inspection, so it was re-measured.
-
-`scripts/run_amd_nway_steps.py` runs the same arrangement the way 1.5's
-harness runs it: one resident step adapter per slice, stepped in place on
-its own mask, no activation graph allocated per call, six episodes with
-**every** episode reported. gfx90a, SDXL at 768x768, 14 steps an episode,
-first four dropped, masks read back and pairwise-disjoint:
-
-    ways  slice   solo ms   steady   episode 1   call-level (above)
-       1    104     118.8   1.0007      1.665         1.0001
-       2     52     182.5   1.1954      1.813         1.2146
-       4     26     314.8   1.4365      2.185         1.4625
-       8     13     857.7   2.0671      2.860         2.0940
-
-**The claim survives.** Every point lands within 1.8% of the call-level
-value it was measured to check, and all four land *below* it -- the
-direction a residual drain would push, and small. The transient is there
-and it is large (episode 1 at eight ways is 2.86 against a steady 2.07),
-which is why it is now reported rather than warmed away in silence.
-
-The table published above is the call-level one. **The step-level column
-is the conservative one and is what any arithmetic should use**, because
-it is measured through the harness with no known defect and it is lower,
-so it weakens rather than strengthens the claim being made from it.
-
-**Harness-matched, the excess is more than twice what a cross-harness
-comparison said.** The pairwise column originally used here --
-1.2176 / 1.2770 / 1.3559 -- is whole-call, and its narrow-slice entries
-are the ones the step-level harness contradicts. Measured the same way as
-the N-way column:
-
-    ways  slice  N-way   pairwise, same harness   excess
-       2    52u  1.1954         1.1983            -0.2%   <- the control
-       4    26u  1.4365         0.9990           +43.8%
-       8    13u  2.0671         0.9980          +107.1%
-
-Cross-harness those read -1.8%, +12.5% and +52.5%. **A single peer
-filling the same units costs a 13-unit slice nothing at all; seven of
-them cost it 107%.** The two-way control lands at -0.2% rather than
--1.8%, which is what a control should look like. `--pairwise-source` on
-`scripts/summarise_nway_steps.py` prints either column, so the
-substitution is visible rather than assumed.
-
-**A gradient across slice position, not previously seen.** The penalty is
-monotone in the slice's offset within the mask, and by a wide margin:
-
-    four ways   1.474  1.459  1.436  1.377   (offsets 0, 26, 52, 78)
-    eight ways  2.136  2.118  2.124  2.122  2.043  2.076  2.056  1.862
-
-The slice at offset 0 pays 7.0% more than the slice at the top of the
-die at four ways, and 14.7% more at eight. The falsifier -- lay the same
-slices out from the top down -- was run, and at four ways it came back
-positive: both layouts trace the **same monotone function of the
-offset**, not of the thread.
-
-    offset          0      26      52      78
-    forward       1.474   1.459   1.436   1.377
-    reversed      1.453   1.439   1.406   1.362
-
-At eight ways the direction agrees -- offset 91 is cheapest in both --
-but the forward spread is 0.274 against a reversed 0.079, so most of the
-forward gradient there is a single slice. **The gradient is a finding at
-four ways and a direction at eight.**
-
-`MaskedStreamPool.for_quota` hands out contiguous masks from offset 0, so
-a scheduler using it loads its first tenant by about 7% for no reason it
-can see. That is a fixable defect, and it is the only thing in this
-project so far that suggests *where* on the die a slice sits is a
-scheduling variable at all.
-
----
 
 ## 2. Negative results
 
@@ -1079,6 +936,71 @@ The two counters are consistent, which is the check that caught expB.
 **What it does not show.** gfx1201's N-way penalty is still unmeasured,
 so *why* four slices lose is inference from gfx90a rather than
 measurement on the device the campaign ran on. That sweep is next.
+
+
+### 3.10 That the co-run penalty counts peers rather than busy die
+
+Claim 1.11, measured 2026-09-04 and withdrawn the same day. The finding
+was that a slice of width `w` with `N-1` peers filling `104-w` units pays
+far more than the same slice with **one** peer filling exactly those
+units -- 1.0001 / 1.2146 / 1.4625 / 2.0940 at 1/2/4/8 ways on gfx90a,
+reproduced within 1.8% by a second harness written specifically to check
+it, and 1.0178 / 1.1842 / 2.1984 / 3.9227 on gfx1201.
+
+**The control.** `run_amd_nway_steps.py --diagnose`, gfx1201, eight
+slices of four units, six episodes, then four solo passes:
+
+    solo before the episodes        498  506  505  507  508  505  506  507 ms
+    co-run, last episode           1750 - 2100 ms          externality 3.83
+    solo after the episodes        2048 2102 2099 2137 1922 1832 1758 1733
+    solo, allocator cache dropped   519  493  493  513  509  492  496  511
+    solo, peer streams destroyed    510
+
+**`torch.cuda.empty_cache()` restores every slice to its solo exactly**,
+with the same process, the same adapters, the same masks, the same
+streams and the peers still resident. What was being measured is how
+badly N concurrent adapters fragment one process's caching allocator.
+
+**Why the alternatives are dead.** The elevation survives the peers
+stopping -- `run_solo` walks the adapters sequentially, so while slice 0
+is measured every peer is idle -- and a co-run penalty that does not need
+the peers running is not a co-run penalty. It survives 200 s of
+sequential solos without decaying, and the **one-way** run, which puts
+SDXL on the whole die for six episodes and draws more power than any
+other cell here, drifts 0.1%, so it is not thermal. And a `free()`
+deletes it, so it is not a property of the die.
+
+**That both harnesses agreed was not corroboration.** The whole-call
+harness and the step-level harness written to check it both run N
+adapters in one process, which is the thing that causes it. Two
+measurements of one artefact.
+
+**Withdrawn with it:**
+
+* the harness-matched +43.8% at four ways and +107.1% at eight;
+* `MEASURED_NWAY_PENALTY_GFX90A`, both value sets;
+* `MEASURED_EXTERNALITY_GFX90A_STEPS`, and 3.8's re-opening on gfx90a
+  that read `externality(26, 78)` = 0.999 off it;
+* gfx1201's 2.1984, and with it the explanation offered for expC's
+  verdict 3 -- that four slices lose because a slice with three peers
+  pays 2.20. **3.9's verdict itself stands**; it is a scheduling campaign
+  with no cost table in it.
+* the intra-tenant burst arithmetic that reads the N-way table -- both
+  the 7.3% published first and the 8.9% that replaced it.
+
+**What it puts under suspicion rather than settles.** Every co-run number
+in this project comes from threads of one process sharing one caching
+allocator, including the pairwise tables `MEASURED_EXTERNALITY` and
+`MEASURED_EXTERNALITY_GFX90A` and including 1.5. Their two-way
+arrangements are where the allocator effect is smallest, so their looking
+reasonable is not evidence that they are clean. **Two separate
+processes, one per tenant, on disjoint masks** is the measurement that
+has never been made here and is what a deployed system looks like anyway.
+
+**What survives untouched.** 3.8's floor rows, which read no co-run table
+at all -- gfx1201 6.30 s against 5.54 s, gfx90a 5.81 s against 5.75 s.
+3.9. Every campaign result that compares arms on the same hardware
+instead of reading a number out of a table.
 
 
 ## 4. Open

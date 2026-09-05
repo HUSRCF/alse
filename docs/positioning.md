@@ -175,7 +175,14 @@ first time -- it survives the fast co-run state at a 6% margin and misses
 in the slow one -- and the number it turns on, the same-model penalty
 with **three** peers rather than one, had never been measured.
 
-**It has been now, and it did not survive at the size it was written
+**It was measured, and then the measurement was withdrawn.** What
+follows is struck through: the N-way penalty it reports turned out to be
+one process's caching allocator fragmenting, not a co-run cost, and
+`torch.cuda.empty_cache()` removes it entirely. See 3.10. The *campaign*
+result stands on its own -- two slices did beat four on gfx1201, in expC,
+with no cost model in the loop -- but the explanation below is gone.
+
+~~**It has been now, and it did not survive at the size it was written
 at.** On the solo curves with a pairwise stand-in, the whole die split
 four ways within the priority tenant finished the burst in 2.79 s against
 3.70 s serial on gfx1201 and 3.12 s against 3.83 s on gfx90a. With the
@@ -192,7 +199,7 @@ by single digits rather than by tens of percent. **And where the optimum
 sits is not what a pairwise model predicts** -- which is the contribution
 rather than the disappointment. The model everyone uses is pairwise, and
 the error it makes grows with the number of slices, which is exactly the
-regime a partitioning scheduler operates in.
+regime a partitioning scheduler operates in.~~
 
 gfx1201's N-way penalty is still unmeasured and is queued behind `expC`.
 If it behaves like gfx90a's, `prereg-intra-tenant.md`'s predicted 5.01 s

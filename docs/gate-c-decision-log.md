@@ -5048,3 +5048,80 @@ Three times today a number has turned out to be the harness. The reason
 this one was caught is that the harness was built with a control it did
 not need to have -- a solo measured *after* as well as before. Keep
 building those.
+
+## 2026-09-04 The control: it is the memory allocator, and 1.11 is withdrawn
+
+`run_amd_nway_steps.py --diagnose`, gfx1201, eight slices of four units,
+six episodes, then four solo passes:
+
+    solo before the episodes        498  506  505  507  508  505  506  507 ms
+    co-run, last episode           1750 - 2100 ms          externality 3.83
+    solo after the episodes        2048 2102 2099 2137 1922 1832 1758 1733
+    solo, allocator cache dropped   519  493  493  513  509  492  496  511
+    solo, peer streams destroyed    510
+
+`torch.cuda.empty_cache()` puts every slice back to its solo, exactly.
+Nothing else changed: same process, same adapters, same masks, same
+streams, peers still resident.
+
+**So the elevated step time is the PyTorch caching allocator, and the
+co-run number is the same thing.** The argument is short. The elevation
+survives the peers stopping, so it is not contention. It survives for
+200 s of sequential solos with no decay, so it is not thermal, and the
+one-way run -- the most power the card draws in this sweep -- does not
+show it at all. It is removed entirely by dropping an allocator cache,
+which touches no hardware state. A quantity that a `free()` can delete
+is not a property of the die.
+
+**1.11 is withdrawn.** "The co-run penalty counts peers, not busy die"
+was measuring how badly N concurrent adapters fragment one process's
+allocator pool. Both harnesses were affected -- the whole-call one
+(1.0001 / 1.2146 / 1.4625 / 2.0940) and the step-level one that was
+written to check it (1.0007 / 1.1954 / 1.4365 / 2.0671) -- because both
+run N adapters in one process, which is the thing that does it. That the
+two agreed to 1.8% is not corroboration; it is two measurements of the
+same artefact.
+
+**Everything downstream of it goes with it**, and this is the full list:
+
+* the harness-matched +43.8% and +107.1%;
+* `MEASURED_NWAY_PENALTY_GFX90A` in `trace_sim`, both the call-level and
+  the step-level values;
+* `MEASURED_EXTERNALITY_GFX90A_STEPS`, and therefore 3.8's re-opening on
+  gfx90a, which read `externality(26, 78)` = 0.999 off it;
+* gfx1201's 2.1984 at four ways -- so the explanation offered this
+  morning for expC's verdict 3, that four slices lose because a slice
+  with three peers pays 2.20, is withdrawn. **expC's verdict itself
+  stands**: it is a scheduling campaign with no cost table in it, and
+  `c4` lost to its own control on the hardware.
+* the intra-tenant burst arithmetic that reads the N-way table, including
+  both the 7.3% and the 8.9%.
+
+**What this does NOT rehabilitate.** The call-level pairwise tables --
+`MEASURED_EXTERNALITY` and `MEASURED_EXTERNALITY_GFX90A`, the ones every
+published co-run number in this project rests on -- were **also**
+measured in one process with two threads. So was 1.5's mismatched pair.
+They are now under the same suspicion, and the two-way numbers are the
+smallest, which is exactly where the allocator effect is smallest, so
+their looking reasonable is not evidence.
+
+**The measurement this project has never made.** Every co-run number here
+comes from threads of a single process sharing a single caching
+allocator. **Two separate processes, one per tenant, on disjoint masks**
+removes the shared allocator entirely and is what a deployed system looks
+like anyway. That is next, and until it lands the honest statement about
+the co-run penalty on either architecture is that it is unmeasured.
+
+**What survives untouched.** 3.8's **floor** rows, which use no co-run
+table at all: gfx1201's best split is 6.30 s against a 5.54 s deadline
+(+13.6%) and gfx90a's is 5.81 s against 5.75 s (+1.2%), and no co-run
+table can go below a floor. expC's verdict 3. Every campaign result that
+is a comparison between arms on the same hardware rather than a number
+read from a table.
+
+**Five times today a number has been the harness.** The pattern is the
+same every time: a quantity measured *through* a process that has its
+own costs, attributed to the device. The two controls that caught the
+last two were a solo measured after the co-run, and a `free()`. Neither
+was expensive. Both should have been there from the first co-run
+measurement this project ever made.

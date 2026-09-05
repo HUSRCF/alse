@@ -167,12 +167,12 @@ def main() -> int:
                         help="mismatched penalty charged to the video "
                              "tenant when --externality is not used")
     parser.add_argument("--externality-source", default="calls",
-                        choices=("calls", "steps"),
+                        choices=("calls",),
                         help="which harness measured the co-run table. "
-                             "`calls` is every published number; `steps` "
-                             "is the 2026-09-04 resident-adapter "
-                             "re-measurement, gfx90a only, and is the "
-                             "quantity this arithmetic is actually in.")
+                             "`calls` is every published number and the "
+                             "only one left; `steps` was withdrawn "
+                             "2026-09-04 for measuring allocator "
+                             "fragmentation rather than co-run (3.10).")
     parser.add_argument("--externality", action="store_true",
                         help="apply the measured co-run penalty; without "
                              "it every partitioned row is a floor")

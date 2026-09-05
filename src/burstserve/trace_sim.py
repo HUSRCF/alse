@@ -476,13 +476,25 @@ MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {
 # through the harness with no known defect and they are the smaller, so
 # they weaken rather than flatter every arithmetic that reads them. The
 # call-level values are kept beside them rather than deleted.
-# ON HOLD 2026-09-04. The harness's own drift guard -- a solo per
-# slice measured AFTER the episodes -- comes back equal to the
-# co-run in all 14 runs on both architectures, slice by slice. A
-# co-run penalty must vanish when the peers stop. Do not read
-# these into an arithmetic until the allocator control has run;
-# see docs/gate-c-decision-log.md, 2026-09-04.
-MEASURED_NWAY_PENALTY_GFX90A: dict[int, float] = {
+# WITHDRAWN 2026-09-04. Renamed so that every reader has to notice.
+#
+# This was claim 1.11, "the co-run penalty counts peers, not busy die".
+# It was measuring how badly N concurrent adapters fragment ONE
+# PROCESS's caching allocator. `torch.cuda.empty_cache()` puts every
+# slice back to its solo exactly -- 8 slices of 4 units on gfx1201 go
+# 499 ms solo, 1914 co-run, 1954 after the episodes, and **503 once the
+# cache is dropped**, with the same process, the same adapters, the same
+# masks and the peers still resident.
+#
+# The alternatives are dead, not merely unlikely. The elevation survives
+# the peers stopping (the post-episode solos run sequentially), so it is
+# not contention. The one-way run draws more power than any other cell
+# and drifts 0.1%, so it is not thermal. And a free() deletes it, so it
+# is not the die.
+#
+# Kept rather than deleted because the raw runs are evidence and because
+# the same shape may recur. See docs/claims-and-evidence.md 3.10.
+WITHDRAWN_NWAY_PENALTY_GFX90A: dict[int, float] = {
     1: 1.0007,     # control: a solo, and it must read 1.000
     2: 1.1954,     # call-level harness read 1.2146
     4: 1.4365,     # call-level harness read 1.4625
@@ -514,13 +526,11 @@ MEASURED_NWAY_PENALTY_GFX90A: dict[int, float] = {
 # this way (X570 is running expC), and switching the default before both
 # devices are covered would leave the two architectures' tables measuring
 # different quantities, which is the error 1.10 was found by avoiding.
-# ON HOLD 2026-09-04. The harness's own drift guard -- a solo per
-# slice measured AFTER the episodes -- comes back equal to the
-# co-run in all 14 runs on both architectures, slice by slice. A
-# co-run penalty must vanish when the peers stop. Do not read
-# these into an arithmetic until the allocator control has run;
-# see docs/gate-c-decision-log.md, 2026-09-04.
-MEASURED_EXTERNALITY_GFX90A_STEPS: dict[tuple[int, int], float] = {
+# WITHDRAWN 2026-09-04 with the N-way table above and for the same
+# reason: it comes from the same harness, N adapters in one process, and
+# the allocator control killed that measurement at every width. Renamed
+# so no caller can reach it by accident. See 3.10.
+WITHDRAWN_EXTERNALITY_GFX90A_STEPS: dict[tuple[int, int], float] = {
     (13, 91): 0.998,
     (26, 78): 0.999,
     (52, 52): 1.1983,   # two runs, 1.1954 and 1.2012
@@ -534,10 +544,19 @@ EXTERNALITY_TABLES: dict[str, dict[tuple[int, int], float]] = {
 }
 
 # Which harness measured a table. "calls" is every number published
-# before 2026-09-04; "steps" is the resident-adapter re-measurement.
+# before 2026-09-04. "steps" was the resident-adapter re-measurement and
+# is **withdrawn** -- it measured allocator fragmentation, not co-run --
+# so it is absent here and asking for it raises rather than falling back
+# to the table it was meant to correct.
 EXTERNALITY_TABLES_BY_SOURCE: dict[str, dict] = {
     "calls": EXTERNALITY_TABLES,
-    "steps": {"gfx90a": MEASURED_EXTERNALITY_GFX90A_STEPS},
+}
+
+WITHDRAWN_SOURCES = {
+    "steps": "withdrawn 2026-09-04: it measured how N concurrent "
+             "adapters fragment one process's caching allocator, not "
+             "co-run. torch.cuda.empty_cache() restored every slice to "
+             "its solo exactly. See docs/claims-and-evidence.md 3.10.",
 }
 
 
@@ -667,15 +686,24 @@ def externality(own_units: int, peer_units: int | None,
     is not a correction to apply on a different one.
 
     ``source`` selects which harness measured the table. ``"calls"`` is
-    every number published before 2026-09-04 and stays the default;
-    ``"steps"`` is the resident-adapter measurement, which is the
-    quantity this project's burst arithmetic is actually in, and which
-    covers gfx90a only so far. The per-model correction is a call-level
-    measurement and is not applied to a step-level lookup.
+    every number published before 2026-09-04 and is the only one left:
+    ``"steps"`` was withdrawn the same day for measuring allocator
+    fragmentation rather than co-run, and asking for it raises with that
+    reason rather than silently falling back.
+
+    Every table here was measured with two threads of ONE process
+    sharing one caching allocator, which is the arrangement 3.10 found
+    charging allocator state as contention. The two-way case is where
+    that effect is smallest, and these are all two-way, but that is an
+    argument and not a control. Treat these as provisional until the
+    two-process measurement lands.
     """
     if peer_units is None:
         return 1.0
     key = (own_units, peer_units)
+    if source in WITHDRAWN_SOURCES:
+        raise KeyError(f"externality source {source!r} is "
+                       f"{WITHDRAWN_SOURCES[source]}")
     tables = EXTERNALITY_TABLES_BY_SOURCE.get(source)
     if tables is None:
         raise KeyError(f"no externality tables measured by {source!r}; "

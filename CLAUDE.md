@@ -32,7 +32,7 @@ When adding an arm, read what the arm does rather than what it is called.
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
 | 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
 | 1.10 | The partitioning gain has an **optimum width on CDNA2 and none on RDNA4** — aggregate solo throughput peaks at four ways on gfx90a and falls below the whole die at eight; the Amdahl form the cost model assumes is **refuted** there | `experiments/probes/gfx90a/`, 2026-09-03 |
-| 1.11 | **ON HOLD 2026-09-04** — the post-episode solo comes back equal to the co-run in all 14 runs on both architectures, so this may not be a co-run penalty at all; control queued. As measured: the co-run penalty **counts peers, not busy die**: the same slice with N−1 peers costs **+43.8% at four ways and +107.1% at eight** over the same slice with **one** peer filling the same units, harness-matched — a single peer costs a 13-unit slice **nothing** and seven of them cost it 107%. A pairwise table cannot express it, and every intra-tenant arithmetic here used one. Held at risk for four hours on 2026-09-04 when the harness that made it turned out to charge device drains as contention, then **confirmed by an independent step-level harness within 1.8% at all four widths** | `experiments/probes/gfx90a/nway_steps/`, `scripts/summarise_nway_steps.py` |
+| ~~1.11~~ | **WITHDRAWN 2026-09-04, the same day it was measured.** It said the co-run penalty counts peers rather than busy die. It was measuring how badly N concurrent adapters fragment **one process's caching allocator**: `torch.cuda.empty_cache()` restores every slice to its solo exactly, peers still resident. See 3.10 | `experiments/probes/gfx1201/nway_steps_diag/`, `docs/claims-and-evidence.md` 3.10 |
 | 1.5b | **1.5 travels to CDNA2.** SDXL beside CogVideoX-2b at `52+52` of gfx90a costs **0.995** and **1.011**, inside the gfx1201 band, and both sides beat rotation (+31.0% / +6.1%) | `runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json`, 2026-09-04 |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
@@ -167,29 +167,32 @@ with no table **raises rather than falling back**.
   wrote to the same path and the last overwrote the other three. Both
   guards looked at the wrong name. Fixed in the library
   (`matrix_results.output_path`) and in the campaign, pinned by a test.)
-* **Harness-matched pairwise cells** on gfx90a, `26+78` and `13+91`,
-  step-level. 1.11's "+12.5% and +52.5% over pairwise" currently compares
-  a step-level N-way against a whole-call pairwise; at the one width
-  where both exist they agree to 1.8%, and these close the other two.
-* **The slice-position falsifier.** The N-way penalty is monotone in the
-  slice's offset -- 1.474 at offset 0 against 1.377 at the top, four ways
-  -- and the same sweep laid out from the top down says whether that
-  follows the position or the thread.
+* **The co-run penalty, measured across two PROCESSES.** Every co-run
+  number in this project -- both pairwise tables, 1.5 included -- comes
+  from threads of one process sharing one caching allocator, which 3.10
+  showed charging allocator state as contention. Two processes on
+  disjoint masks removes the shared allocator and is what a deployed
+  system looks like. Until it lands, the co-run penalty on either
+  architecture is **unmeasured**, and `MEASURED_EXTERNALITY*` is
+  provisional.
 * **Queued behind expC: the same sweep on gfx1201.** That is the number
   `prereg-intra-tenant.md`'s prediction actually turns on, and it is
   unmeasured. Nothing is synced into X570's tree while run 2 is in
   flight, or run 2's attestation would describe a tree that no longer
   exists.
 
-**What 1.11 does to the one open path.** 3.8 left intra-tenant
-concurrency as the only way to shorten a serial burst. On gfx90a, whole
-die, burst of four: serial 3.83 s, two ways **3.49 s**, four ways
-3.63 s. (Eight ways is unreachable at a burst of four -- the policy takes
-`critical[:concurrency]` -- and at a burst of eight it costs **14.12 s**
-against 7.66 s for not splitting.) The optimum is **two, not four**, and
-the gain over serial is **8.9%** where the pairwise stand-in promised
-18.5%. The stand-in erred in the direction that flattered the mechanism,
-and by more the further it was extrapolated.
+**The one open path is closed, and not by 1.11.** 3.8 left intra-tenant
+concurrency as the only way to shorten a serial burst, and **expC closed
+it on hardware**: `concurrent_quota_c4` loses to its own c=1 control by
++17.2% on miss and -21.3% on video, and to priority by +262.5%, 0 wins in
+40 cells. See 3.9.
+
+Every *arithmetic* about that path is withdrawn with 1.11 -- the 7.3%,
+the 8.9%, the "optimum is two not four", all of it read the N-way table
+that turned out to be an allocator measurement. What is left is the
+campaign result, which needed no table: `c2` dominates `c4` on both axes
+(-22.3% miss, +13.3% video, 38 wins to 1), so two slices did beat four on
+the hardware. **Why** is now unexplained rather than explained.
 
 ### The structural result, 2026-09-03
 
