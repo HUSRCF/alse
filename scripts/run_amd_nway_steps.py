@@ -159,8 +159,13 @@ def run_episode(adapters, streams, widths, args):
                 out[index].append(adapter.last_step_seconds)
                 windows[index].append((began, ended,
                                        adapter.last_step_seconds))
+        # `drain_timing` synchronises on THIS adapter's own event, which
+        # is the right scope. `torch.cuda.synchronize()` here is
+        # device-wide, and called from eight threads at once it hung the
+        # eight-way cell for over two hours at 92% GPU with no progress.
+        # A per-slice wall time must not wait on the other slices anyway:
+        # it would make every slice's figure the slowest one's.
         adapter.drain_timing()
-        torch.cuda.synchronize()
         closed = time.perf_counter()
         walls[index] = (opened, closed, counted)
         if adapter.last_step_seconds:
@@ -198,6 +203,13 @@ def run_episode(adapters, streams, widths, args):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="sdxl")
+    parser.add_argument("--models", default=None,
+                        help="comma-separated model per slice, e.g. "
+                             "`sdxl,cogvideox-2b`. One pipeline is built "
+                             "per DISTINCT model and shared by the slices "
+                             "that use it, which is what a runtime does. "
+                             "This is claim 1.5's arrangement, measured "
+                             "with the instrument fixed on 2026-09-04.")
     parser.add_argument("--ways", type=int, default=4)
     parser.add_argument("--maskable-units", type=int, default=32,
                         help="the whole die: 32 on gfx1201, 104 on gfx90a")
@@ -258,17 +270,26 @@ def main() -> int:
     pool = MaskedStreamPool(harness.make_stream,
                             maskable_units=args.maskable_units)
 
-    print(f"loading {args.model} ...", flush=True)
-    pipeline = harness.build_pipeline(args.model, drop_text_encoders=False)
-    adapters = [harness.make_adapter(args.model, pipeline, args,
+    slice_models = ([m.strip() for m in args.models.split(",")]
+                    if args.models else [args.model] * args.ways)
+    if len(slice_models) != args.ways:
+        raise SystemExit(f"{len(slice_models)} models for {args.ways} slices")
+    pipelines = {}
+    for name in dict.fromkeys(slice_models):
+        print(f"loading {name} ...", flush=True)
+        pipelines[name] = harness.build_pipeline(name,
+                                                 drop_text_encoders=False)
+    adapters = [harness.make_adapter(name, pipelines[name], args,
                                      seed=args.seed + i)
-                for i in range(args.ways)]
+                for i, name in enumerate(slice_models)]
     released = 0
     if not args.keep_text_encoders:
-        released = harness.free_text_encoders(pipeline)
-    print(f"  {args.ways} adapters over one copy of the weights, "
-          f"{torch.cuda.memory_allocated() / 2**30:.2f} GB resident, "
-          f"released {released / 2**30:.2f} GB of text encoder", flush=True)
+        for pipeline in pipelines.values():
+            released += harness.free_text_encoders(pipeline)
+    print(f"  {args.ways} adapters over {len(pipelines)} copy/copies of "
+          f"the weights, {torch.cuda.memory_allocated() / 2**30:.2f} GB "
+          f"resident, released {released / 2**30:.2f} GB of text encoder",
+          flush=True)
 
     offsets, cursor = [], 0
     for width in widths:
@@ -294,7 +315,8 @@ def main() -> int:
     for index, adapter in enumerate(adapters):
         measured = run_solo(adapter, streams[index], widths[index], args)
         solo_before.append({"slice": index, "units": widths[index],
-                            "offset": offsets[index], **measured})
+                            "offset": offsets[index],
+                            "model": slice_models[index], **measured})
         print(f"  solo slice {index} @{widths[index]}u: "
               f"{solo_before[-1]['p50_s'] * 1000:8.1f} ms", flush=True)
 
@@ -310,7 +332,7 @@ def main() -> int:
             alone = solo_before[index]["p50_s"]
             rows.append({
                 "slice": index, "units": widths[index],
-                "offset": offsets[index],
+                "offset": offsets[index], "model": slice_models[index],
                 "corun_p50_s": corun,
                 "corun_event_p50_s": p50(result["all"][index]),
                 "corun_overlap_p50_s": overlap,
@@ -381,6 +403,7 @@ def main() -> int:
                              "in place; no per-call activation graph, so a "
                              "warm allocator stays warm"),
         "model": args.model,
+        "slice_models": slice_models,
         "ways": args.ways,
         "slice_units": units,
         "slice_widths": widths,

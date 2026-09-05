@@ -5125,3 +5125,114 @@ own costs, attributed to the device. The two controls that caught the
 last two were a solo measured after the co-run, and a `free()`. Neither
 was expensive. Both should have been there from the first co-run
 measurement this project ever made.
+
+## 2026-09-05 The instrument was wrong twice, in opposite directions, and it cost two conclusions
+
+Everything in this section supersedes the two entries above it dated
+2026-09-04. Both of those rested on step timings that were not
+measurements.
+
+**Defect 1: `last_step_seconds` goes stale.** `amd_sdxl_adapter` reads
+the previous step's events only if the device has already passed them
+(`if previous_end.query():`); otherwise the read is skipped and the
+attribute keeps its **old** value. In any tight step loop the CPU runs
+ahead, so the read is skipped almost always, and a caller that appends
+the attribute every iteration records **one stale reading N times** and
+takes its median. Three harnesses did exactly that:
+`run_amd_mismatched_corun.py` (which produced claim **1.5**),
+`run_amd_nway_steps.py` (yesterday's re-measurement of 1.11), and the
+`--diagnose` control that withdrew 1.11.
+
+The signature is a run of identical values. It was visible all along:
+yesterday's mismatched-pair series read `988 988 988 ... 988 183`, and
+the story built on it -- 988 = 805 + 183, one device drain per step --
+was a coincidence of arithmetic on a repeated stale number. The first
+cross-process run made it undeniable: a slice read **306.7 ms** by
+events and **156.0 ms** by the wall clock over the same 14 steps, in a
+phase that took 2.2 s. 2.2/14 = 157.
+
+**Defect 2: the wall clock, its replacement, needs a sync.** A step loop
+only enqueues. Stopping the clock without `torch.cuda.synchronize()`
+measures how fast the CPU could submit: 14 steps of a 269 ms quota came
+back at 156 ms. Both harnesses now drain, synchronise, then stop the
+clock, and report the wall figure as the measurement with the event p50
+beside it.
+
+**What that costs.**
+
+* **3.10 is withdrawn.** It withdrew 1.11 on the strength of "the
+  post-episode solo comes back equal to the co-run". By the wall clock it
+  does not: gfx1201 four ways reads solo 261.3 / 263.3 / 261.3 / 262.5 ms
+  before the episodes and 271.2 / 269.7 / 269.3 / 267.7 after, and
+  `empty_cache` changes nothing (270.0 / 266.8 / 266.0 / 267.1). There is
+  **no allocator effect**. There never was; there was a stale reading.
+* **Yesterday's other reversal is withdrawn too.** The morning's finding
+  that the 7.3x mismatched co-run "was the harness" rested on the
+  step-level harness reading 0.995 for the same pair -- defect 1 again.
+  The call-level harness synchronises (`end.synchronize()`) and was the
+  sound one all along.
+* **1.5 is contradicted by its own arrangement, re-measured.** See below.
+
+**The corrected numbers.** All in one process, wall clock, device
+synchronised, six episodes, the last reported, with the pre-episode solo
+verified against each width's measured quota curve.
+
+    gfx1201, same model            gfx90a, same model
+      1 way   32u   1.048            1 way  104u   1.023
+      2 ways  16u   1.396            2 ways  52u   1.273
+      4 ways   8u   2.341
+      8 ways   4u   (pending)
+
+Every cell's post-episode solo returns to its pre-episode solo, and
+`empty_cache` and destroying the peer streams change nothing. gfx90a's
+two-way **1.273** sits within 4.5% of the call-level pairwise entry for
+the same pair, `MEASURED_EXTERNALITY_GFX90A[(52, 52)] = 1.2176`, which is
+the first time two independent instruments have agreed here.
+
+**The mismatched pair, measured on an idle machine.** SDXL at 52 units
+beside CogVideoX-2b at 52, gfx90a:
+
+    slice          solo ms   co-run ms    ext    solo after   emptied
+    sdxl             182.4      900.4    4.94       182.3      189.3
+    cogvideox-2b     790.8      805.6    1.02       804.8      797.7
+
+Both solos land on the measured curve (182.5 and 793). The same-model
+control at the same widths, run immediately after on the same card,
+reads **1.273**. So a mismatched peer costs the image tenant **3.9x what
+a same-model peer costs**, and costs the video tenant nothing.
+
+**Claim 1.5 said 1.00-1.06 per side.** It was measured with defect 1.
+The corrected number for one of its two sides is 4.94. 1.5 is not
+withdrawn in this entry only because its five splits have not yet all
+been re-measured; the `16+16` equivalent has, and it fails.
+
+**A shared-machine trap, recorded because it flattered nothing and cost
+an hour.** The first attempt at the mismatched pair ran while four other
+GCDs were at 100% for another user. SDXL's **solo** came back at 348 ms
+instead of 182, and the ratio therefore read 3.49 instead of 4.94. The
+contamination was in the *denominator*, and its direction was to make the
+effect look smaller. DiamondHill is shared: record what else is busy at
+launch, and prefer an idle box for anything whose ratio matters.
+
+**Cross-process, the arrangement nothing here has ever used.** Two
+processes, one per tenant, `ROC_GLOBAL_CU_MASK` each, disjoint halves of
+gfx1201, verified after the fact that the solo slots did not overlap and
+the co-run windows did:
+
+    slice  units   solo ms   co-run ms    ext   solo after   emptied
+      0     16u     144.6      305.8    2.115     148.9       146.3
+      1     16u     145.6      308.7    2.120     147.7       146.7
+
+**2.12 against the same split's 1.396 in one process.** Two processes
+each get about half the wall clock, which is the signature of
+time-slicing rather than of spatial sharing. If it holds it means CU
+masks do not partition *across processes* on this stack -- which is the
+deployed arrangement. The control is two processes both masked to the
+whole die: if that also reads 2x, the mask is buying nothing between
+processes. Not yet run.
+
+**Still pending, and named so they are not quietly dropped:** gfx1201's
+eight-way cell; the mismatched pair with the two models' offsets swapped,
+which separates "the model" from "the position on the die" and was lost
+when DiamondHill rebooted mid-run; and the cross-process full-die
+control.

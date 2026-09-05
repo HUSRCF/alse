@@ -213,14 +213,40 @@ the sign. `tests/test_gfx90a_cost_tables.py` pins all of it.
 
 ---
 
-### 1.11 WITHDRAWN 2026-09-04 -- it was the memory allocator
+### 1.11 The co-run penalty counts peers, not busy die
 
-This claimed that the same-model co-run penalty counts peers rather than
-busy die. It was measuring how badly N concurrent adapters fragment one
-process's PyTorch caching allocator: `torch.cuda.empty_cache()` puts
-every slice back to its solo exactly, with the peers still resident and
-nothing about the hardware changed. Moved to **3.10**, which carries the
-control that killed it and the full list of what went with it.
+*Withdrawn 2026-09-04, restored 2026-09-05 with corrected numbers. The
+withdrawal was itself an instrument artefact -- see 3.10, which is now
+the withdrawn entry.*
+
+| | |
+| --- | --- |
+| **Claim** | The same-model co-run penalty is **not** a function of how much of the die is busy. A slice with `N-1` peers pays far more than the same slice with **one** peer filling the same units. gfx1201: **1.048 / 1.396 / 2.341** at 1 / 2 / 4 ways. Against the pairwise entry for a slice of the same width -- `externality(8, 24)` = 1.3383 -- four ways is **+75%**. |
+| **Evidence** | `scripts/run_amd_nway_steps.py`, N resident step adapters on N disjoint masks, six episodes, the last reported, **timed by the wall clock with the device synchronised first**. Every cell's pre-episode solo lands on that width's measured quota curve (8u: 261-263 ms measured against 269 predicted; 4u: 490-508 against 521). gfx90a agrees where both were run: 1 way **1.023**, 2 ways **1.273**. |
+| **Control** | One way is a solo and reads 1.048 on gfx1201, 1.023 on gfx90a -- that is the noise floor, and it is thermal drift over six episodes rather than nothing. gfx90a's two-way **1.273** sits within 4.5% of the call-level pairwise entry for the same pair, 1.2176: two independent instruments, one number. |
+| **The allocator is not the cause, and this was checked rather than assumed** | Every cell measures the solo again after the episodes, again after `torch.cuda.empty_cache()`, and again with the peer streams destroyed. All four agree. gfx1201 four ways: 261.3 / 263.3 / 261.3 / 262.5 before, 271.2 / 269.7 / 269.3 / 267.7 after, 270.0 / 266.8 / 266.0 / 267.1 emptied, 267.6 with the peers gone. |
+| **Scope** | N slices of one model with no other tenant. The mismatched arrangement is a different and much larger number -- see 1.12. Eight ways on gfx1201 is pending. |
+| **Falsifier** | An N-way sweep whose ratios are flat at 1.0 once the pairwise entry for the same slice width is divided out. |
+
+**What it costs the intra-tenant arithmetic.** Every burst figure that
+read the old N-way table is regenerating; the previously published 7.3%
+and 8.9% both came from numbers now known to be mis-timed, and neither
+should be quoted until the table is rebuilt from these.
+
+### 1.12 A mismatched peer costs the image tenant four times what a same-model peer costs
+
+| | |
+| --- | --- |
+| **Claim** | SDXL at 52 units beside **CogVideoX-2b** at 52 pays **4.94**, where the same slice beside another SDXL pays **1.273**. The video tenant pays **1.02** -- it is not a shared cost, it is one-directional. |
+| **Evidence** | gfx90a, idle machine, one process, wall clock with the device synchronised, six episodes. Solo 182.4 ms (SDXL) and 790.8 ms (CogVideoX), both on the measured quota curve. Co-run 900.4 and 805.6. The same-model control at the same widths ran immediately afterwards on the same card and read 1.273. |
+| **Control** | The post-episode solos return to 182.3 and 804.8, `empty_cache` gives 189.3 and 797.7, and destroying the peer stream gives 182.3. Nothing persists, so this is contention and not process state. |
+| **Scope** | These two models at these workpoints, at an even split, on CDNA2, with SDXL at offset 0. The offsets-swapped control -- which separates "the model" from "the position on the die" -- was lost to a reboot and is pending. |
+| **Falsifier** | The swapped run reading 4.94 for whichever model sits at offset 0. That would make it a position effect, not a model effect. |
+
+**This contradicts 1.5**, which says mismatched tenants cost 1.00-1.06
+per side. 1.5 was measured through the stale-reading path described in
+3.10. Its five splits have not all been re-measured, so it is not
+withdrawn here, but the even split has been and it fails.
 
 
 ## 2. Negative results
@@ -938,69 +964,40 @@ so *why* four slices lose is inference from gfx90a rather than
 measurement on the device the campaign ran on. That sweep is next.
 
 
-### 3.10 That the co-run penalty counts peers rather than busy die
+### 3.10 That the N-way co-run penalty was the memory allocator
 
-Claim 1.11, measured 2026-09-04 and withdrawn the same day. The finding
-was that a slice of width `w` with `N-1` peers filling `104-w` units pays
-far more than the same slice with **one** peer filling exactly those
-units -- 1.0001 / 1.2146 / 1.4625 / 2.0940 at 1/2/4/8 ways on gfx90a,
-reproduced within 1.8% by a second harness written specifically to check
-it, and 1.0178 / 1.1842 / 2.1984 / 3.9227 on gfx1201.
+Written and withdrawn within a day. On 2026-09-04 this withdrew claim
+1.11 on the strength of a control that looked decisive: the solo measured
+*after* the episodes came back equal to the co-run, with every peer idle,
+and `torch.cuda.empty_cache()` restored it exactly. A penalty that
+survives the peers stopping is not contention; a quantity a `free()`
+deletes is not the die. Both steps are sound. The premise was not.
 
-**The control.** `run_amd_nway_steps.py --diagnose`, gfx1201, eight
-slices of four units, six episodes, then four solo passes:
+**The post-episode solo was never elevated.** `amd_sdxl_adapter` updates
+`last_step_seconds` only when the device has already passed the previous
+step's end event (`if previous_end.query():`), and skips the update
+otherwise. In a tight step loop the CPU runs ahead and the update is
+skipped almost always, so a caller that appends the attribute every iteration
+records **one stale reading N times**. gfx1201 four ways, by the wall
+clock with the device synchronised: solo 261.3 / 263.3 / 261.3 / 262.5 ms
+before the episodes and 271.2 / 269.7 / 269.3 / 267.7 after. The event
+reading said 580. There is no elevation, no allocator effect, and
+nothing for `empty_cache` to have fixed.
 
-    solo before the episodes        498  506  505  507  508  505  506  507 ms
-    co-run, last episode           1750 - 2100 ms          externality 3.83
-    solo after the episodes        2048 2102 2099 2137 1922 1832 1758 1733
-    solo, allocator cache dropped   519  493  493  513  509  492  496  511
-    solo, peer streams destroyed    510
+The tell was in the published series and went unread: a run of identical
+values, `988 988 988 ... 988 183`, where only the last -- taken after a
+synchronising drain -- was ever a measurement.
 
-**`torch.cuda.empty_cache()` restores every slice to its solo exactly**,
-with the same process, the same adapters, the same masks, the same
-streams and the peers still resident. What was being measured is how
-badly N concurrent adapters fragment one process's caching allocator.
+**What this restores.** 1.11, with corrected numbers measured by the wall
+clock; and yesterday morning's withdrawal of the 7.3% mismatched co-run,
+which rested on the same stale path reading 0.995 and is itself
+withdrawn. The call-level harness synchronises and was the sound one all
+along. See 1.11, 1.12 and the decision log for 2026-09-05.
 
-**Why the alternatives are dead.** The elevation survives the peers
-stopping -- `run_solo` walks the adapters sequentially, so while slice 0
-is measured every peer is idle -- and a co-run penalty that does not need
-the peers running is not a co-run penalty. It survives 200 s of
-sequential solos without decaying, and the **one-way** run, which puts
-SDXL on the whole die for six episodes and draws more power than any
-other cell here, drifts 0.1%, so it is not thermal. And a `free()`
-deletes it, so it is not a property of the die.
-
-**That both harnesses agreed was not corroboration.** The whole-call
-harness and the step-level harness written to check it both run N
-adapters in one process, which is the thing that causes it. Two
-measurements of one artefact.
-
-**Withdrawn with it:**
-
-* the harness-matched +43.8% at four ways and +107.1% at eight;
-* `MEASURED_NWAY_PENALTY_GFX90A`, both value sets;
-* `MEASURED_EXTERNALITY_GFX90A_STEPS`, and 3.8's re-opening on gfx90a
-  that read `externality(26, 78)` = 0.999 off it;
-* gfx1201's 2.1984, and with it the explanation offered for expC's
-  verdict 3 -- that four slices lose because a slice with three peers
-  pays 2.20. **3.9's verdict itself stands**; it is a scheduling campaign
-  with no cost table in it.
-* the intra-tenant burst arithmetic that reads the N-way table -- both
-  the 7.3% published first and the 8.9% that replaced it.
-
-**What it puts under suspicion rather than settles.** Every co-run number
-in this project comes from threads of one process sharing one caching
-allocator, including the pairwise tables `MEASURED_EXTERNALITY` and
-`MEASURED_EXTERNALITY_GFX90A` and including 1.5. Their two-way
-arrangements are where the allocator effect is smallest, so their looking
-reasonable is not evidence that they are clean. **Two separate
-processes, one per tenant, on disjoint masks** is the measurement that
-has never been made here and is what a deployed system looks like anyway.
-
-**What survives untouched.** 3.8's floor rows, which read no co-run table
-at all -- gfx1201 6.30 s against 5.54 s, gfx90a 5.81 s against 5.75 s.
-3.9. Every campaign result that compares arms on the same hardware
-instead of reading a number out of a table.
+**What it cost, and the cheap thing that would have caught it.** A
+wall-clock cross-check on any phase: 14 steps reading 307 ms each in a
+phase that took 2.2 s is arithmetic, not instrumentation. It is now
+printed beside every event figure.
 
 
 ## 4. Open
