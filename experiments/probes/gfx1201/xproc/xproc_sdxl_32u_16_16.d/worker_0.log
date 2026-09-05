@@ -1,0 +1,5 @@
+Loading pipeline components...:   0%|          | 0/7 [00:00<?, ?it/s]Loading pipeline components...:  43%|████▎     | 3/7 [00:00<00:00,  9.18it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 6059.79it/s]
+Loading pipeline components...:  71%|███████▏  | 5/7 [00:00<00:00, 11.39it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 10937.49it/s]
+Loading pipeline components...: 100%|██████████| 7/7 [00:00<00:00,  8.90it/s]Loading pipeline components...: 100%|██████████| 7/7 [00:00<00:00,  9.29it/s]

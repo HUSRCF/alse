@@ -72,6 +72,32 @@ def p50(values):
     return statistics.median(values) if values else None
 
 
+def wall_per_step(phase):
+    """Seconds per step from the phase's wall clock.
+
+    **This is the primary measurement and the event p50 is not.** The
+    adapter reports a step's duration only when the previous step's end
+    event has already been passed by the device (`previous_end.query()`);
+    when the CPU runs ahead -- which it does in any tight step loop --
+    the read is skipped and `last_step_seconds` keeps its OLD value. A
+    caller that appends it every iteration therefore records one stale
+    reading N times, and its median is that stale reading.
+
+    Caught 2026-09-04 in the first cross-process run: slice 1's solo read
+    306.7 ms by events and 156.0 ms by the wall over the same 14 steps,
+    and the phase took 2.2 s, which only the wall figure can produce.
+    """
+    samples = phase["samples"]
+    # The drain reading is appended after the loop and is not a step.
+    steps = max(1, len(samples) - (1 if phase.get("drained") else 0))
+    began, ended = phase["wall"]
+    return (ended - began) / steps
+
+
+def event_p50(phase):
+    return p50([s["s"] for s in phase["samples"]])
+
+
 # --------------------------------------------------------------------- worker
 
 def wait_until(when: float) -> None:
@@ -110,11 +136,18 @@ def run_phase(adapter, executor_for, units, count):
                             "began": began, "ended": ended})
         if not more:
             executor = executor_for()
+    # Synchronise BEFORE stopping the clock: the loop only enqueued.
+    import torch
     adapter.drain_timing()
+    torch.cuda.synchronize()
+    ended_at = time.time()
+    drained = False
     if adapter.last_step_seconds:
         samples.append({"s": adapter.last_step_seconds,
-                        "began": time.time(), "ended": time.time()})
-    return {"samples": samples, "wall": [began_at, time.time()]}
+                        "began": ended_at, "ended": ended_at})
+        drained = True
+    return {"samples": samples, "wall": [began_at, ended_at],
+            "steps": done, "drained": drained}
 
 
 def run_window(adapter, executor_for, units, seconds):
@@ -136,8 +169,12 @@ def run_window(adapter, executor_for, units, seconds):
                             "began": began, "ended": ended})
         if not more:
             executor = executor_for()
+    import torch
     adapter.drain_timing()
-    return {"samples": samples, "wall": [began_at, time.time()]}
+    torch.cuda.synchronize()
+    ended_at = time.time()
+    return {"samples": samples, "wall": [began_at, ended_at],
+            "steps": len(samples), "drained": False}
 
 
 def worker(args) -> int:
@@ -162,6 +199,7 @@ def worker(args) -> int:
     run_phase(adapter, executor_for, args.units, args.warmup_steps)
 
     ready = {"slice": args.slice_index, "pid": os.getpid(),
+             "model": args.model,
              "mask": os.environ.get("ROC_GLOBAL_CU_MASK"),
              "units": args.units, "offset": args.offset,
              "device": torch.cuda.get_device_name(0),
@@ -216,9 +254,45 @@ def overlaps(a, b, slack=0.0):
     return a and b and a[0] < b[1] - slack and b[0] < a[1] - slack
 
 
-def coordinator(args) -> int:
-    from burstserve.trace_sim import QuotaCostModel
+def curve_for(model_name, device):
+    """The measured quota curve, on trees that have a device dimension.
 
+    X570's tree predates it -- `QuotaCostModel.for_model` there takes no
+    `device` -- and syncing `trace_sim` into a hardware tree to satisfy a
+    probe is how a campaign stops being commensurable with the ones
+    before it. The fallback keeps the check working there.
+    """
+    from burstserve.trace_sim import QuotaCostModel
+    try:
+        return QuotaCostModel.for_model(model_name, device=device)
+    except TypeError:
+        return QuotaCostModel.for_model(model_name)
+
+
+def summarise(rundir: Path, args) -> int:
+    """Everything after the workers have written their results.
+
+    Separate so that a crash in the reporting cannot destroy a
+    measurement that already ran, which is exactly what happened the
+    first time this was used: the workers finished, the coordinator died
+    on a keyword argument, and only the raw files survived.
+    """
+    results, widths, offsets, models = [], [], [], []
+    for path in sorted(rundir.glob("result_*.json"),
+                       key=lambda q: int(q.stem.split("_")[1])):
+        result = json.loads(path.read_text())
+        results.append(result)
+        widths.append(result["ready"]["units"])
+        offsets.append(result["ready"]["offset"])
+        models.append(result["ready"].get("model", args.model))
+    if not results:
+        raise SystemExit(f"no result_*.json under {rundir}")
+    return report(results, widths, offsets, models, args)
+
+
+def coordinator(args) -> int:
+    models = ([m.strip() for m in args.models.split(",")]
+              if args.models else None)
     if args.widths:
         widths = [int(w) for w in args.widths.split(",")]
     else:
@@ -228,6 +302,10 @@ def coordinator(args) -> int:
         widths = [args.maskable_units // args.ways] * args.ways
     if sum(widths) > args.maskable_units:
         raise SystemExit(f"{widths} exceeds {args.maskable_units} units")
+    if models is None:
+        models = [args.model] * len(widths)
+    if len(models) != len(widths):
+        raise SystemExit(f"{len(models)} models for {len(widths)} slices")
     offsets, cursor = [], 0
     for w in widths:
         offsets.append(cursor)
@@ -247,7 +325,7 @@ def coordinator(args) -> int:
         argv = [sys.executable, str(Path(__file__).resolve()),
                 "--role", "worker", "--slice-index", str(index),
                 "--units", str(units), "--offset", str(offset),
-                "--rundir", str(rundir), "--model", args.model,
+                "--rundir", str(rundir), "--model", models[index],
                 "--steps", str(args.steps),
                 "--warmup-steps", str(args.warmup_steps),
                 "--window-s", str(args.window_s),
@@ -264,8 +342,9 @@ def coordinator(args) -> int:
         children.append((index, subprocess.Popen(argv, env=env, stdout=log,
                                                  stderr=subprocess.STDOUT),
                          log))
-        print(f"  slice {index}: {units}u at offset {offset}, mask "
-              f"{env['ROC_GLOBAL_CU_MASK']}, pid {children[-1][1].pid}",
+        print(f"  slice {index}: {models[index]} on {units}u at offset "
+              f"{offset}, mask {env['ROC_GLOBAL_CU_MASK']}, pid "
+              f"{children[-1][1].pid}",
               flush=True)
 
     print("waiting for every worker to load and warm ...", flush=True)
@@ -311,6 +390,10 @@ def coordinator(args) -> int:
 
     results = [json.loads((rundir / f"result_{i}.json").read_text())
                for i in range(len(widths))]
+    return report(results, widths, offsets, models, args)
+
+
+def report(results, widths, offsets, models, args) -> int:
 
     # --- verify, before reporting a single number ----------------------
     problems = []
@@ -334,13 +417,14 @@ def coordinator(args) -> int:
     if hi <= lo:
         problems.append("the co-run windows do not all intersect")
 
-    model = QuotaCostModel.for_model(args.model, device=args.device)
     quota_check = []
     for index, (units, result) in enumerate(zip(widths, results)):
-        measured = p50([s["s"] for s in result["solo_before"]["samples"]])
-        predicted = model.step_seconds(units)
+        curve = curve_for(models[index], args.device)
+        measured = wall_per_step(result["solo_before"])
+        predicted = curve.step_seconds(units)
         error = measured / predicted - 1 if predicted else None
         quota_check.append({"slice": index, "units": units,
+                            "model": models[index],
                             "measured_s": measured,
                             "predicted_s": predicted, "error": error})
         if error is None or abs(error) > args.quota_tolerance:
@@ -351,17 +435,25 @@ def coordinator(args) -> int:
 
     rows = []
     for index, (units, result) in enumerate(zip(widths, results)):
-        before = p50([s["s"] for s in result["solo_before"]["samples"]])
-        after = p50([s["s"] for s in result["solo_after"]["samples"]])
-        emptied = (p50([s["s"] for s in result["solo_emptied"]["samples"]])
+        before = wall_per_step(result["solo_before"])
+        after = wall_per_step(result["solo_after"])
+        emptied = (wall_per_step(result["solo_emptied"])
                    if result.get("solo_emptied") else None)
-        inside = [s["s"] for s in result["corun"]["samples"]
+        # The co-run rate over the intersection, from the wall clock:
+        # count the steps whose interval lies inside it and divide by the
+        # span they actually occupy.
+        inside = [s for s in result["corun"]["samples"]
                   if s["began"] >= lo and s["ended"] <= hi]
-        co = p50(inside)
+        co = ((inside[-1]["ended"] - inside[0]["began"]) / len(inside)
+              if len(inside) > 1 else None)
+        co_events = p50([s["s"] for s in inside])
         rows.append({
             "slice": index, "units": units, "offset": offsets[index],
+            "model": models[index],
             "mask": result["ready"]["mask"],
             "solo_before_s": before, "corun_p50_s": co,
+            "corun_event_p50_s": co_events,
+            "solo_before_event_p50_s": event_p50(result["solo_before"]),
             "n_in_overlap": len(inside),
             "n_total": len(result["corun"]["samples"]),
             "solo_after_s": after, "solo_emptied_s": emptied,
@@ -378,7 +470,8 @@ def coordinator(args) -> int:
         "arrangement": ("one process per slice, ROC_GLOBAL_CU_MASK per "
                         "process, default stream, staggered solo slots "
                         "verified disjoint after the fact"),
-        "model": args.model, "device_requested": args.device,
+        "model": args.model, "models": models,
+        "device_requested": args.device,
         "slice_widths": widths, "slice_offsets": offsets,
         "maskable_units": args.maskable_units,
         "steps": args.steps, "window_s": args.window_s,
@@ -395,10 +488,11 @@ def coordinator(args) -> int:
     args.out.write_text(json.dumps(payload, indent=1, sort_keys=True))
 
     print()
-    print(f"{'slice':>5} {'units':>6} {'solo ms':>9} {'co-run ms':>10} "
-          f"{'ext':>7} {'after ms':>9} {'emptied ms':>11} {'n':>5}")
+    print(f"{'slice':>5} {'model':>13} {'units':>6} {'solo ms':>9} "
+          f"{'co-run ms':>10} {'ext':>7} {'after ms':>9} "
+          f"{'emptied ms':>11} {'n':>5}")
     for row in rows:
-        print(f"{row['slice']:>5} {row['units']:>6} "
+        print(f"{row['slice']:>5} {row['model']:>13} {row['units']:>6} "
               f"{row['solo_before_s'] * 1000:>9.1f} "
               f"{(row['corun_p50_s'] or 0) * 1000:>10.1f} "
               f"{(row['externality'] or 0):>7.3f} "
@@ -423,6 +517,14 @@ def main() -> int:
     parser.add_argument("--role", default="coordinator",
                         choices=("coordinator", "worker"))
     parser.add_argument("--model", default="sdxl")
+    parser.add_argument("--models", default=None,
+                        help="comma-separated model per slice, e.g. "
+                             "`sdxl,cogvideox-2b`. This is the "
+                             "arrangement claim 1.5 is about, and 1.5 "
+                             "was measured with both models in ONE "
+                             "process; here they are two, with a "
+                             "separate copy of the weights each, which "
+                             "is also how they would really be served.")
     parser.add_argument("--device", default="gfx1201",
                         help="which measured quota curve to check the "
                              "solo step times against")
@@ -455,8 +557,15 @@ def main() -> int:
     parser.add_argument("--units", type=int, default=16)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--rundir", default=None)
+    parser.add_argument("--summarise-only", type=Path, default=None,
+                        help="re-report an existing run directory instead "
+                             "of measuring. The reporting is separate "
+                             "from the measurement so that a crash in it "
+                             "cannot cost a run that already happened.")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    if args.summarise_only:
+        return summarise(args.summarise_only, args)
     return worker(args) if args.role == "worker" else coordinator(args)
 
 

@@ -70,25 +70,65 @@ def p50(values):
     return statistics.median(values) if values else None
 
 
-def run_solo(adapter, stream, units, args) -> list[float]:
+def wall_per_step(began, ended, steps):
+    """Seconds per step from the wall clock. **This is the measurement.**
+
+    The adapter reports a step's duration only when the previous step's
+    end event has already been passed by the device
+    (`previous_end.query()`); when the CPU runs ahead -- which it does in
+    any tight step loop -- the read is skipped and `last_step_seconds`
+    keeps its OLD value. A caller that appends it every iteration records
+    one stale reading N times and takes its median.
+
+    Caught 2026-09-04 in the first cross-process run, where a slice read
+    306.7 ms by events and 156.0 ms by the wall over the same 14 steps in
+    a phase that took 2.2 s. Every event p50 in this file is kept beside
+    the wall figure so the two can be compared, and they are reported
+    separately rather than one silently standing in for the other.
+
+    **The wall clock only works if the device is synchronised before it
+    is stopped.** A step loop enqueues asynchronously, so without a sync
+    the clock measures how fast the CPU could submit the work, not how
+    long the work took -- 14 steps of a 269 ms quota came back at 156 ms
+    the first time this was tried. Every caller here syncs first.
+    """
+    return (ended - began) / max(1, steps)
+
+
+def run_solo(adapter, stream, units, args) -> dict:
+    import torch
     adapter.stream = stream.handle
     executor = StepExecutor(object(), adapter, total_steps=args.steps)
     executor.prepare()
     seen: list[float] = []
-    while executor.run_step(quota_units=units):
+    steps = 0
+    began = time.perf_counter()
+    while True:
+        more = executor.run_step(quota_units=units)
+        steps += 1
         # The adapter reports the previous step, so a reading appears one
-        # step late; synchronising on the step just issued would drain
-        # the pipeline and charge the drain to the measurement.
+        # step late -- and is simply not updated at all when the device
+        # is behind, which is why the wall clock is the measurement.
         if adapter.last_step_seconds:
             seen.append(adapter.last_step_seconds)
+        if not more:
+            break
+    # Synchronise BEFORE stopping the clock: the loop above only
+    # enqueued the work.
     adapter.drain_timing()
+    torch.cuda.synchronize()
+    ended = time.perf_counter()
     if adapter.last_step_seconds:
         seen.append(adapter.last_step_seconds)
-    return seen[args.warmup:]
+    return {"p50_s": wall_per_step(began, ended, steps),
+            "event_p50_s": p50(seen[args.warmup:]),
+            "steps": steps, "wall_s": ended - began}
 
 
 def run_episode(adapters, streams, widths, args):
     """N adapters stepping concurrently on N disjoint masks."""
+    import torch
+
     ways = len(adapters)
     out: list[list[float]] = [[] for _ in range(ways)]
     windows: list[list[tuple[float, float, float]]] = [[] for _ in range(ways)]
@@ -101,20 +141,28 @@ def run_episode(adapters, streams, widths, args):
         executor.prepare()
         prepared.append((adapter, executor))
 
+    walls: list[tuple[float, float, int]] = [(0.0, 0.0, 0)] * ways
+
     def side(index):
         adapter, executor = prepared[index]
         # Warm before the barrier so no slice measures another's start-up.
         executor.run_step(quota_units=widths[index])
         barrier.wait()
+        opened = time.perf_counter()
+        counted = 0
         for _ in range(args.steps - 1):
             began = time.perf_counter()
             executor.run_step(quota_units=widths[index])
             ended = time.perf_counter()
+            counted += 1
             if adapter.last_step_seconds:
                 out[index].append(adapter.last_step_seconds)
                 windows[index].append((began, ended,
                                        adapter.last_step_seconds))
         adapter.drain_timing()
+        torch.cuda.synchronize()
+        closed = time.perf_counter()
+        walls[index] = (opened, closed, counted)
         if adapter.last_step_seconds:
             out[index].append(adapter.last_step_seconds)
 
@@ -139,6 +187,8 @@ def run_episode(adapters, streams, widths, args):
 
     return {
         "all": [series[args.warmup:] for series in out],
+        "wall_per_step": [wall_per_step(o, c, n) for o, c, n in walls],
+        "wall": [[o, c, n] for o, c, n in walls],
         "overlap": [overlapped(i)[args.warmup:] for i in range(ways)],
         "overlap_seconds": (hi - lo) if lo is not None and hi is not None
         else None,
@@ -242,10 +292,9 @@ def main() -> int:
 
     solo_before = []
     for index, adapter in enumerate(adapters):
-        samples = run_solo(adapter, streams[index], widths[index], args)
+        measured = run_solo(adapter, streams[index], widths[index], args)
         solo_before.append({"slice": index, "units": widths[index],
-                            "offset": offsets[index],
-                            "p50_s": p50(samples), "samples": len(samples)})
+                            "offset": offsets[index], **measured})
         print(f"  solo slice {index} @{widths[index]}u: "
               f"{solo_before[-1]['p50_s'] * 1000:8.1f} ms", flush=True)
 
@@ -256,13 +305,14 @@ def main() -> int:
         result = run_episode(adapters, streams, widths, args)
         rows = []
         for index in range(args.ways):
-            corun = p50(result["all"][index])
+            corun = result["wall_per_step"][index]
             overlap = p50(result["overlap"][index])
             alone = solo_before[index]["p50_s"]
             rows.append({
                 "slice": index, "units": widths[index],
                 "offset": offsets[index],
                 "corun_p50_s": corun,
+                "corun_event_p50_s": p50(result["all"][index]),
                 "corun_overlap_p50_s": overlap,
                 "solo_at_quota_s": alone,
                 "externality": (corun / alone if corun and alone else None),
@@ -277,9 +327,9 @@ def main() -> int:
     # against a colder baseline is not the ratio it looks like.
     solo_after = []
     for index, adapter in enumerate(adapters):
-        samples = run_solo(adapter, streams[index], widths[index], args)
+        measured = run_solo(adapter, streams[index], widths[index], args)
         solo_after.append({"slice": index, "units": widths[index],
-                           "p50_s": p50(samples)})
+                           **measured})
     print("  solo after episodes: "
           + " ".join(f"{r['p50_s'] * 1000:.1f}" for r in solo_after),
           flush=True)
@@ -294,9 +344,9 @@ def main() -> int:
         gc.collect()
         torch.cuda.empty_cache()
         for index, adapter in enumerate(adapters):
-            samples = run_solo(adapter, streams[index], widths[index], args)
+            measured = run_solo(adapter, streams[index], widths[index], args)
             solo_emptied.append({"slice": index, "units": widths[index],
-                                 "p50_s": p50(samples)})
+                                 **measured})
         print("  solo, allocator cache dropped: "
               + " ".join(f"{r['p50_s'] * 1000:.1f}" for r in solo_emptied),
               flush=True)
@@ -312,9 +362,9 @@ def main() -> int:
                 harness.hip.hipStreamDestroy(stream.handle)
             gc.collect()
             torch.cuda.empty_cache()
-            samples = run_solo(adapters[0], streams[0], widths[0], args)
+            measured = run_solo(adapters[0], streams[0], widths[0], args)
             solo_streams_gone.append({"slice": 0, "units": widths[0],
-                                      "p50_s": p50(samples)})
+                                      **measured})
             print("  solo, peer streams destroyed: "
                   f"{solo_streams_gone[0]['p50_s'] * 1000:.1f}", flush=True)
         except Exception as failure:            # noqa: BLE001
