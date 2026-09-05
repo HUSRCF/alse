@@ -5332,3 +5332,31 @@ numbers were contaminated by the shared allocator and that "two processes
 is the arrangement nobody here has measured". Two processes *has* now
 been measured, and it is not a cleaner version of the same experiment --
 it is a different and worse mechanism.
+
+## 2026-09-05 gfx90a re-measured with the sync-free instrument, because it was not
+
+Checking DiamondHill's copy of the harness before launching the 4- and
+8-way cells turned up that it was still the version whose device-wide
+`torch.cuda.synchronize()` in the per-slice loop hung X570's eight-way
+cell for two hours. It had to be replaced before an eight-way run there
+could be attempted at all -- and that means **every gfx90a number taken
+today was measured through it**, including 1.12's mismatched pair.
+
+The defect's direction is knowable in advance: that sync makes each
+slice's wall clock wait for *every* slice, so a slice that finishes early
+is charged the slowest slice's span. It inflates.
+
+Re-measured with the sync removed, same card, same masks, idle machine:
+
+    2 ways, 52+52    with the device sync   1.2730  1.2691
+                     without it             1.2471
+
+About 2% lower, in the predicted direction. Small, but it is the
+difference between a number that is a measurement and one that carries a
+known bias, and 1.12's headline -- SDXL paying 4.9 beside CogVideoX --
+comes from the same instrument and is being re-measured with it removed.
+
+Recorded because the check that caught this was cheap and mechanical:
+**hash the harness on the machine before launching, not after.** Two
+machines had drifted apart by one commit and the older one carried a
+defect fixed hours earlier.
