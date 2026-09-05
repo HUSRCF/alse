@@ -5360,3 +5360,44 @@ Recorded because the check that caught this was cheap and mechanical:
 **hash the harness on the machine before launching, not after.** Two
 machines had drifted apart by one commit and the older one carried a
 defect fixed hours earlier.
+
+## 2026-09-05 Both architectures, one instrument, and what the two-way cell buys
+
+The gfx90a sweep finished on the sync-free harness. Both devices, same
+code, same procedure, six episodes, the last reported, every cell
+carrying its own solo-after and empty_cache controls:
+
+    die fraction   gfx1201 (32u die)   gfx90a (104u die)
+      whole            1.050               1.024
+      1/2              1.367               1.247
+      1/4              2.318               1.507
+      1/8              4.520               2.245
+
+    excess over the pairwise entry for a slice of the same width
+      1/2             +10.5%              +2.4%
+      1/4             +77.3%             +18.0%
+      1/8            +237.8%             +65.6%
+
+Every control returns to its solo: gfx90a's eight-way reads 830-855 ms
+before the episodes, 828-870 after, 827-872 emptied. Per-slice spread at
+eight ways is 2.216-2.273.
+
+**The two-way cell is the whole licence.** At two ways the arrangement
+*is* the pairwise one, so it is not a finding -- it is the check that the
+step-level instrument and the call-level table measure the same thing.
+gfx90a: **1.2471** against **1.2176**, agreeing to **2.4%**. Without
+that, the four- and eight-way numbers would be two quantities subtracted.
+This is the control that 1.11's first version claimed to have and did
+not: the harnesses it compared were both call-level.
+
+**The shape travels and the size does not**, and the comparison carries a
+confound that cannot be removed from this sweep: a quarter of gfx1201 is
+**8** units and a quarter of gfx90a is **26**, so "at the same die
+fraction" is also "at a very different absolute width". 1.10 found the
+same entanglement in the quota curves themselves.
+
+**1.12 survives the instrument change with 0.2% to spare.** SDXL beside
+CogVideoX-2b re-measured sync-free reads **4.928** against 4.937/4.865/
+4.887 before; the same-model control at those widths moved from 1.273 to
+**1.2471**, so the ratio is **3.95x**. The headline did not depend on the
+fix; the control did.

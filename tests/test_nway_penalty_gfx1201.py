@@ -19,11 +19,14 @@ sys.path.insert(0, str(REPO / "src"))
 
 from burstserve.trace_sim import (  # noqa: E402
     MEASURED_NWAY_PENALTY_GFX1201,
+    MEASURED_NWAY_PENALTY_GFX90A_STEPS,
     externality,
 )
 
 RUNS = REPO / "experiments" / "probes" / "gfx1201" / "nway_walled"
+RUNS_90A = REPO / "experiments" / "probes" / "gfx90a" / "walled_final"
 SLICE = {1: 32, 2: 16, 4: 8, 8: 4}
+SLICE_90A = {1: 104, 2: 52, 4: 26, 8: 13}
 
 
 class TheTableMatchesTheRawRunsTest(unittest.TestCase):
@@ -117,6 +120,65 @@ class WhatAPairwiseTableWouldMissTest(unittest.TestCase):
         # Not exactly 1.0: six episodes warm the card by about 5%.
         self.assertAlmostEqual(MEASURED_NWAY_PENALTY_GFX1201[1], 1.0,
                                delta=0.06)
+
+
+class TheSameSweepOnGfx90aTest(unittest.TestCase):
+    """The shape travels; the size does not."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not RUNS_90A.is_dir():
+            raise unittest.SkipTest(f"{RUNS_90A} not present")
+        cls.runs = {}
+        for path in RUNS_90A.glob("*.json"):
+            d = json.loads(path.read_text())
+            if len(set(d.get("slice_models") or ["x"])) > 1:
+                continue          # the mismatched cell belongs to 1.12
+            cls.runs[d["ways"]] = d
+
+    def test_the_table_is_the_runs(self):
+        for ways, value in MEASURED_NWAY_PENALTY_GFX90A_STEPS.items():
+            with self.subTest(ways=ways):
+                d = self.runs[ways]
+                measured = statistics.mean(r["externality"]
+                                           for r in d["verdict"])
+                self.assertAlmostEqual(measured, value, places=3)
+
+    def test_the_controls_return_to_the_solo(self):
+        for ways, d in self.runs.items():
+            for phase in ("solo_after", "solo_after_empty_cache"):
+                with self.subTest(ways=ways, phase=phase):
+                    before = statistics.mean(r["p50_s"]
+                                             for r in d["solo_before"])
+                    after = statistics.mean(r["p50_s"] for r in d[phase])
+                    self.assertAlmostEqual(after / before, 1.0, delta=0.03)
+
+    def test_two_ways_agrees_with_the_call_level_table(self):
+        # At two ways the arrangement IS the pairwise one. This is the
+        # control that licenses reading the 4- and 8-way divergences.
+        self.assertAlmostEqual(
+            MEASURED_NWAY_PENALTY_GFX90A_STEPS[2]
+            / externality(52, 52, device="gfx90a"), 1.0, delta=0.03)
+
+    def test_the_excess_grows_with_ways_on_both_devices(self):
+        def excess(table, slices, die, device, ways):
+            width = slices[ways]
+            return (table[ways]
+                    / externality(width, die - width, device=device) - 1)
+        for table, slices, die, device in (
+                (MEASURED_NWAY_PENALTY_GFX1201, SLICE, 32, "gfx1201"),
+                (MEASURED_NWAY_PENALTY_GFX90A_STEPS, SLICE_90A, 104,
+                 "gfx90a")):
+            with self.subTest(device=device):
+                values = [excess(table, slices, die, device, w)
+                          for w in (2, 4, 8)]
+                self.assertEqual(values, sorted(values))
+
+    def test_gfx1201_is_the_steeper_of_the_two(self):
+        for ways in (2, 4, 8):
+            with self.subTest(ways=ways):
+                self.assertGreater(MEASURED_NWAY_PENALTY_GFX1201[ways],
+                                   MEASURED_NWAY_PENALTY_GFX90A_STEPS[ways])
 
 
 if __name__ == "__main__":  # pragma: no cover

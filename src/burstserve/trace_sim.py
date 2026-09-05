@@ -515,6 +515,27 @@ MEASURED_NWAY_PENALTY_GFX1201: dict[int, float] = {
     8: 4.5204,
 }
 
+# The same sweep on gfx90a, sync-free instrument, 2026-09-05. Same shape,
+# much shallower: the excess over the pairwise entry for a slice of the
+# same width is +2.4% / +18.0% / +65.6% at 2 / 4 / 8 ways against
+# gfx1201's +10.5% / +77.3% / +237.8%.
+#
+# The two-way cell is the control that licenses the rest: at two ways the
+# arrangement IS the pairwise one, and 1.2471 against the call-level
+# 1.2176 is two instruments agreeing to 2.4%.
+#
+# Note the comparison at equal die FRACTION is also a comparison at
+# unequal absolute width -- a quarter of gfx1201 is 8 units and a quarter
+# of gfx90a is 26 -- so "gfx1201 is steeper" mixes the two, exactly as
+# 1.10 says the quota curves themselves do.
+MEASURED_NWAY_PENALTY_GFX90A_STEPS: dict[int, float] = {
+    1: 1.0240,     # control: a solo, and the noise floor over 6 episodes
+    2: 1.2471,
+    4: 1.5073,
+    8: 2.2454,
+}
+
+
 # the same shape may recur. See docs/claims-and-evidence.md 3.10.
 WITHDRAWN_NWAY_PENALTY_GFX90A: dict[int, float] = {
     1: 1.0007,     # control: a solo, and it must read 1.000
