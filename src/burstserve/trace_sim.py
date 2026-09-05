@@ -493,6 +493,28 @@ MEASURED_EXTERNALITY_GFX90A: dict[tuple[int, int], float] = {
 # is not the die.
 #
 # Kept rather than deleted because the raw runs are evidence and because
+# Measured 2026-09-05 with `run_amd_nway_steps.py`, N resident step
+# adapters on N disjoint masks, six episodes, the last reported, timed by
+# the WALL CLOCK with the device synchronised before the clock is
+# stopped. This is claim 1.11 and it is the table to use.
+#
+# Every cell carries its own control: the solo is measured again after
+# the episodes, again after `torch.cuda.empty_cache()`, and again with
+# the peer streams destroyed, and all of them return to the pre-episode
+# solo (108.5 -> 110.5 -> 110.1 at one way; 502.2 -> 503.6 -> 501.7 at
+# eight). That is what distinguishes a co-run penalty from process state,
+# and it is the check whose absence cost this project a day.
+#
+# The excess over the pairwise entry for a slice of the SAME width --
+# which is what a pairwise externality table would predict -- is +10.5%
+# at two ways, +77.3% at four and +237.8% at eight.
+MEASURED_NWAY_PENALTY_GFX1201: dict[int, float] = {
+    1: 1.0500,     # control: a solo, and the noise floor over 6 episodes
+    2: 1.3665,
+    4: 2.3179,
+    8: 4.5204,
+}
+
 # the same shape may recur. See docs/claims-and-evidence.md 3.10.
 WITHDRAWN_NWAY_PENALTY_GFX90A: dict[int, float] = {
     1: 1.0007,     # control: a solo, and it must read 1.000
