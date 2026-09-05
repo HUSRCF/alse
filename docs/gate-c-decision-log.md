@@ -5281,13 +5281,22 @@ process, 60 s window, solo slots staggered and verified disjoint after
 the fact:
 
     arrangement                 solo ms      co-run ms    externality
-    disjoint halves, 16+16    144.6 145.6   305.8 308.7   2.115 2.120
+    disjoint halves, run 1    144.6 145.6   305.8 308.7   2.115 2.120
+    disjoint halves, run 2    157.1 157.7   309.8 309.9   1.972 1.965
     whole die each            112.8 112.6   236.8 236.7   2.100 2.103
 
-**Identical.** Giving each process the whole die costs the same as giving
-each a disjoint half. The CU mask is not what separates them; the
-hardware scheduler is time-slicing two processes, and it does that
-whether or not they were told to stay out of each other's units.
+Every arrangement costs each process **about 2x its own solo**, which is
+what half the wall clock looks like. The disjoint mask does not stop
+that; it only *also* caps each process at half the units, so it pays
+twice. The CU mask is not what separates them -- the hardware scheduler
+is time-slicing two processes whether or not they were told to stay out
+of each other's units.
+
+The two disjoint runs differ only in their baseline: the co-run agrees to
+1.3% (305.8/308.7 against 309.8/309.9) and the solo does not (144.6
+against 157.1). 157.1 ms is the measured quota curve's value for 16 units
+to three figures, so run 2 is the one quoted, and both are printed rather
+than averaged.
 
 The mask *is* applied -- that was checked rather than assumed, because it
 cannot be read back from HIP. A masked solo reads 144.6 ms at 16 units
@@ -5303,10 +5312,12 @@ In aggregate step rate, both tenants together:
     one process alone, whole die       8.87 /s
     two threads, one process, 16+16    9.54 /s   <- partitioning helps
     two processes, whole die each      8.45 /s
-    two processes, disjoint 16+16      6.54 /s   <- masking HURTS
+    two processes, disjoint 16+16      6.46 /s   <- masking HURTS
 
-Masking across processes is worse than not masking: each process is
-restricted to half the units and is time-sliced anyway, so it pays twice.
+Masking across processes costs **24%** against not masking: each process
+is capped at half the units and is time-sliced anyway, so it pays twice.
+This row, not the externality ratios, is the comparison -- those ratios
+are against different baselines, 16 units against 32.
 
 **What this does to the framing.** A deployed multi-tenant serving system
 is normally one model server per tenant. On this stack that arrangement

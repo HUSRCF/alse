@@ -1,0 +1,85 @@
+{
+ "arrangement": "one process per slice, ROC_GLOBAL_CU_MASK per process, default stream, staggered solo slots verified disjoint after the fact",
+ "device": {
+  "arch": "gfx1201",
+  "device": "AMD Radeon AI PRO R9700",
+  "multi_processor_count": 16
+ },
+ "device_requested": "gfx1201",
+ "maskable_units": 32,
+ "model": "sdxl",
+ "models": [
+  "sdxl",
+  "sdxl"
+ ],
+ "overlap_seconds": 60.95284938812256,
+ "problems": [],
+ "question": "the co-run penalty with one tenant per process, which removes the shared caching allocator that 3.10 found charged as contention",
+ "quota_curve_check": [
+  {
+   "error": -0.023778021312014674,
+   "measured_s": 0.11277316297803607,
+   "model": "sdxl",
+   "predicted_s": 0.11552,
+   "slice": 0,
+   "units": 32
+  },
+  {
+   "error": -0.025622386445534828,
+   "measured_s": 0.11256010191781181,
+   "model": "sdxl",
+   "predicted_s": 0.11552,
+   "slice": 1,
+   "units": 32
+  }
+ ],
+ "rows": [
+  {
+   "corun_event_p50_s": 0.24279734802246095,
+   "corun_p50_s": 0.2368229211322845,
+   "externality": 2.099993605556746,
+   "mask": "0xffffffff",
+   "model": "sdxl",
+   "n_in_overlap": 252,
+   "n_total": 252,
+   "offset": 0,
+   "slice": 0,
+   "solo_after_over_before": 1.0279821910644542,
+   "solo_after_s": 0.11592880317143031,
+   "solo_before_event_p50_s": 0.2334982147216797,
+   "solo_before_s": 0.11277316297803607,
+   "solo_emptied_s": 0.11356062548501152,
+   "units": 32
+  },
+  {
+   "corun_event_p50_s": 0.24315958404541016,
+   "corun_p50_s": 0.23673529852004277,
+   "externality": 2.103190157849183,
+   "mask": "0xffffffff",
+   "model": "sdxl",
+   "n_in_overlap": 252,
+   "n_total": 252,
+   "offset": 0,
+   "slice": 1,
+   "solo_after_over_before": 1.0137809517671226,
+   "solo_after_s": 0.11411128725324358,
+   "solo_before_event_p50_s": 0.23324993896484375,
+   "solo_before_s": 0.11256010191781181,
+   "solo_emptied_s": 0.11319577693939209,
+   "units": 32
+  }
+ ],
+ "schema_version": "burstserve.amd-xproc-corun/v1",
+ "slice_offsets": [
+  0,
+  0
+ ],
+ "slice_widths": [
+  32,
+  32
+ ],
+ "steps": 14,
+ "torch": "2.9.1+rocm7.2.0.git7e1940d4",
+ "valid": true,
+ "window_s": 60.0
+}
