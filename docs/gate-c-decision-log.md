@@ -5236,3 +5236,40 @@ eight-way cell; the mismatched pair with the two models' offsets swapped,
 which separates "the model" from "the position on the die" and was lost
 when DiamondHill rebooted mid-run; and the cross-process full-die
 control.
+
+## 2026-09-05 X570's GPU is wedged, and I wedged it
+
+The eight-way cell hung for over two hours at 92% GPU with no output,
+because the sync I had just added to fix the wall clock --
+`torch.cuda.synchronize()` inside the per-slice episode loop -- is
+**device-wide**, and eight threads calling it against eight masked
+streams deadlocked. `drain_timing()` already synchronises on that
+adapter's own event, which is the right scope, and a per-slice wall time
+must not wait on the other slices anyway or every slice reports the
+slowest one's figure. Fixed.
+
+The card did not recover from being killed. Since then every process on
+gfx1201 stalls inside `.to("cuda")` with a few hundred MB transferred and
+the GPU at 2-11%; a bare `torch.cuda.init()` does not return in three
+minutes where it normally takes seconds. The machine itself is fine --
+load 1.19, 114 GB free, nothing of mine running, no KFD processes -- so
+this is the driver or the card, not contention.
+
+**Nothing of mine is running there and nothing is queued.** A GPU reset
+(`rocm-smi --gpureset -d 0`, needs root) or a reboot is the remedy and
+both are the user's call on the user's machine, so neither has been
+attempted.
+
+**What that blocks:** gfx1201's corrected 1/2/4/8-way sweep (the numbers
+quoted for 1.11 -- 1.048 / 1.396 / 2.341 -- are from the run whose
+eight-way cell hung, so the first three cells are measured and the fourth
+is not), and the cross-process full-die control that would say whether
+the 2.12 at `16+16` is time-slicing.
+
+**What it does not block:** everything on gfx90a, which is a different
+machine and is idle and healthy. 1.12 is complete there -- three runs,
+both offsets, the same-model control beside it.
+
+The lesson is narrower than "be careful": a sync added to fix an
+instrument is itself an instrument change, and this one went straight
+into an eight-thread loop without being tried at two threads first.

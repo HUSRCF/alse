@@ -279,9 +279,12 @@ def main() -> int:
         print(f"loading {name} ...", flush=True)
         pipelines[name] = harness.build_pipeline(name,
                                                  drop_text_encoders=False)
+    print(f"  {len(pipelines)} pipeline(s) loaded; building adapters ...",
+          flush=True)
     adapters = [harness.make_adapter(name, pipelines[name], args,
                                      seed=args.seed + i)
                 for i, name in enumerate(slice_models)]
+    print("  adapters built; releasing text encoders ...", flush=True)
     released = 0
     if not args.keep_text_encoders:
         for pipeline in pipelines.values():
@@ -307,7 +310,8 @@ def main() -> int:
         if left.installed_mask != left.requested_mask:
             raise SystemExit(f"mask readback differs for slice {i}")
 
-    print(f"warming {args.ways} slices of {widths} units ...", flush=True)
+    print(f"streams installed; warming {args.ways} slices of {widths} "
+          f"units ...", flush=True)
     for adapter, width in zip(adapters, widths):
         harness.warm(adapter, pool, width, args)
 
