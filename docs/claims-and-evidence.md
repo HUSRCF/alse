@@ -240,8 +240,10 @@ should be quoted until the table is rebuilt from these.
 | **Claim** | SDXL at 52 units beside **CogVideoX-2b** at 52 pays **4.94**, where the same slice beside another SDXL pays **1.273**. The video tenant pays **1.02** -- it is not a shared cost, it is one-directional. |
 | **Evidence** | gfx90a, idle machine, one process, wall clock with the device synchronised, six episodes. Solo 182.4 ms (SDXL) and 790.8 ms (CogVideoX), both on the measured quota curve. Co-run 900.4 and 805.6. The same-model control at the same widths ran immediately afterwards on the same card and read 1.273. |
 | **Control** | The post-episode solos return to 182.3 and 804.8, `empty_cache` gives 189.3 and 797.7, and destroying the peer stream gives 182.3. Nothing persists, so this is contention and not process state. |
-| **Scope** | These two models at these workpoints, at an even split, on CDNA2, with SDXL at offset 0. The offsets-swapped control -- which separates "the model" from "the position on the die" -- was lost to a reboot and is pending. |
-| **Falsifier** | The swapped run reading 4.94 for whichever model sits at offset 0. That would make it a position effect, not a model effect. |
+| **Replication** | Three runs on an idle card. SDXL's co-run step is **900.4 / 901.3 / 909.8 ms** against a solo of 182-186, so **4.937 / 4.865 / 4.887**. CogVideoX pays **1.019 / 1.026** in the two runs whose solo was taken warm; the third's solo was cold at 888 ms against the 790 it settles to, so its 0.907 is measured against a bad denominator and is not used. |
+| **It follows the model, not the die position** | The falsifier was to swap the offsets. With CogVideoX at offset 0 and SDXL at 52, SDXL still pays **4.887**. The penalty travels with the tenant, not with the half of the die it was given. |
+| **Scope** | These two models at these workpoints, at an even split, on CDNA2. Other splits are not measured; neither is gfx1201. |
+| **Falsifier** | A split where SDXL beside CogVideoX costs what SDXL beside SDXL costs. |
 
 **This contradicts 1.5**, which says mismatched tenants cost 1.00-1.06
 per side. 1.5 was measured through the stale-reading path described in
