@@ -300,15 +300,18 @@ def coordinator(args) -> int:
             raise SystemExit(f"{args.maskable_units} units do not divide "
                              f"into {args.ways} equal slices")
         widths = [args.maskable_units // args.ways] * args.ways
-    if sum(widths) > args.maskable_units:
-        raise SystemExit(f"{widths} exceeds {args.maskable_units} units")
+    if sum(widths) > args.maskable_units and not args.allow_overlap:
+        raise SystemExit(f"{widths} exceeds {args.maskable_units} units; "
+                         f"pass --allow-overlap if that is the point")
     if models is None:
         models = [args.model] * len(widths)
     if len(models) != len(widths):
         raise SystemExit(f"{len(models)} models for {len(widths)} slices")
     offsets, cursor = [], 0
     for w in widths:
-        offsets.append(cursor)
+        # Overlapping masks all start at 0: "the whole die each" is the
+        # arrangement, not "two slices that happen to intersect".
+        offsets.append(0 if args.allow_overlap else cursor)
         cursor += w
 
     rundir = args.out.parent / (args.out.stem + ".d")
@@ -544,6 +547,15 @@ def main() -> int:
                              "width's measured curve before the run is "
                              "called invalid. The mask cannot be read "
                              "back, so this is the readback.")
+    parser.add_argument("--allow-overlap", action="store_true",
+                        help="let the slices' masks overlap, so that two "
+                             "processes can both be given the WHOLE die. "
+                             "That is the control for the cross-process "
+                             "result: if two disjoint halves and two "
+                             "whole-die processes cost the same, the CU "
+                             "mask is buying nothing between processes "
+                             "and what is being measured is the hardware "
+                             "scheduler time-slicing them.")
     parser.add_argument("--diagnose", action="store_true",
                         help="a fourth solo after empty_cache, which is "
                              "the control that killed 1.11")
