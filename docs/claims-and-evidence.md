@@ -252,6 +252,28 @@ per side. 1.5 was measured through the stale-reading path described in
 withdrawn here, but the even split has been and it fails.
 
 
+### 1.13 CU masks partition within a process and not between processes
+
+| | |
+| --- | --- |
+| **Claim** | Two processes co-running on gfx1201 cost each other **2.10x** whether their CU masks are **disjoint halves** or **both the whole die**. The mask is not doing the partitioning; the hardware scheduler is time-slicing them. Two *threads* of one process on the same disjoint halves cost **1.37x**, so the mask works within a process and stops working across the process boundary. |
+| **Evidence** | `scripts/run_amd_xproc_corun.py`, one process per tenant, `ROC_GLOBAL_CU_MASK` per process, default stream, 60 s window. Disjoint `16+16`: solo 144.6 / 145.6 ms, co-run 305.8 / 308.7, externality **2.115 / 2.120**. Whole die each (`--allow-overlap`, both masks `0xffffffff`): solo 112.8 / 112.6, co-run 236.8 / 236.7, externality **2.100 / 2.103**. `experiments/probes/gfx1201/xproc/`. |
+| **The mask is applied -- that is checked, not assumed** | It cannot be read back from HIP, so the harness verifies it against the measured quota curve and refuses the run otherwise. A masked solo reads 144.6 ms at 16 units where the same process unmasked reads 112.8; a mask that had failed to apply would read 112.8. So the mask holds in solo and stops mattering under co-run. |
+| **"Solo" is verified, not scheduled and hoped for** | The workers share a timetable of absolute times with staggered solo slots, every phase records its wall interval, and the coordinator checks afterwards that each solo interval intersects no other worker's interval and that the co-run windows do intersect. Both runs came back valid. |
+| **What it costs, in aggregate step rate for both tenants together** | one process alone on the whole die **8.87/s**; two threads of one process at `16+16` **9.54/s**; two processes with the whole die each **8.45/s**; two processes on disjoint halves **6.54/s**. Masking across processes is **worse than not masking**, because each process is restricted to half the units and is time-sliced anyway. |
+| **Scope** | gfx1201, SDXL against itself, two tenants, one workpoint. gfx90a is not measured. Whether a different mask mechanism (a per-queue rather than per-process mask) behaves differently is untested. |
+| **Falsifier** | A cross-process arrangement whose disjoint-mask externality is materially below its whole-die-each externality. |
+
+**Why this matters more than its size.** Every co-run number in this
+project, and the whole partitioning mechanism, is measured with threads
+of one process. A deployed multi-tenant system is normally one model
+server per tenant -- separate processes. On this stack that arrangement
+gets no spatial partitioning at all, so the mechanism this project is
+about is available only to a runtime that holds all tenants in one
+address space, which is what `burstserve` does and is worth saying out
+loud rather than assuming.
+
+
 ## 2. Negative results
 
 These were pre-registered and failed. They are results, not gaps.

@@ -5273,3 +5273,51 @@ both offsets, the same-model control beside it.
 The lesson is narrower than "be careful": a sync added to fix an
 instrument is itself an instrument change, and this one went straight
 into an eight-thread loop without being tried at two threads first.
+
+## 2026-09-05 The cross-process control: the mask buys nothing between processes
+
+Two processes on gfx1201, one tenant each, `ROC_GLOBAL_CU_MASK` per
+process, 60 s window, solo slots staggered and verified disjoint after
+the fact:
+
+    arrangement                 solo ms      co-run ms    externality
+    disjoint halves, 16+16    144.6 145.6   305.8 308.7   2.115 2.120
+    whole die each            112.8 112.6   236.8 236.7   2.100 2.103
+
+**Identical.** Giving each process the whole die costs the same as giving
+each a disjoint half. The CU mask is not what separates them; the
+hardware scheduler is time-slicing two processes, and it does that
+whether or not they were told to stay out of each other's units.
+
+The mask *is* applied -- that was checked rather than assumed, because it
+cannot be read back from HIP. A masked solo reads 144.6 ms at 16 units
+where the same process unmasked reads 112.8. So the mask holds when the
+process is alone and stops mattering when it is not.
+
+In one process, two threads on those same disjoint halves cost **1.367**.
+So the partitioning this project is about works, and works only inside a
+process.
+
+In aggregate step rate, both tenants together:
+
+    one process alone, whole die       8.87 /s
+    two threads, one process, 16+16    9.54 /s   <- partitioning helps
+    two processes, whole die each      8.45 /s
+    two processes, disjoint 16+16      6.54 /s   <- masking HURTS
+
+Masking across processes is worse than not masking: each process is
+restricted to half the units and is time-sliced anyway, so it pays twice.
+
+**What this does to the framing.** A deployed multi-tenant serving system
+is normally one model server per tenant. On this stack that arrangement
+gets no spatial partitioning at all. The mechanism is available only to a
+runtime that holds every tenant in one address space -- which is what
+`burstserve` does, and which has been an unexamined assumption in every
+measurement here rather than a stated precondition. It is a precondition,
+and now it is stated.
+
+It also retires the worry raised earlier today that the in-process
+numbers were contaminated by the shared allocator and that "two processes
+is the arrangement nobody here has measured". Two processes *has* now
+been measured, and it is not a cleaner version of the same experiment --
+it is a different and worse mechanism.
