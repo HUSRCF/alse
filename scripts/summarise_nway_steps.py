@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Read the step-level N-way runs. The ratio here is NOT a co-run penalty.
+"""Read the step-level N-way runs and print 1.11's table from them.
 
-This produced claim 1.11 and then killed it. The `after` and `emptied`
-columns are why: `after` is a solo measured once the episodes are over
-with every peer idle, and it comes back equal to the co-run; `emptied` is
-the same solo with `torch.cuda.empty_cache()` first, and it comes back
-equal to the *pre-episode* solo. So the ratio in the `ratio` column is
-how badly N concurrent adapters fragment one process's caching allocator,
-not what one slice pays for its peers. See docs/claims-and-evidence.md
-3.10.
+**Read `ratio` only from runs timed by the wall clock.** The `after` and
+`emptied` columns are the controls that decide whether a ratio means
+anything: `after` is a solo re-measured once the episodes are over with
+every peer idle, and `emptied` is the same solo after
+`torch.cuda.empty_cache()`. Both must come back to the pre-episode solo.
+On 2026-09-04 they appeared not to, and 1.11 was withdrawn for a day on
+the strength of it; the elevation was a stale `last_step_seconds` being
+repeated, not the allocator. See 3.10, which is the withdrawn entry now.
 
-The columns are kept and the header says what they are, rather than the
-script being deleted, because the runs are evidence and because the same
-shape is worth recognising the next time it appears.
+Runs written before the timing fix have an `event_p50_s` that can differ
+from the wall figure by 2x and should not be read.
 """
 
 from __future__ import annotations
@@ -57,7 +56,7 @@ def main() -> int:
         raise SystemExit(f"no runs under {args.run_dir}")
 
     rows = []
-    print("NOT a co-run penalty -- see docs/claims-and-evidence.md 3.10.")
+    print("after and emptied are controls: both must return to `solo ms`")
     print("  after   = solo re-measured with every peer IDLE")
     print("  emptied = the same solo after torch.cuda.empty_cache()")
     print()
@@ -83,6 +82,11 @@ def main() -> int:
             if any(v is not None for v in vs) else None
         label = (f"{widths[0]}" if len(set(widths)) == 1
                  else "+".join(str(w) for w in widths))
+        models = d.get("slice_models") or []
+        if len(set(models)) > 1:
+            # A mean solo over two different models is not a number; the
+            # per-slice column is the one to read in a mismatched run.
+            label += " mix"
         rows.append({"ways": ways, "slice_widths": widths,
                      "reverse_offsets": d.get("reverse_offsets", False),
                      "steady_mean": steady, "episode_1_mean": first,
@@ -106,9 +110,8 @@ def main() -> int:
 
     print("\nratio   = last episode's co-run over the pre-episode solo.")
     print("ep1     = the first co-run episode.")
-    print("A run whose `emptied` returns to `solo ms` measured the")
-    print("allocator. Runs without --diagnose have no `emptied` column and")
-    print("cannot be told apart from one that did.")
+    print("A run whose `after` or `emptied` does NOT return to `solo ms`")
+    print("is not measuring co-run and its ratio must not be published.")
     if args.json:
         args.json.write_text(json.dumps(rows, indent=1) + "\n")
         print(f"-> {args.json}")
