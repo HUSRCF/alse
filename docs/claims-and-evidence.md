@@ -936,15 +936,20 @@ near priority (+181.7% miss).
 38 wins, 1 loss, 1 tie on miss. **Two slices beat four**, and the
 pre-registration predicted four.
 
-**1.11 predicted exactly this, from hardware, on the other
-architecture.** `prereg-intra-tenant.md` charged its four-way arrangement
-1.297 -- 1.3's *pair* at 16+16 -- and said out loud that the
-approximation was the number its prediction turned on. Measured, a slice
-with three same-model peers pays **+43.8%** over the same slice with one,
-and the burst arithmetic on gfx90a's measured curves puts the optimum at
-**two** ways, 3.49 s against 3.63 s at four. expC found two beating four
-on a different device, in a scheduling campaign, with no cost model in
-the loop. The mechanism and the scheduler agree.
+**1.11 explains it, and on the device the campaign actually ran on.**
+`prereg-intra-tenant.md` charged its four-way arrangement **1.297** --
+1.3's *pair* at 16+16 -- and said out loud that the approximation was the
+number its prediction turned on. Measured on gfx1201 with the corrected
+instrument, four slices of eight units pay **2.318**, which is 1.8x what
+was charged and **+77.3%** over the pairwise entry for a slice of that
+width. `c4`'s grant is four slices of six units beside a video tenant on
+eight, so 2.318 is the nearest measured arrangement rather than the exact
+one, and the direction is not in doubt.
+
+*(This paragraph was written twice and wrongly both times: first
+attributing c4's loss to a gfx90a number, then withdrawing the
+explanation altogether when 1.11 was briefly withdrawn. The measurement
+that settles it is on gfx1201 and is dated 2026-09-05.)*
 
 **Design validity, checked rather than assumed.** No cell recorded a
 safety failure and none ran unmasked, across all 160. Forty cells per
@@ -962,9 +967,11 @@ times and 8 units 3360 times, and 3360 is exactly 4 x 840, so
 video tenant idle, and `8+6+6+6+6` is `24+8` with urgent split four ways.
 The two counters are consistent, which is the check that caught expB.
 
-**What it does not show.** gfx1201's N-way penalty is still unmeasured,
-so *why* four slices lose is inference from gfx90a rather than
-measurement on the device the campaign ran on. That sweep is next.
+**What it does not show.** The penalty is measured at four equal slices
+of eight units and `c4` grants four of six beside a video tenant of
+eight, which is a mismatched arrangement and by 1.12 a much more
+expensive one. So the size of the effect on `c4` specifically is bounded
+below by 2.318 rather than equal to it.
 
 
 ### 3.10 That the N-way co-run penalty was the memory allocator

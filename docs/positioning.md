@@ -175,23 +175,20 @@ first time -- it survives the fast co-run state at a 6% margin and misses
 in the slow one -- and the number it turns on, the same-model penalty
 with **three** peers rather than one, had never been measured.
 
-**It was measured, and then the measurement was withdrawn.** What
-follows is struck through: the N-way penalty it reports turned out to be
-one process's caching allocator fragmenting, not a co-run cost, and
-`torch.cuda.empty_cache()` removes it entirely. See 3.10. The *campaign*
-result stands on its own -- two slices did beat four on gfx1201, in expC,
-with no cost model in the loop -- but the explanation below is gone.
-
-~~**It has been now, and it did not survive at the size it was written
-at.** On the solo curves with a pairwise stand-in, the whole die split
+**It has been now, on the device the campaign ran on, and it did not
+survive at the size it was written at.** *(The paragraph below was struck
+through for a day on 2026-09-04, when 1.11 was withdrawn for what turned
+out to be a stale-timing artefact. It is restored, with the numbers
+re-measured on gfx1201 rather than borrowed from gfx90a.)* On the solo curves with a pairwise stand-in, the whole die split
 four ways within the priority tenant finished the burst in 2.79 s against
 3.70 s serial on gfx1201 and 3.12 s against 3.83 s on gfx90a. With the
-N-way penalty measured -- contribution (4), claim 1.11 -- gfx90a's best
-is **two** ways at 3.49 s, **8.9%** over serial rather than 18.5%, and
-four ways is 3.63 s. Eight ways needs a burst of eight to be reachable at
-all, and there it costs **14.12 s** against 7.66 s for not splitting.
-(Regenerated 2026-09-04 on the step-level penalties, which are the
-smaller ones; on the call-level penalties it read 3.55 s and 7.3%.)
+N-way penalty measured -- contribution (4), claim 1.11 -- the arithmetic
+has to be redone, because every version of it published so far read a
+table that is now withdrawn. What survives without any table is the
+campaign: `expC` found **two slices beating four** on gfx1201, by -22.3%
+on miss and +13.3% on video, with no cost model in the loop. And the
+measured penalty on that device says why: four slices of eight units pay
+**2.318** where the pre-registration charged **1.297**.
 
 So the shape of the result holds and its size does not: between tenants,
 partitioning loses to priority; *within* the priority tenant it helps,
@@ -199,7 +196,9 @@ by single digits rather than by tens of percent. **And where the optimum
 sits is not what a pairwise model predicts** -- which is the contribution
 rather than the disappointment. The model everyone uses is pairwise, and
 the error it makes grows with the number of slices, which is exactly the
-regime a partitioning scheduler operates in.~~
+regime a partitioning scheduler operates in: on gfx1201 a pairwise table
+is out by **+10.5%** at two slices, **+77.3%** at four and **+237.8%** at
+eight.
 
 gfx1201's N-way penalty is still unmeasured and is queued behind `expC`.
 If it behaves like gfx90a's, `prereg-intra-tenant.md`'s predicted 5.01 s
