@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import os
 import statistics
 import sys
 import threading
@@ -443,7 +444,24 @@ def main() -> int:
     print(f"\n{args.ways} ways x {widths}u  last-episode mean externality "
           f"{payload['externality_mean_last_episode']:.4f}", flush=True)
     print(f"-> {args.out}", flush=True)
-    return 0
+
+    # Leave without running the interpreter's teardown.
+    #
+    # 2026-09-06: `mm_16_16` wrote this file, printed this line, and then
+    # sat in `kfd_wait_on_events` with the CPU clock frozen and the GPU
+    # at 3% until it was killed 40 minutes later. `--diagnose` destroys
+    # the peer streams with `hipStreamDestroy` while torch still holds
+    # them -- the block above calls that a one-way door in as many words
+    # -- and at teardown something waits on an event belonging to a
+    # stream that no longer exists. The wait never returns.
+    #
+    # Everything measured is on disk one statement earlier and every
+    # print in this file is flushed, so there is nothing for teardown to
+    # do. The campaign behind it, however, dies on the `|| exit 1`, which
+    # is how one stuck teardown cost the rest of a sweep.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 if __name__ == "__main__":

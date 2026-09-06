@@ -1,0 +1,148 @@
+# Code identity of the X570 tree that ran the mismatched-splits sweep on
+# gfx1201
+#
+# Captured 2026-09-06, card idle at 0% and no python runner alive, before
+# the sweep started. Two files were synced in beforehand --
+# scripts/campaign_mismatched_splits.sh and
+# docs/prereg-mismatched-splits.md -- and every other file is as the
+# step-level sweep of 2026-09-05 left it. In particular
+# src/burstserve/runtime.py is still 139b944^, before the
+# max_steps_per_round flag, which is the pin that keeps every hardware
+# campaign here commensurable. This sweep does not use the runtime.
+#
+# scripts/run_amd_nway_steps.py hashes identical to dd's copy, checked
+# before launch:
+#   e7f7c5c46870c4b68935dcbeba3d976562f400399abb0d0f083cefc628dfd579
+#
+# What this sweep exists to settle: whether claim 1.5 survives on the
+# device it was measured on. 1.5's harness reads last_step_seconds every
+# iteration and that attribute goes stale (3.10); 1.12 reads 4.93 on
+# gfx90a where 1.5 reads 1.00-1.06. The sweep re-measures the same-model
+# comparator in the same session, because the five same-model pairs
+# already on disk are from the pre-fix instrument and their allocator
+# control fails -- 2048 ms against a solo_before of 504 at eight ways.
+# Verdicts and the invalidation rule are fixed in
+# docs/prereg-mismatched-splits.md, written before the first cell.
+#
+f2dbc867708337eb1da6276560f55159d2941dc7b965e73ba22f6ccc6b840af4  scripts/amd_cogvideox_adapter.py
+dc6b24510ab468c36a14ae28cf9ad16df46fa169b28e6d146f2234eac5464a14  scripts/amd_framework_calibration.py
+1066a1c3ed6aa2332c2a968c33fd0d230ffe81c8f8abd50b9c23cf48ac05ce1f  scripts/amd_load_workload.py
+0d558e3fc1bd58c97d4bf129224dba054fdda5a382018dd80a22500f99c78652  scripts/amd_matmul_load.py
+0ae60e4103907a5262c7ac04d4b11c256ab58a08ca63b652cd822de1f9c8870d  scripts/amd_profile_cell.py
+eb9f93cc107d29abe119ac7da35c0228813ef74b0b8e71796d7bbaf1fdcb0d32  scripts/amd_rotation_workload.py
+07d0a0d7b418c369e644c9bfe56843c8e6b2bb1f9ba3220eaef6c3c0d25eae3b  scripts/amd_sdxl_adapter.py
+cf95e5a1b9f8e4ef1854ba98fed70516af9f2aee5f26841004ea828e62786209  scripts/amd_stream_quota_probe.py
+88bd808f79dbf2d5ffec065e14d0744ee7340b2ada07cf1cb92b3ff6b4f42b28  scripts/analyse_experiment_a3.py
+295c44c909862844f6a27da28d224dc70caf019b4ca3e52b4240ea8bc9d7c973  scripts/analyse_experiment_a.py
+3c72689c78ec429ea7804a4e9d9de3127a20534ae799f7ad782eba8b85a97a07  scripts/analyse_overlap_trace.py
+ce79fc0d0802b021b518c7890693afabc0cb7e2d7de8c367ef113f6abc71cdc5  scripts/analyse_samemodel.py
+5ea263c6dad2cf34d2dcaa65f8c5045fda87d975ebcbfe09e8bffa78e568a16a  scripts/calibrate_pairing_tolerance.py
+12d5160d2d6953560252a6f6430969d7747dc59b3e54b7b2deb24abb8aa32ef4  scripts/campaign_2x2.sh
+56e115bb9705859084cfa4bfdb2ff2297cf0d9ab7473f835edabcd47e8df0c67  scripts/campaign_boundary.sh
+335c04d7511cf60e554dd63e40099cb739a4378750002e612be4364dd64a5660  scripts/campaign_experiment_a2.sh
+43920e997b471aacf8648376dbf202652a24845e522314454c55b66c2a9425fe  scripts/campaign_experiment_a3.sh
+23fbe6726112e4c2b906d5ee7155be11ddb6e1e906c4137b1dc88acbf8ed2952  scripts/campaign_experiment_a.sh
+1f6073c607bb5bd45ce84cd01c6943cb4ce91f257156bbfb134aa050ebe2e4ff  scripts/campaign_intra_tenant.sh
+405ccf4a2087af45a9b98073bce4fcbbc87cddcb307130485bb22a664b432b5f  scripts/campaign_mismatched_splits.sh
+e2b888ffe3c35060dfeb931767509197e8460a79e9a95b70fea79192cad466db  scripts/campaign_nway_steps.sh
+bc9430c5cc3a30b69a45ae6d632258a54cbababdaca8ee8ca3945de03b7fbbfe  scripts/campaign_priority_baseline.sh
+79982ceef4f00e4c49ee2c9ad5367ca6f47c32e42ad7946d7e72b8a8f62d2a2b  scripts/campaign_reviewer_gaps.sh
+315a3d2d0b0fe2a2bcb00f7f8eaa9a7a6f9084abc4d94e7153b45f058ca161fc  scripts/download_phase0_wheelhouse.sh
+780752848956b2ebcc1a76bfeb0c9cc2e58c833977f93a721d6d6ab16df5eee2  scripts/freeze_gate_c_algorithm.py
+f898742f1ee223318905a48803f62d1f30d4d8684c705b368f01d7cdaf52e79d  scripts/measure_load_transfer.py
+a7ded8f7a9dd5076bb45e8628219047bb166fe431d4a0d902566d31940413b49  scripts/rebuild_quota_tables.py
+f062a61b66aba25db1407fa8310bd99dba39edfb2e3b5302aecb2181fcdb2fd7  scripts/run_amd_action_churn.py
+911cde2cbd9c9746371efb34e2cdcd369977790c9cd089e542a8adcbc61d42f9  scripts/run_amd_asle_bitexact.py
+bb2077ed276f9ffdd1f8fbb1c08560e4fdaecde181864ba8c00a024110917743  scripts/run_amd_cold_model.py
+3c6eed9e2e4705375a781706d65a2b3efe75fd1726633cce0c0363e273357642  scripts/run_amd_corun_mape.py
+8313520195bb8eeac8265adb373d602fc948c41d33bcfec18e0ba1804dc3ff62  scripts/run_amd_corun.py
+3163861a6b5def2bf1a041b4956dc847fd797f1c9ebed9d9b388bb1a9a64d7eb  scripts/run_amd_externality_table.py
+f0b03e912aba1a50e04a30bbade2b77b3b58affd9fbf1beef8cb65068ff171ef  scripts/run_amd_gate_b.py
+d67321fba70773ec46550ff98da3cd74bcff3111d28d50a286e7682ea43b32e6  scripts/run_amd_inproc_corun.py
+c6a6abc97fe9f8a3e78fb8e62bc0f29cfbb8f3b07cd6bf21fae53053870afa17  scripts/run_amd_latch.py
+c9c65b85771ab7fcd4b151f839381e4827d8ec52352cbaaa0014edf6270201b0  scripts/run_amd_mask_actions.py
+c407874d9bce6a9d6dea4b9d5616146c139b7479747a2a5ed5b8b77f71a3c083  scripts/run_amd_matrix_cell.py
+30f44515f0651d3284213c2f5e6d8c52356ebd9a9c031c9edaa0319a578e0ed7  scripts/run_amd_matrix.py
+57edd0f96a443a14a86a750e1052583f999f6d111a212bf9021f1ab650afaecd  scripts/run_amd_mismatched_corun.py
+e7f7c5c46870c4b68935dcbeba3d976562f400399abb0d0f083cefc628dfd579  scripts/run_amd_nway_steps.py
+8e6494e5042fc9bf535d72a355ee34f8bb1ca14946491a9edb585728938ddee3  scripts/run_amd_overlap_events.py
+aad558797c6ef157ea857e6d6f06034cdc6e04db538ac6973b21e81752be1378  scripts/run_amd_overlap_trace.py
+64f649d3dad9320019d8035f32b65db8930b28fa1dfc33c91272cb71270cb33e  scripts/run_amd_power_sweep.py
+fb4aa6325924c96e78f680736268a2ce2f8b5488692762fda00b1bfb2aff9c25  scripts/run_amd_queue_pressure.py
+9cff269b77475d730ef5cda733cad7c20a0e2c959a184e003d4438f799a7474a  scripts/run_amd_residency.py
+dea91855d97fdf63bca5500270046f8d240326c5727a78590ae203f8b425441f  scripts/run_amd_runtime_loop.py
+ea22012cde12a989e96281705423ed8beb58bb3cb84c9e4cff25fbdf4a91a92d  scripts/run_amd_soak.py
+0de1454d5e2c7419351cfea6b0d314955fa043db9cbe01691e1f316e076252de  scripts/run_amd_step_ratio.py
+693b8cd97eff28b681f2c00e7d877d95bfd294b1c2cd9ad7991f788c10279af7  scripts/run_amd_stream_mask_penetration.py
+5dadadd407bf19b79c0faaccc39dbc9a3eab2494d9725406521b61c6f3b8b4c3  scripts/run_amd_transition.py
+20cc8124a28c16c0ca55f26611f9e88f2c30d0eb04327cc2a21c3adf367a7194  scripts/run_amd_xproc_corun.py
+9f296a3620b429a0c987b6d9ddfc6d073a2c5e60111586076c7e5660ba3e8b65  scripts/smoke.py
+52f3dae68058a7e773da227285f35fd2df64df5b494d0318e740ba3fe5426ba4  scripts/summarise_grid.py
+21f71bf73e53d10018becec3c8d97046d4c0e67c119527afad9a7f68cac408bc  scripts/summarise_nway_steps.py
+597e8bee915ea197b1264812d206e4a95f1719ad19cd8bec9604d5063544d22c  scripts/verify_gate_b_amd.py
+066a3db4f28081032d0a6d51eaba521073ccd01684ff3df37f930a4bce51b8cb  scripts/verify_gate_c.py
+733e0065e6f3439b10094c636254d5090f6520c13fb5a79c3b7c333dd9e3454d  src/burstserve/amd_cu_runner.py
+0667b5f0b63be1258f5f0f315a8affbcefd60ccb21072f8e9716d4c80c2c0925  src/burstserve/asle_runner.py
+5059641722533dd60ba93fb4ff7bd5d1f5d18fe538d8947316ba07b2ca0a3aad  src/burstserve/correctness_runner.py
+dd78a16f2327cee892f7cc74e17f125367ca60daeb73a12451536aa08b08cc2f  src/burstserve/currency_counterexample.py
+78aadd727e795574a17ce7797e1ceabcafbf1c152826fb06760baec4ba6075dc  src/burstserve/deadline_feasibility.py
+41ed06876ee9c13f9f05065beaedd27d4ee0360cfaf837645264510503025c7e  src/burstserve/environment.py
+78d2e831b812c19fc2f5b5bb0f0c5de2621322809fbd2ebdda610b353a8e31a9  src/burstserve/executor.py
+6fcb8796080a06b6193996365b442b7f4fc3ae5a52575f5ba25b4d8b1dc7ea6a  src/burstserve/gate_a_results.py
+30746e9e0b89087fcf7d0ebdb47cde353e13f2e51a5c2dc71621118829b8a74f  src/burstserve/git_provenance.py
+6935a8e8bed5d61ecbfff947377fc2cadaffa164803c6f2d12f518a87090e35d  src/burstserve/__init__.py
+b141a260888158f98ebfb6a54aa6973f7e324aab7efaf786f3837c7ebd8140ee  src/burstserve/masked_streams.py
+673622a472984931a540cb7088db61ebe58416ec085e2004487fbd249e921f71  src/burstserve/matrix_results.py
+457fc7b1ad9c40835c32d8ec1b6f7beacf39dd4812c795e337ed38b1735ca8a3  src/burstserve/nvml_events.py
+842fb82bb2b0823227f0bb04c7a129085e5924823c58fea277e1385c28561e2b  src/burstserve/policies.py
+50309f7c25f9dd1d56be64dbb1ffc1c678060af5cc195049aeb9a380c00c8f81  src/burstserve/provenance.py
+5d92eb5852e4cfff975daeb667c3bcfd53652a3aeb991462f215acd990980ace  src/burstserve/queues.py
+34dc198c6528c7348bb4797d9c55710fde4f75c8a18483ed9b4f606414a0319f  src/burstserve/quota_model.py
+20b75038e66048e1f1cfa35f6bd502b1a8a7d98484c56568303024b60a880320  src/burstserve/results.py
+5433f0dcc458f5c9f3d2a1c8c079ccd903723bd3e48bd61b055af50ac75fa808  src/burstserve/runtime_lock.py
+59ea30986ab82df8ce6281a956690cf02914ba0c5d983cbbb0276ab5f28f9e02  src/burstserve/runtime.py
+a5486ed178d9190653a0557ef2061c1995a2b27e7950d98022892ca3661b5281  src/burstserve/sim/accounting.py
+015595857b1eedd83e336c6987806501e992d284450f68c4dfdb58c3191be502  src/burstserve/sim/__init__.py
+d308f95658eb74093a290b3bf72f7b68010e17a2bb7208c0911cd18cbf140098  src/burstserve/sim/io_model.py
+e817fc092e02307c025fc7986db97d6bb01da643affdf1276585b26fcaeefa60  src/burstserve/sim/model.py
+4a8065217e3f5a428dc5a1cff67772b66e1b3afe073582f66c41910ebdc1a4cc  src/burstserve/sim/protocols.py
+f9e78137135be55b596914da850b9ee57c00fdf82102978e7bf58596151473ba  src/burstserve/sim/trace.py
+1df5edb61f2f93b580241bf37ad73641165f85264948b81494c780405de500b6  src/burstserve/smctrl_runner.py
+fa5487ea2c2e283c6c31b8ae83c06afb654f7bf777ff266a5df7ee647f3436b0  src/burstserve/trace_sim.py
+64066460c7957b8255d3d3d074017ce8d8e44fb717547d2ee9687607ce015744  src/burstserve/vendor_import.py
+086237611c306052ffede148da3e64449130b730e8a4cb168d2eae5ccf0996eb  src/burstserve/workload.py
+
+# ---------------------------------------------------------------------
+# Amended 2026-09-06, mid-campaign, after nine of thirteen runs.
+#
+# `mm_16_16` wrote its output file and printed its verdict, then sat in
+# `kfd_wait_on_events` with its CPU clock frozen and the GPU at 3% for
+# 35 minutes. `--diagnose` destroys the peer streams with
+# `hipStreamDestroy` while torch still holds them, and at interpreter
+# teardown something waits on an event belonging to a stream that no
+# longer exists. SIGTERM cleared it and the card came back to 0% -- this
+# is not the 2026-09-05 wedge, which was a device-wide sync from eight
+# threads and survived the kill.
+#
+# Two files changed before the remaining four runs:
+#
+#   scripts/run_amd_nway_steps.py
+#     was  e7f7c5c46870c4b68935dcbeba3d976562f400399abb0d0f083cefc628dfd579
+#     now  800be9bbfe498c87aeef9e6affb1799af5df487bd9f8791ec446907ceafdf910
+#     diff: sys.stdout.flush(); sys.stderr.flush(); os._exit(0) after the
+#     final flushed print, plus the comment explaining why. It runs
+#     strictly after args.out.write_text(), so no measured quantity in
+#     this campaign or any earlier one can differ because of it.
+#
+#   scripts/campaign_mismatched_splits.sh
+#     was  405ccf4a2087af45a9b98073bce4fcbbc87cddcb307130485bb22a664b432b5f
+#     now  3647263eac6fbcc27db3cbb1ea44ebd765e0202b273e53ae778672ba16127712
+#     diff: the per-run check is now "was the file written" rather than
+#     the python exit status. Killing the hung run returned 143 and the
+#     `|| exit 1` took the remaining four cells with it.
+#
+# So runs solo_cog_32, same_sdxl_{4_28,8_24,16_16,24_8,28_4} and
+# mm_{4_28,8_24,16_16} were produced by the first hash and
+# mm_{24_8,28_4}, mm_16_16_rev and same_cog_16_16 by the second. The
+# nine already on disk were NOT re-run: nothing about them changed, and
+# re-running them would have replaced evidence rather than added any.
