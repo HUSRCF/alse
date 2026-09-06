@@ -143,6 +143,14 @@ def run_episode(adapters, streams, widths, args):
         prepared.append((adapter, executor))
 
     walls: list[tuple[float, float, int]] = [(0.0, 0.0, 0)] * ways
+    # Per-step wall intervals, appended UNCONDITIONALLY -- `windows`
+    # below is gated on `adapter.last_step_seconds` being truthy, so a
+    # slice whose event reading never arrives contributes nothing there.
+    # Added 2026-09-06: 1.14 found the fast tenant's event p50 tracking
+    # its own solo while the wall clock read 6x that, and these files
+    # could not say whether it was blocked or slowed because only the
+    # event readings were stored. Now both are.
+    wall_windows: list[list[tuple[float, float]]] = [[] for _ in range(ways)]
 
     def side(index):
         adapter, executor = prepared[index]
@@ -156,6 +164,7 @@ def run_episode(adapters, streams, widths, args):
             executor.run_step(quota_units=widths[index])
             ended = time.perf_counter()
             counted += 1
+            wall_windows[index].append((began, ended))
             if adapter.last_step_seconds:
                 out[index].append(adapter.last_step_seconds)
                 windows[index].append((began, ended,
@@ -191,11 +200,29 @@ def run_episode(adapters, streams, widths, args):
         return [seconds for began, ended, seconds in windows[index]
                 if began >= lo and ended <= hi]
 
+    # The same window, timed by the wall clock instead of by the event
+    # attribute. Where the two disagree the wall figure is the one the
+    # project reads; see 1.14 and the docstring.
+    wall_lo = max((w[0][0] for w in wall_windows if w), default=None)
+    wall_hi = min((w[-1][1] for w in wall_windows if w), default=None)
+    if len([w for w in wall_windows if w]) != ways:
+        wall_lo = wall_hi = None
+
+    def overlapped_wall(index):
+        if wall_lo is None or wall_hi is None:
+            return []
+        return [ended - began for began, ended in wall_windows[index]
+                if began >= wall_lo and ended <= wall_hi]
+
     return {
         "all": [series[args.warmup:] for series in out],
         "wall_per_step": [wall_per_step(o, c, n) for o, c, n in walls],
         "wall": [[o, c, n] for o, c, n in walls],
         "overlap": [overlapped(i)[args.warmup:] for i in range(ways)],
+        "overlap_wall": [overlapped_wall(i)[args.warmup:]
+                         for i in range(ways)],
+        "wall_series": [[ended - began for began, ended in w]
+                        for w in wall_windows],
         "overlap_seconds": (hi - lo) if lo is not None and hi is not None
         else None,
     }
@@ -209,8 +236,9 @@ def main() -> int:
                              "`sdxl,cogvideox-2b`. One pipeline is built "
                              "per DISTINCT model and shared by the slices "
                              "that use it, which is what a runtime does. "
-                             "This is claim 1.5's arrangement, measured "
-                             "with the instrument fixed on 2026-09-04.")
+                             "This is the arrangement claim 1.5 was "
+                             "about. Run this way on 2026-09-06 it "
+                             "withdrew 1.5 outright: see 1.14 and 3.11.")
     parser.add_argument("--ways", type=int, default=4)
     parser.add_argument("--maskable-units", type=int, default=32,
                         help="the whole die: 32 on gfx1201, 104 on gfx90a")
@@ -341,6 +369,7 @@ def main() -> int:
                 "corun_p50_s": corun,
                 "corun_event_p50_s": p50(result["all"][index]),
                 "corun_overlap_p50_s": overlap,
+                "corun_overlap_wall_p50_s": p50(result["overlap_wall"][index]),
                 "solo_at_quota_s": alone,
                 "externality": (corun / alone if corun and alone else None),
             })
@@ -348,7 +377,8 @@ def main() -> int:
                   f"ext {rows[-1]['externality']:6.3f}", flush=True)
         episodes.append({"episode": episode, "rows": rows,
                          "overlap_seconds": result["overlap_seconds"],
-                         "series_s": result["all"]})
+                         "series_s": result["all"],
+                         "series_wall_s": result["wall_series"]})
 
     # Solo again at the end: the die warms over a run and a ratio taken
     # against a colder baseline is not the ratio it looks like.

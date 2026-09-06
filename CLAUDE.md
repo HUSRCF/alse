@@ -27,14 +27,13 @@ When adding an arm, read what the arm does rather than what it is called.
 
 | | claim | evidence |
 | --- | --- | --- |
-| 1.5 | Partitioning two mismatched tenants costs 1.00–1.06 per side and **both** gain against rotation (4+28: +71.4% / +1.4%) | `docs/claims-and-evidence.md` |
 | 1.6b | Masked partitioning beats two **unmasked** full-die streams: urgent miss +0.0333 [+0.0079, +0.0592] against it | `experiments/runs/unmasked_base`, 36 cells |
 | 1.8 | Decision p99 16.6 µs; zero weight bytes after residency; an hour of load without leak | soak evidence |
 | 1.9 | Run-time choice beats **whole-die time-slicing** and the best fixed split, at no video cost: −0.0687, **cluster bootstrap over 15 seeds [−0.1521, −0.0044]**; vs `fixed_split_8` [−0.2040, −0.0276]; video a wash | Experiment A3, `experiments/runs/expA3`, 120 cells |
 | 1.10 | The partitioning gain has an **optimum width on CDNA2 and none on RDNA4** — aggregate solo throughput peaks at four ways on gfx90a and falls below the whole die at eight; the Amdahl form the cost model assumes is **refuted** there | `experiments/probes/gfx90a/`, 2026-09-03 |
 | 1.11 | The co-run penalty **counts peers, not busy die**. gfx1201, one process, wall clock: **1.05 / 1.37** at 1 / 2 ways and rising with N; four ways is +75% over the pairwise entry for a slice of the same width. Withdrawn 2026-09-04 and restored 2026-09-05 — the withdrawal was a stale-timing artefact, see 3.10, which is the withdrawn entry now | `experiments/probes/gfx1201/`, `scripts/summarise_nway_steps.py` |
-| 1.12 | **A mismatched peer costs the image tenant ~4x what a same-model peer costs.** SDXL at 52 units beside CogVideoX-2b pays **4.87–4.94** against **1.27** beside another SDXL; the video tenant pays **1.02**. Three runs, both offsets — it follows the model, not the die position. This contradicts 1.5 | `experiments/probes/gfx90a/walled_quiet/` |
-| 1.5b | **1.5 travels to CDNA2.** SDXL beside CogVideoX-2b at `52+52` of gfx90a costs **0.995** and **1.011**, inside the gfx1201 band, and both sides beat rotation (+31.0% / +6.1%) | `runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json`, 2026-09-04 |
+| 1.14 | **A mismatched pair is paced by the slower tenant, and partitioning it loses to rotation at every split.** gfx1201, all five splits, controls passing: the image tenant pays **1.689 → 26.137** as its own slice widens 4 → 28 units, because `sdxl_corun = cog_corun + 0.54 x sdxl_solo` (k = 0.531–0.560 over six runs). Aggregate step rate **5.608/s rotation against 0.629–2.889/s partitioned**. This **withdraws 1.5 and 1.5b** — see 3.11 | `experiments/probes/gfx1201/pairs_fixed/`, 13 runs, 2026-09-06 |
+| 1.12 | **A mismatched peer costs the image tenant ~4x what a same-model peer costs.** SDXL at 52 units beside CogVideoX-2b pays **4.87–4.94** against **1.27** beside another SDXL; the video tenant pays **1.02**. Three runs, both offsets — it follows the model, not the die position. It was the first reading that did not fit 1.5, and it was right | `experiments/probes/gfx90a/walled_quiet/` |
 
 1.9's effect is **asymmetric in magnitude, not frequency**: 13 wins, 8
 losses, 9 exact ties, sign test p = 0.383 — but the worst loss is +0.046
@@ -60,12 +59,19 @@ verdict 3 did **not** survive this correction — see 2.3.
 * **The adaptive policies have two actions, not five.**
   `step_matched_pairing` returns `{first: 16, second: 16}` or
   `{one: 32}`, and `deadline_aware` the same pair. The action space is
-  `{16+16, 32+0}`. Meanwhile 1.5 measures **five** splits, all of which
-  Pareto-dominate rotation, with the most asymmetric giving the largest
-  urgent gain (4+28: +71.4%). **The policy never issues the grant the
-  hardware evidence says is best.** Nothing measured so far tests dynamic
-  quota selection; it tests switching between an even split and
-  exclusive.
+  `{16+16, 32+0}`. Nothing measured so far tests dynamic quota
+  selection; it tests switching between an even split and exclusive.
+
+  **The rest of this entry is withdrawn 2026-09-06 with 1.5.** It used to
+  read that 1.5 measures five splits all of which Pareto-dominate
+  rotation, the most asymmetric giving the largest urgent gain, so "the
+  policy never issues the grant the hardware evidence says is best". 1.14
+  re-measured those five splits with the controls passing and the
+  hardware evidence now says the opposite: on a mismatched pair every
+  split loses to rotation, and the *more* die the image tenant gets the
+  worse it does. A missing action was the standing explanation for why
+  partitioning underperformed in every campaign. It is not available any
+  more, and 3.7 had already found six actions far worse than two.
 * **2.2 / 2.3** The probe and SLO-aware layer add nothing over
   step-matched pairing. Across five evaluations they are
   **indistinguishable**: 26 of A3's 30 configurations are exactly
@@ -168,24 +174,49 @@ with no table **raises rather than falling back**.
   wrote to the same path and the last overwrote the other three. Both
   guards looked at the wrong name. Fixed in the library
   (`matrix_results.output_path`) and in the campaign, pinned by a test.)
-* **The cross-process control.** Two processes at `16+16` on gfx1201 read
-  **2.12** where two threads of one process read 1.37 -- close enough to
-  exactly 2x to be the hardware scheduler time-slicing them rather than
-  partitioning them. The control is `--allow-overlap`: give **both**
-  processes the whole die. If that costs the same, the CU mask buys
-  nothing between processes, which is the deployed arrangement.
-* **gfx90a's corrected 4- and 8-way cells.** Only 1 and 2 ways have been
-  re-measured there since the timing fix.
+* **Done 2026-09-05/06 and no longer open:** the cross-process control
+  (`--allow-overlap`, now 1.13), gfx90a's corrected 4- and 8-way cells
+  and gfx1201's whole N-way sweep (both now 1.11), and the mismatched
+  splits on gfx1201 (1.14, which withdrew 1.5).
 * **Everything timed before 2026-09-05 through `last_step_seconds`** is
   suspect: that attribute goes stale when the CPU runs ahead, so a loop
-  that appends it every step records one reading N times. That is 1.5's
-  harness and the first step-level sweeps. The call-level harnesses
-  synchronise and are not affected.
-* **Queued behind expC: the same sweep on gfx1201.** That is the number
-  `prereg-intra-tenant.md`'s prediction actually turns on, and it is
-  unmeasured. Nothing is synced into X570's tree while run 2 is in
-  flight, or run 2's attestation would describe a tree that no longer
-  exists.
+  that appends it every step records one reading N times. That was 1.5's
+  harness -- now withdrawn on it -- and the first step-level sweeps. The
+  call-level harnesses synchronise and are not affected. **The rule has a
+  direction:** the tenant whose CPU races is the *fast* one, so in a
+  mismatched pair the stale reading lands on exactly the side whose
+  penalty is being measured. 1.14 shows the two instruments disagreeing
+  by 26x on that side and to 0.1% on the slow one.
+* **Open on gfx1201, named by 1.14:** whether the image tenant is
+  *blocked* between steps or *slowed* within them. The throughput result
+  is the same either way; the mechanism is not, and the fix would be
+  different. The harness now stores per-step wall times
+  (`series_wall_s`), so one re-run of `mm_16_16` decides it.
+* **Not re-measured on CDNA2:** 1.14's four asymmetric splits. gfx90a has
+  only the even split (1.12), and 1.5b was withdrawn with 1.5 rather than
+  re-measured.
+* **The pairwise externality table is still call-level on both devices.**
+  gfx90a's step-level version was withdrawn with 3.10; gfx1201's
+  same-model half now exists (`pairs_fixed/same_sdxl_*`), with every
+  entry measured **twice** -- once as each side of the complementary
+  pair -- agreeing to 0.3-3.9%:
+
+      own u   peer   step-level     call-level    call is
+          4     28   1.139 1.159      1.338       +0.19 HIGH
+          8     24   1.235 1.258      1.307       +0.06 high
+         16     16   1.324 1.376      1.237       -0.11 low
+         24      8   1.202 1.228      1.126       -0.09 low
+         28      4   1.112 1.115      1.071       -0.04 low
+
+  So the call-level table **over-charges narrow slices and
+  under-charges wide ones** on gfx1201. Same sign at the narrow end as
+  the withdrawn gfx90a step-level reading (+0.36 at 13u there) and a
+  fifth the size. It does not threaten 3.8's gfx1201 row: the deciding
+  entry is a narrow slice, where the call-level table is the
+  *pessimistic* one, and the floor with the externality off is +13.6%
+  regardless. Reported, not acted on -- switching the default needs both
+  devices measured the same way, which is the error 1.10 was found by
+  avoiding.
 
 **The one open path is closed, and not by 1.11.** 3.8 left intra-tenant
 concurrency as the only way to shorten a serial burst, and **expC closed

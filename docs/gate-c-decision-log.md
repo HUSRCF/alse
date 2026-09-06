@@ -5401,3 +5401,109 @@ CogVideoX-2b re-measured sync-free reads **4.928** against 4.937/4.865/
 4.887 before; the same-model control at those widths moved from 1.273 to
 **1.2471**, so the ratio is **3.95x**. The headline did not depend on the
 fix; the control did.
+
+---
+
+## 2026-09-06 — 1.5 withdrawn on the card it was measured on; 1.14
+
+**The comparator did not exist, and finding that out was the first
+result.** The plan was to re-measure the mismatched pair on gfx1201 with
+the corrected instrument and compare it against the five same-model pairs
+already on disk. Those five are from `nway_steps/`, written 2026-09-03/04
+before the timing fix, and **their allocator control fails**: at eight
+ways the post-episode solo reads 2048 ms against a `solo_before` of 504,
+and at `16+16` it reads 195.5 against 151.3, which is the co-run value. A
+penalty that survives the peers stopping is not an externality — the rule
+is the harness's own docstring. So the sweep grew a second half and
+measures its own baseline in the same session, and the comparator is
+fixed by construction rather than chosen.
+
+Pre-registered in `docs/prereg-mismatched-splits.md` before the first
+cell: three verdicts, a `2 x same(w)` bar, and the invalidation rule
+above applied to this campaign's own output on the same terms.
+
+**Verdict 2, and not narrowly.** 13 runs, every control back within
+3.2%, every solo within 3% of the measured quota curve.
+
+    split   sdxl solo  sdxl corun     ext   same(w)    ratio   cog ext
+     4+28    506.2 ms    855.1 ms   1.689     1.139    1.48x     1.064
+     8+24    262.1       780.0      2.975     1.235    2.41x     1.057
+    16+16    153.7       920.1      5.987     1.324    4.52x     1.050
+     24+8    124.0      1659.7     13.386     1.202   11.14x     1.025
+     28+4    122.9      3213.2     26.137     1.115   23.43x     1.006
+
+1.5 said 1.00–1.06 per side at every split. It also said partitioning
+Pareto-dominates rotation; the image tenant loses at all five, and the
+pair's aggregate step rate is **5.608/s under rotation against
+0.629–2.889/s partitioned** — the best split 1.94x worse, the worst 8.9x.
+1.5b, the CDNA2 replication with the same harness, goes with it; 1.12 had
+already contradicted it there.
+
+**The law, and it was tested out of sample.** After three splits had
+landed the residual fitted `sdxl_corun = cog_corun + k x sdxl_solo` with
+k = 0.541 / 0.557 / 0.531. That was written to the scratchpad with its
+predictions for the two unmeasured cells **before** they ran — 1736 ms
+and 3369 ms — and they came back 1659.7 and 3213.2, 4.4% and 4.6% out. k
+across all six mismatched runs is 0.531–0.560, spread 5.5% of the mean.
+The prediction was recorded first precisely so that "it predicted them"
+could be checked rather than asserted.
+
+**What the law means.** The dominant term is the *video* tenant's step,
+which the image tenant's width does not change. Widening the image
+tenant's slice from 4 units to 28 improves its solo step 4.1x and makes
+its co-run step 3.8x **worse**, because the widening starves the tenant
+that is setting the pace. A missing asymmetric action was the standing
+explanation for why partitioning underperformed in every campaign here;
+that explanation is now gone, and 3.7 had already found six actions far
+worse than two.
+
+**It is one-directional.** CogVideoX pays 1.006–1.064 beside SDXL and
+**1.276** beside another CogVideoX at the same width, so the mismatch is
+0.82x *cheaper* for it. Reversing the offsets moves nothing (5.932 vs
+5.987), so it follows the model and not the die position.
+
+**Blocked or slowed is left open, and named.** SDXL's event p50 tracks
+its own solo at every split while its wall clock reads up to 26x that;
+CogVideoX's two instruments agree to 0.1%. Either the fast tenant's
+`last_step_seconds` is stale — the standing rule, and the fast tenant is
+exactly the one whose CPU races — or its kernels are unslowed and its
+thread is blocked between steps. The throughput claim is the same either
+way. These files cannot separate them because only the event readings
+were stored; the harness now stores `series_wall_s` too, so one re-run
+decides it.
+
+**Three instrument findings, recorded rather than smoothed over.**
+
+* `--diagnose` destroys peer streams that torch still holds, and one run
+  wrote its file, printed its verdict, then sat in `kfd_wait_on_events`
+  with a frozen CPU clock for 35 minutes. SIGTERM cleared it and the card
+  returned to 0% — not the 2026-09-05 wedge, which survived its kill. The
+  harness now leaves through `os._exit(0)` after the final flushed print.
+* The campaign's `|| exit 1` then took the remaining four cells with it,
+  because a killed run returns 143. The check is now whether the output
+  file was written. That check immediately earned itself: a resume
+  inherited a shell without conda and `python` was not on PATH.
+* Both hash changes are recorded in
+  `docs/attestations/x570-tree-mismatched-splits-gfx1201.sha256`, with
+  which runs came from which hash. The nine already on disk were not
+  re-run: nothing about them changed, and re-running would have replaced
+  evidence rather than added any.
+
+**A by-product worth its own line.** The same-model half is the first
+controls-passing step-level pair table on gfx1201, and every entry is
+measured twice — once as each side of the complementary pair — agreeing
+to 0.3–3.9%. Against the call-level table in use it runs **low at narrow
+slices and high at wide ones**: +0.19 at 4 units, +0.06 at 8, then −0.11,
+−0.09, −0.04. Same sign at the narrow end as the withdrawn gfx90a
+step-level reading and a fifth the size. Not switched: that needs both
+devices measured the same way.
+
+**3.3 is the third pass round this loop.** It withdrew a "two-episode
+serialised transient" fitted by `solo_a + solo_b` because the fitted
+variable held one stale value per episode. The withdrawal was right — the
+evidence was invalid — and the *shape* is now measured on a wall clock
+whose controls pass, with a coefficient of 0.543 rather than 1, and as
+the steady state rather than a transient. 1.5's own published text
+contains it: 988 ms "exactly its own 183 ms solo step plus one whole
+805 ms CogVideoX step, with no spread at all". No spread at all is the
+signature.

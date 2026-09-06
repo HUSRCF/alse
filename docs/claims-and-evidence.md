@@ -54,27 +54,12 @@ CogVideoX-2b at 480x720x9 frames.
 | **Scope** | Same-model 16+16 on this card. |
 | **Not claimed** | Any predictor of the draw. Five candidates have been proposed and retracted: working set, power cap, uncontrollable bistability, launch stagger, prior use of a full-die mask. |
 
-### 1.5 Partitioning mismatched tenants is nearly free, and both gain
+### 1.5 -- WITHDRAWN 2026-09-06, see 3.11 and 1.14
 
-| | |
-| --- | --- |
-| **Claim** | SDXL beside CogVideoX-2b costs 1.00–1.06 per side at every split, and partitioning Pareto-dominates rotation: both tenants advance faster than under an equal share of the whole die. |
-| **Evidence** | Five splits, five processes each, three episodes, solo and co-run both by device span; 15 measurements per entry, every range within 0.005. Gains: 4+28 gives +71.4% and +1.4%; 8+24 +65.3% and +8.5%; 16+16 +42.2% and +22.8%; 24+8 +17.7% and +29.5%; 28+4 +3.6% and +30.9%. |
-| **Travels to CDNA2, 2026-09-04** | The same harness at `52+52` of gfx90a's 104 units, six episodes: SDXL **0.995**, CogVideoX-2b **1.011**, both inside the gfx1201 band measured at `16+16`. Both sides still beat rotation, **+31.0%** and **+6.1%**. `runs/mismatched_pair/gfx90a_52_52_v1_5_harness.json` on DiamondHill. The first two episodes read 5.36 and 5.28 and are a warm-up transient with a named cause -- see below; the published verdict is the steady state, as it was on gfx1201. |
-| **Scope** | These two models at these workpoints. The split decides how the gain divides, not whether there is one. |
-| **Falsifier** | Any split where a side loses against its rotation share. |
-
-**The transient is worth its own line, because it is large and it
-has a mechanism.** Every SDXL step in the first co-run episode takes
-988 ms, which is *exactly* its own 183 ms solo step plus one whole
-805 ms CogVideoX step, with no spread at all; by the third episode
-every step is 183 ms and it stays there. The stream is not losing
-units, it is waiting for the device to **drain**, once per step,
-which is what the caching allocator's misses cost. 28 co-run steps
-are enough to stop them. A runtime that reaches steady state pays
-1.00; one whose allocation pattern keeps changing pays 5x, and that
-is a fact about serving two models from one process, not about CU
-masks.
+Withdrawn on the device it was measured on, by a sweep whose controls
+pass. `1.5b`, its CDNA2 replication, goes with it: same harness, and 1.12
+already contradicted it at the same widths. What replaces it is 1.14, and
+it is not a narrowing -- it points the other way.
 
 ### 1.6 Step-matched pairing carries the method
 
@@ -244,13 +229,13 @@ should be quoted until the table is rebuilt from these.
 | **Control** | The post-episode solos return to 182.3 and 804.8, `empty_cache` gives 189.3 and 797.7, and destroying the peer stream gives 182.3. Nothing persists, so this is contention and not process state. |
 | **Replication** | Four runs on an idle card: **4.937 / 4.865 / 4.887 / 4.928**. CogVideoX pays **1.019 / 1.026 / 1.017** in the runs whose solo was taken warm; one run's solo was cold at 888 ms against the 790 it settles to, so its 0.907 is measured against a bad denominator and is not used. The fourth run is the one on the sync-free instrument and it moved SDXL's figure by 0.2%, so the headline does not depend on that fix even though the same-model control does. |
 | **It follows the model, not the die position** | The falsifier was to swap the offsets. With CogVideoX at offset 0 and SDXL at 52, SDXL still pays **4.887**. The penalty travels with the tenant, not with the half of the die it was given. |
-| **Scope** | These two models at these workpoints, at an even split, on CDNA2. Other splits are not measured; neither is gfx1201. |
+| **Scope** | These two models at these workpoints, at an even split, on CDNA2. Other splits on CDNA2 are still not measured. gfx1201 now is, at all five splits: 1.14, where the same pair reads 1.689 to 26.137 and the ratio to its same-model control runs 1.48x to 23.43x. |
 | **Falsifier** | A split where SDXL beside CogVideoX costs what SDXL beside SDXL costs. |
 
-**This contradicts 1.5**, which says mismatched tenants cost 1.00-1.06
-per side. 1.5 was measured through the stale-reading path described in
-3.10. Its five splits have not all been re-measured, so it is not
-withdrawn here, but the even split has been and it fails.
+**This contradicted 1.5, and 1.5 is now withdrawn** -- 3.11, by the
+gfx1201 sweep of 2026-09-06 that re-measured all five of its splits with
+the controls passing. 1.12 was the first reading that did not fit it and
+it was right.
 
 
 ### 1.13 CU masks partition within a process and not between processes
@@ -274,6 +259,72 @@ gets no spatial partitioning at all, so the mechanism this project is
 about is available only to a runtime that holds all tenants in one
 address space, which is what `burstserve` does and is worth saying out
 loud rather than assuming.
+
+
+### 1.14 A mismatched pair is paced by the slower tenant, and partitioning it loses to rotation
+
+| | |
+| --- | --- |
+| **Claim** | On gfx1201, an SDXL tenant sharing the die with CogVideoX-2b completes one step per **video** step, whatever its own width. Its co-run step time is `cog_corun + 0.54 x sdxl_solo` at all five splits, so widening its slice from 4 units to 28 cuts its solo step 4.1x and makes its co-run step **3.8x worse**. Against rotation -- whole die to each tenant half the time -- the image tenant loses at **every** split, and the pair's aggregate step rate is **5.608/s under rotation against 0.629-2.889/s partitioned**. |
+| **Evidence** | `experiments/probes/gfx1201/pairs_fixed/`, 13 runs, 2026-09-06, `run_amd_nway_steps.py` with `--diagnose`, 6 episodes, wall clock per step with a per-adapter drain. Pre-registered in `docs/prereg-mismatched-splits.md` before the first cell; analysed by `scripts/analyse_mismatched_splits.py`, which applies the pre-registration's rules rather than restating its numbers. |
+
+    split   u   sdxl solo   sdxl corun    ext   same(w)   ratio     cog ext
+     4+28   4     506.2 ms     855.1 ms   1.689   1.139    1.48x     1.064
+     8+24   8     262.1        780.0      2.975   1.235    2.41x     1.057
+    16+16  16     153.7        920.1      5.987   1.324    4.52x     1.050
+     24+8  24     124.0       1659.7     13.386   1.202   11.14x     1.025
+     28+4  28     122.9       3213.2     26.137   1.115   23.43x     1.006
+
+`same(w)` is **this campaign's** SDXL-beside-SDXL run at the identical
+widths, measured in the same session on the same instrument, because the
+five same-model pairs already on disk are from the pre-fix harness and
+their allocator control fails.
+
+**The law, and it is the claim's content.** Across all six mismatched
+runs including the reversed one,
+
+    sdxl_corun = cog_corun + k x sdxl_solo,   k = 0.531 ... 0.560
+
+mean 0.543, spread 5.5% of it. The dominant term is the **video**
+tenant's step, which the image tenant's own width does not change. That
+is why more die buys the image tenant nothing here: from 4 units to 28,
+`sdxl_solo` falls 506 -> 123 ms and `cog_corun` rises 581 -> 3148 ms,
+because the video tenant is the one being starved.
+
+**It is one-directional, and the video tenant is better off mismatched.**
+CogVideoX pays 1.006-1.064 beside SDXL and **1.276** beside another
+CogVideoX at the same 16+16 -- so the mismatch is 0.82x *cheaper* for it.
+Nothing here is symmetric contention; the short-step tenant pays the
+long-step tenant's step.
+
+**It follows the model, not the die position.** Reversing the offsets at
+16+16 gives 5.932 and 1.039 against 5.987 and 1.050.
+
+**Against rotation, per side and in aggregate.** A side beats rotation iff
+`corun < 2 x solo(32)`, both from this instrument (SDXL 108.5 ms,
+CogVideoX 500.6 ms). SDXL loses at all five splits. CogVideoX beats it at
+4+28, 8+24 and 16+16 and loses at 24+8 and 28+4, where its own slice is
+narrow. Aggregate step rate for the pair: rotation **5.608/s**;
+partitioned 2.889 / 2.859 / 2.279 / 1.230 / 0.629 as the image tenant's
+share grows. **The best split is 1.94x worse than rotation and the worst
+is 8.9x worse.**
+
+| **Controls** | Worst drift across all 13 runs is **3.2%**: solo re-measured with the peers idle, after `empty_cache`, and after the peer streams are destroyed. Every solo is within 3% of `MEASURED_QUOTA_SECONDS` for its width and model -- CogVideoX at 32 units reads 500.6 ms against the curve's 515.5. A run failing either check is an instrument failure and is not read, which is the same rule that disqualified the old comparator set. |
+| **Scope** | gfx1201, these two models at these workpoints, **one process**, two resident step adapters on disjoint masked streams. 1.13 says masks do not partition across processes at all, so this is a claim about co-residency inside one address space, which is the arrangement `burstserve` uses. |
+| **Falsifier** | A mismatched pair whose image tenant completes steps faster under partitioning than under rotation; or a split where `k` departs materially from 0.54. |
+
+**Blocked or slowed is not decided here, and the next measurement is
+named.** SDXL's *event* p50 tracks its own solo at every split -- 156.2
+against 153.7 at 16+16, 124.8 against 122.9 at 28+4 -- while the wall
+clock reads 920.1 and 3213.2. CogVideoX's event and wall agree to 0.1%.
+Two readings are consistent with that: the fast tenant's
+`last_step_seconds` is the stale attribute of 3.10 and is unreadable by
+the project's standing rule, **or** SDXL's kernels really are unslowed
+and its thread is blocked between steps. The throughput claim above is
+the same either way -- 13 steps in 12.0 s against 2.0 s alone -- but the
+mechanism is not, and these files cannot separate them because
+`series_s` stores only the event readings. The harness now records
+per-step wall times so the next run can.
 
 
 ## 2. Negative results
@@ -1032,6 +1083,54 @@ along. See 1.11, 1.12 and the decision log for 2026-09-05.
 wall-clock cross-check on any phase: 14 steps reading 307 ms each in a
 phase that took 2.2 s is arithmetic, not instrumentation. It is now
 printed beside every event figure.
+
+
+---
+
+### 3.11 That partitioning mismatched tenants is nearly free, and both gain
+
+**1.5, and 1.5b with it.** 1.5 said SDXL beside CogVideoX-2b costs
+1.00-1.06 per side at every split on gfx1201 and Pareto-dominates
+rotation -- +71.4% / +1.4% at 4+28 through +3.6% / +30.9% at 28+4. 1.5b
+said the same at 52+52 of gfx90a, 0.995 and 1.011.
+
+Both are withdrawn. The re-measurement on gfx1201, pre-registered and
+with every control passing, is 1.14: the image tenant pays 1.689 to
+26.137, loses to rotation at all five splits, and the pair's aggregate
+step rate is 1.94x to 8.9x *worse* than rotation. On gfx90a, 1.12 had
+already read 4.93 where 1.5b read 0.995 at the same widths.
+
+**Why the old number was wrong, and it is the same cause twice.** 1.5's
+harness reads `adapter.last_step_seconds` every iteration, and that
+attribute is only updated `if previous_end.query()`. When the CPU runs
+ahead the update is skipped and the previous value persists, so a loop
+that appends it every step records one reading N times. The fast tenant
+is the one whose CPU races, and in a mismatched pair the fast tenant is
+exactly the one whose penalty was being measured. See 3.10 and 5.
+
+**1.5's own text contains the refutation, read as a transient.** It
+records the first co-run episode at 988 ms per SDXL step, "exactly its
+own 183 ms solo step plus one whole 805 ms CogVideoX step, with no spread
+at all", and explains it as a caching-allocator warm-up that 28 co-run
+steps end. No spread at all is the stale-reading signature. And the
+quantity is 1.14's law with `k = 1` instead of 0.54: what 1.5 called the
+transient is the steady state, and what it published as the steady state
+was the instrument holding still.
+
+**3.3 is the third time round this loop.** It withdrew a "two-episode
+serialised transient" fitted by `solo_a + solo_b` across five splits
+within 3-9%, on the grounds that the fitted variable held one stale value
+per episode. That withdrawal was correct -- the evidence was invalid --
+but the *shape* it threw away is now measured on a wall clock whose
+controls pass. A fit can be right about the world and still have to go
+for being unsupported by its instrument; when it comes back it comes back
+on new evidence, and 1.14's coefficient is 0.543, not 1.
+
+**What it does not touch.** The same-model results, 1.11 and the N-way
+tables, are from the corrected instrument and stand. So do the runtime
+campaigns -- A, P, the 2x2, C -- which never used this harness, and which
+measured partitioning losing on this workload. 1.14 is the co-run
+arithmetic finally agreeing with them.
 
 
 ## 4. Open

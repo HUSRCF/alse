@@ -14,6 +14,14 @@ set -u
 cd "$(dirname "$0")/.."
 
 OUT=${OUT:-experiments/probes/gfx1201/pairs_fixed}
+# Activate the interpreter the sweep was launched under. On 2026-09-06 a
+# resume inherited a shell without it, `python` was not on PATH, and the
+# only reason that was not a silent skip is the file check in `run`.
+if ! command -v python > /dev/null; then
+  # shellcheck disable=SC1091
+  source "$HOME/anaconda3/bin/activate"
+fi
+
 MASKABLE=${MASKABLE:-32}
 EPISODES=${EPISODES:-6}
 STEPS=${STEPS:-14}

@@ -2,13 +2,17 @@
 """The co-run penalty, with one tenant per PROCESS.
 
 Every co-run number this project has ever published was measured with
-two threads of **one** process. On 2026-09-04 that arrangement was caught
-twice: once charging `hipMalloc`-class device drains as contention
-(claim 1.5's 7.3x, which is 0.995 when the allocator is warm), and once
-charging allocator *fragmentation* as contention -- claim 1.11, where
-`torch.cuda.empty_cache()` restores every slice to its solo exactly with
-the peers still resident. Both are process-local software costs wearing
-a hardware number's clothes.
+two threads of **one** process, and whether that is a hardware number or
+a process-local software cost is the question this file exists to ask.
+
+*(Rewritten 2026-09-06. This paragraph used to say the one-process
+arrangement had been "caught twice" on 2026-09-04 -- charging device
+drains as contention in claim 1.5, and allocator fragmentation as
+contention in claim 1.11. Both readings were themselves artefacts of a
+stale `last_step_seconds`, and both were reversed: 1.11 was restored on
+2026-09-05 with the withdrawal now standing at 3.10, and 1.5 was
+withdrawn on 2026-09-06 in the OTHER direction -- its 1.00-1.06 is
+1.689 to 26.137 on an instrument whose controls come back. See 1.14.)*
 
 One process per tenant removes the shared caching allocator, the shared
 GIL and the shared HIP context in one move, and it is what a deployed
@@ -523,8 +527,9 @@ def main() -> int:
     parser.add_argument("--models", default=None,
                         help="comma-separated model per slice, e.g. "
                              "`sdxl,cogvideox-2b`. This is the "
-                             "arrangement claim 1.5 is about, and 1.5 "
-                             "was measured with both models in ONE "
+                             "arrangement claim 1.5 was about -- 1.5 is "
+                             "withdrawn, see 1.14 -- and it was measured "
+                             "with both models in ONE "
                              "process; here they are two, with a "
                              "separate copy of the weights each, which "
                              "is also how they would really be served.")
