@@ -4,22 +4,37 @@
 \providecommand\HyField@AuxAddToCoFields[2]{}
 \@writefile{toc}{\contentsline {section}{Abstract}{1}{section*.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Co-run cost as a multiple of the solo step, one campaign. The clusters do not overlap.}}{1}{table.caption.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Contributions.}{1}{section*.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {2}Setup}{1}{section.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Measuring a step.}{1}{section*.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}The co-run penalty is bistable}{1}{section.3}\protected@file@percent }
-\newlabel{sec:bistable}{{3}{1}{The co-run penalty is bistable}{section.3}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Five processes per split, three episodes, solo and co-run both by device span; 15 measurements per entry, every range within $0.005$. Rotation gives a tenant the whole die for its share of the wall clock.}}{2}{table.caption.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{It is RDNA4's, not AMD's.}{2}{section*.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Mismatched tenants partition almost for free}{2}{section.4}\protected@file@percent }
-\newlabel{sec:mismatch}{{4}{2}{Mismatched tenants partition almost for free}{section.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}A scheduler that measures, and what it was really doing}{2}{section.5}\protected@file@percent }
-\newlabel{sec:probe}{{5}{2}{A scheduler that measures, and what it was really doing}{section.5}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Urgent SLO miss rate, 9 paired seeds. Every policy improves with the envelope off; all four intervals exclude zero.}}{2}{table.caption.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Robustness.}{2}{section*.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {6}A pre-registered negative}{2}{section.6}\protected@file@percent }
-\newlabel{sec:negative}{{6}{2}{A pre-registered negative}{section.6}{}}
+\@writefile{toc}{\contentsline {paragraph}{What this paper does not claim.}{1}{section*.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Co-run cost as a multiple of the solo step, one campaign. The clusters do not overlap.}}{2}{table.caption.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Setup}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Measuring a step.}{2}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}The co-run penalty is bistable}{2}{section.3}\protected@file@percent }
+\newlabel{sec:bistable}{{3}{2}{The co-run penalty is bistable}{section.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{It is RDNA4's, not AMD's.}{2}{section*.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Milliseconds per denoising step, wall clock with a per-adapter drain, last of six episodes. \emph  {same model} is SDXL beside SDXL at the identical width, measured in the same session on the same instrument. Every control returns to within $3.2\%$ of the pre-episode solo and every solo is within $3\%$ of the measured quota curve.}}{2}{table.caption.8}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:mismatch}{{2}{2}{Milliseconds per denoising step, wall clock with a per-adapter drain, last of six episodes. \emph {same model} is SDXL beside SDXL at the identical width, measured in the same session on the same instrument. Every control returns to within $3.2\%$ of the pre-episode solo and every solo is within $3\%$ of the measured quota curve}{table.caption.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}The slower tenant sets the pace}{2}{section.4}\protected@file@percent }
+\newlabel{sec:mismatch}{{4}{2}{The slower tenant sets the pace}{section.4}{}}
+\newlabel{eq:pacing}{{1}{2}{The slower tenant sets the pace}{equation.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{It is one-directional, and it follows the model.}{2}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Against rotation.}{3}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Blocked or slowed, we do not say.}{3}{section*.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}The penalty counts peers, and stops at the process boundary}{3}{section.5}\protected@file@percent }
+\newlabel{sec:peers}{{5}{3}{The penalty counts peers, and stops at the process boundary}{section.5}{}}
+\@writefile{toc}{\contentsline {paragraph}{Peers, not busy die.}{3}{section*.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Not across processes.}{3}{section*.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}A scheduler that measures, and what it was really doing}{3}{section.6}\protected@file@percent }
+\newlabel{sec:probe}{{6}{3}{A scheduler that measures, and what it was really doing}{section.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Urgent SLO miss rate, 9 paired seeds. Every policy improves with the envelope off; all four intervals exclude zero.}}{3}{table.caption.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Robustness.}{3}{section*.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}A pre-registered negative}{3}{section.7}\protected@file@percent }
+\newlabel{sec:negative}{{7}{3}{A pre-registered negative}{section.7}{}}
+\@writefile{toc}{\contentsline {paragraph}{The baseline that was missing.}{4}{section*.16}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Three instruments that fitted artifacts}{4}{section.8}\protected@file@percent }
+\newlabel{sec:method}{{8}{4}{Three instruments that fitted artifacts}{section.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Threats to validity}{4}{section.9}\protected@file@percent }
 \newlabel{tocindent-1}{0pt}
 \newlabel{tocindent0}{0pt}
 \newlabel{tocindent1}{4.62497pt}
@@ -27,9 +42,6 @@
 \newlabel{tocindent3}{0pt}
 \newlabel{tocindent4}{0pt}
 \newlabel{tocindent5}{0pt}
-\@writefile{toc}{\contentsline {section}{\numberline {7}The instrument that fitted an artifact}{3}{section.7}\protected@file@percent }
-\newlabel{sec:method}{{7}{3}{The instrument that fitted an artifact}{section.7}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {8}Threats to validity}{3}{section.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{3}{section.9}\protected@file@percent }
-\newlabel{TotPages}{{3}{3}{}{page.3}{}}
-\gdef \@abspage@last{3}
+\@writefile{toc}{\contentsline {section}{\numberline {10}Conclusion}{5}{section.10}\protected@file@percent }
+\newlabel{TotPages}{{5}{5}{}{page.5}{}}
+\gdef \@abspage@last{5}

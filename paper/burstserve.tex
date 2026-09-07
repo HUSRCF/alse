@@ -15,8 +15,8 @@
 
 \newcommand{\ci}[2]{[\,#1,\ #2\,]}
 
-\title{Spatial partitioning on a masked GPU is bistable, and a
-scheduler that measures can ride it}
+\title{Your peer sets your step time: spatial GPU partitioning is
+pair-specific, not width-specific}
 \author{Draft}
 \affiliation{\institution{Claims traced to
   \texttt{docs/claims-and-evidence.md}}\country{}}
@@ -25,45 +25,63 @@ scheduler that measures can ride it}
 
 \begin{abstract}
 We partition a single AMD GPU between concurrent diffusion tenants using
-CU masks and a step-granular scheduler, and we report three things the
-hardware does that a static cost model cannot express.
+CU masks and a step-granular scheduler. Any such scheduler needs to know
+what a step costs at $q$ units and how much more it costs when a peer
+holds the rest. We report that the second quantity is not a function of
+the split at all.
 
-First, the co-run penalty for two same-model tenants on disjoint
-$16{+}16$ masks is \emph{bistable}: it is either $1.297\times$ or
-$1.949\times$ the solo step time, the state is drawn once per process,
-never changes within one, and is identifiable from a single step. Over
-160 processes the slow state occurs in 16.9\%, \ci{11.4\%}{23.6\%}, and
-the rate is not stable between campaigns. No predictor of the draw has
-survived; five have been proposed and retracted.
+\textbf{It is set by which peer.} On gfx1201, SDXL beside CogVideoX-2b
+pays $1.689\times$ its solo step at $4{+}28$ and $26.137\times$ at
+$28{+}4$ --- the penalty rises as the image tenant's own slice
+\emph{widens}, because its co-run step obeys $\mathit{corun}_{\text{sdxl}}
+= \mathit{corun}_{\text{cog}} + 0.54\,\mathit{solo}_{\text{sdxl}}$, with
+$k \in [0.531, 0.560]$ over six runs. The dominant term is the video
+tenant's step, which the image tenant's width does not change. Fitted on
+three splits and tested out of sample on the two not yet run, predicting
+$1736$ and $3369$\,ms against $1659.7$ and $3213.2$ measured. Going from
+4 units to 28 improves the image tenant's solo step $4.1\times$ and its
+co-run step $3.8\times$ \emph{worse}. It is one-directional: the video
+tenant pays $1.006$--$1.064$ beside SDXL and $1.276$ beside another
+CogVideoX. Against rotation --- the whole die to each tenant half the
+time --- the pair's aggregate step rate is $5.608$/s against
+$0.629$--$2.889$/s partitioned, so the best split is $1.94\times$ worse
+and the worst $8.9\times$.
 
-Second, partitioning \emph{mismatched} tenants is almost free. SDXL
-beside CogVideoX-2b costs $1.00$--$1.06$ per side at every split, and
-both tenants advance faster than under an equal share of the whole die:
-at $4{+}28$, $+71.4\%$ and $+1.4\%$; at $28{+}4$, $+3.6\%$ and
-$+30.9\%$. The split decides how the gain divides, not whether there is
-one.
+\textbf{It counts peers, not busy die.} A slice pays $1.050$, $1.367$,
+$2.318$, $4.520$ at 1, 2, 4 and 8 equal ways on gfx1201 and $1.024$,
+$1.247$, $1.507$, $2.245$ on gfx90a. Four ways is $+77.3\%$ over the
+pairwise entry for a slice of the same width.
 
-Third, a negative about our own design. A dual-ledger probe that charges
-from measurement appeared to reduce urgent SLO miss rate by $13\%$ under
-same-model co-location, by cutting expensive serial fallbacks by
-73--81\%. Those fallbacks come from a conservative envelope we added.
-With the envelope removed, every policy improves and the probe's benefit
-vanishes: $+0.41\%$, \ci{-0.0211}{+0.0256}. The probe was a workaround
-for a mechanism we introduced.
+\textbf{It stops at the process boundary.} Two processes on disjoint
+$16{+}16$ masks pay $1.97\times$ each; giving both the whole die instead
+costs $2.10\times$. Two \emph{threads} of one process on those same
+halves pay $1.37\times$. In aggregate step rate, masking across processes
+costs $24\%$ against not masking, so the mechanism is available only to a
+runtime holding every tenant in one address space.
 
-We also report a pre-registered negative. On the mismatched workload the
-grid was designed around --- 405 cells, nine policies --- the method is
-$0.56\%$ \emph{worse} than the strongest baseline against a 20\% target,
-because mismatched tenants do not contend and a contention manager has
-nothing to manage.
+\textbf{And for same-model tenants it is drawn, not computed.} The
+penalty at $16{+}16$ is bistable: either $1.297\times$ or $1.949\times$,
+latched per process, identifiable from a single step, slow in $16.9\%$,
+\ci{11.4\%}{23.6\%} of 160 processes. It is absent on gfx90a.
 
-Finally, we describe a measurement error worth more than any of the
-above: a deferred-event instrument produced a two-episode transient with
-a quantitative account fitting five splits to within 3--9\% over a
-$3\times$ range, and the account was fitting a stale variable. What
-caught it was running two instruments over the same steps in the same
-process, where one reported ten times the other inside an interval that
-physically contained it.
+The scheduling consequence is negative and pre-registered. On the
+mismatched workload our grid was designed around --- 405 cells, nine
+policies --- the method is $0.56\%$ \emph{worse} than the strongest
+baseline against a $20\%$ target. Strict priority, which never partitions
+at all, beats the adaptive scheduler on urgent miss rate by $+134\%$
+under arrivals and $+84.5\%$ under backlog. A dual-ledger probe that
+appeared to cut urgent miss by $13\%$ was avoiding a conservative
+envelope we had added ourselves; with the envelope removed its benefit is
+$+0.41\%$, \ci{-0.0211}{+0.0256}.
+
+Finally, a methodological result we would report even if the rest had
+gone the other way. Three separate cost models here were beautiful,
+quantitative and wrong, each an artifact of a deferred-event instrument
+that repeats one stale reading when the CPU runs ahead --- including one
+fitting five splits to within $3$--$9\%$ over a $3\times$ range. The
+control that catches all three is cheap and was missing from every one:
+re-measure the solo \emph{after} the co-run, with the peers idle. A
+penalty that does not vanish when the peers stop is not a penalty.
 \end{abstract}
 
 \maketitle
@@ -80,23 +98,46 @@ suspended, and a suspended diffusion step is not free to resume.
 
 The premise of any such scheduler is a cost model: how much does a step
 cost at $q$ units, and how much more does it cost when a peer holds the
-other $32-q$? This paper is largely about how badly that second question
-behaves, and what a scheduler has to do about it.
+other $32-q$? This paper is about the second question, and our answer is
+that it is not a question about $q$. The externality is a property of the
+\emph{pair} --- which models, how many of them, and whether they share an
+address space --- and for a mismatched pair it is dominated by a term the
+tenant's own width cannot move. A scheduler that models it as
+$f(q, 32-q)$, as ours did and as a cost-model-driven partitioner must,
+is not approximating this hardware; it is describing a different one.
 
 \paragraph{Contributions.}
 \begin{enumerate}
 \item A measurement of the co-run penalty on gfx1201 showing it is
-  bistable and latched per process (\S\ref{sec:bistable}).
-\item A measurement showing mismatched tenants partition almost for
-  free, with both sides gaining over rotation at every split
+  bistable and latched per process --- drawn rather than computed from
+  the split (\S\ref{sec:bistable}).
+\item The paper's central result: for a mismatched pair the co-run step
+  time is set by the \emph{slower} tenant, so widening the faster
+  tenant's slice makes it worse, and every split loses to rotation. Five
+  splits on gfx1201, pre-registered, with the law tested out of sample
   (\S\ref{sec:mismatch}).
-\item Two negatives, both about our own design: a probe whose measured
-  benefit is entirely the avoidance of a conservative envelope we added
-  (\S\ref{sec:probe}), and a pre-registered failure on the workload the
-  grid was built around (\S\ref{sec:negative}).
-\item A methodological account of an instrument that produced a
-  beautiful and wrong quantitative model (\S\ref{sec:method}).
+\item Two further ways the penalty escapes $f(q, 32-q)$: it counts peers
+  rather than busy die, at 1, 2, 4 and 8 ways on two architectures; and
+  it does not cross the process boundary, so the mechanism exists only
+  inside one address space (\S\ref{sec:mismatch}).
+\item Three negatives. Two are about our own design: a probe whose
+  measured benefit is entirely the avoidance of a conservative envelope
+  we added (\S\ref{sec:probe}), and a pre-registered failure on the
+  workload the grid was built around (\S\ref{sec:negative}). The third is
+  that strict priority --- no partitioning at all --- beats the adaptive
+  scheduler on this workload.
+\item A methodological account of three cost models that were beautiful,
+  quantitative and wrong for the same instrument reason, and of the one
+  control that catches all three (\S\ref{sec:method}).
 \end{enumerate}
+
+\paragraph{What this paper does not claim.} That spatial partitioning is
+useless. Masking is exact here, byte-for-byte reproducible across
+re-grants, and beats two unmasked full-die streams. What we claim is that
+its cost cannot be predicted from widths, that on a mismatched pair it
+loses to time-slicing, and that a scheduler must therefore keep temporal
+isolation as a first-class action and refuse configurations it has no
+measurement for.
 
 \section{Setup}
 
@@ -179,33 +220,116 @@ $2\times108.9$\,ms, the fast state makes partitioning worth $+11.5\%$ and
 the slow state worth $-25.5\%$. A model with one externality per width
 pair is calibrating against a draw it cannot see.
 
-\section{Mismatched tenants partition almost for free}
+\section{The slower tenant sets the pace}
 \label{sec:mismatch}
 
 \begin{table}[t]
 \centering
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrrrr}
 \toprule
-split & SDXL & Cog & SDXL & Cog \\
-(sdxl+cog) & ext & ext & vs rot. & vs rot. \\
+split & SDXL & SDXL & SDXL & same & Cog \\
+(sdxl+cog) & solo & co-run & ext & model & ext \\
 \midrule
-$4{+}28$ & $1.025$ & $1.063$ & $+71.4\%$ & $+1.4\%$ \\
-$8{+}24$ & $1.029$ & $1.052$ & $+65.3\%$ & $+8.5\%$ \\
-$16{+}16$ & $1.016$ & $1.047$ & $+42.2\%$ & $+22.8\%$ \\
-$24{+}8$ & $1.004$ & $1.006$ & $+17.7\%$ & $+29.5\%$ \\
-$28{+}4$ & $1.002$ & $1.010$ & $+3.6\%$ & $+30.9\%$ \\
+$4{+}28$ & $506.2$ & $855.1$ & $1.689$ & $1.139$ & $1.064$ \\
+$8{+}24$ & $262.1$ & $780.0$ & $2.975$ & $1.235$ & $1.057$ \\
+$16{+}16$ & $153.7$ & $920.1$ & $5.987$ & $1.324$ & $1.050$ \\
+$24{+}8$ & $124.0$ & $1659.7$ & $13.386$ & $1.202$ & $1.025$ \\
+$28{+}4$ & $122.9$ & $3213.2$ & $26.137$ & $1.115$ & $1.006$ \\
 \bottomrule
 \end{tabular}
-\caption{Five processes per split, three episodes, solo and co-run both
-by device span; 15 measurements per entry, every range within $0.005$.
-Rotation gives a tenant the whole die for its share of the wall clock.}
+\caption{Milliseconds per denoising step, wall clock with a per-adapter
+drain, last of six episodes. \emph{same model} is SDXL beside SDXL at the
+identical width, measured in the same session on the same instrument.
+Every control returns to within $3.2\%$ of the pre-episode solo and every
+solo is within $3\%$ of the measured quota curve.}
+\label{tab:mismatch}
 \end{table}
 
-Both tenants gain at every split, so partitioning Pareto-dominates
-rotation here. Neither is paying for the other's gain --- which the
-same-model case never manages --- and no draw is observed: the two
-arrangements behave differently and the die keys its state on the mask
-pair.
+Table~\ref{tab:mismatch} is the paper's central measurement. Read down
+the SDXL column: the image tenant's slice grows from 4 units to 28, its
+solo step improves $4.1\times$, and its co-run step gets $3.8\times$
+\emph{worse}. Against its own same-model control at the identical width
+it pays $1.48\times$ at $4{+}28$ and $23.43\times$ at $28{+}4$.
+
+The reason is visible in the two co-run columns. Across all six
+mismatched runs, including one with the offsets reversed,
+%
+\begin{equation}
+\mathit{corun}_{\text{sdxl}} = \mathit{corun}_{\text{cog}}
+  + k\,\mathit{solo}_{\text{sdxl}},\qquad k \in [0.531, 0.560],
+\label{eq:pacing}
+\end{equation}
+%
+mean $0.543$, spread $5.5\%$ of it. The dominant term is the video
+tenant's step. The image tenant's width does not appear in it, and
+widening the image tenant's slice enters only by narrowing the video
+tenant's, which makes the dominant term larger: $\mathit{corun}_{\text{cog}}$
+runs from $581$\,ms at 28 units to $3148$\,ms at 4. More die, for this
+tenant, on this pair, is strictly worse.
+
+Equation~\ref{eq:pacing} was fitted on the first three splits to land and
+written down, with its predictions for the two not yet run, before those
+ran: $1736$ and $3369$\,ms against $1659.7$ and $3213.2$ measured, $4.4\%$
+and $4.6\%$ out. We record this because a five-point fit to five points
+is not evidence of a law, and because this project has published a
+beautiful five-split fit before that was fitting an instrument
+(\S\ref{sec:method}).
+
+\paragraph{It is one-directional, and it follows the model.} CogVideoX
+pays $1.006$--$1.064$ beside SDXL and $1.276$ beside another CogVideoX at
+the same width, so the mismatch is $0.82\times$ \emph{cheaper} for it.
+Nothing here is symmetric contention: the short-step tenant pays the
+long-step tenant's step. Reversing the offsets at $16{+}16$, so the
+models exchange halves of the die, moves the penalty by $0.06$ --- it
+travels with the tenant, not with the position.
+
+\paragraph{Against rotation.} A side beats rotation --- the whole die for
+half the wall clock --- iff its co-run step is under twice its whole-die
+solo. The image tenant loses at all five splits. The video tenant wins at
+$4{+}28$, $8{+}24$ and $16{+}16$ and loses at the two where its own slice
+is narrow. For the pair together, aggregate step rate is $5.608$/s under
+rotation against $2.889$, $2.859$, $2.279$, $1.230$ and $0.629$/s
+partitioned: the best split $1.94\times$ worse, the worst $8.9\times$.
+
+\paragraph{Blocked or slowed, we do not say.} The image tenant's
+event-timed step tracks its own solo at every split while its wall clock
+reads up to $26\times$ that; the video tenant's two instruments agree to
+$0.1\%$. Either the fast tenant's deferred event reading is stale --- the
+failure of \S\ref{sec:method}, and the fast tenant is exactly the one
+whose CPU races --- or its kernels are unslowed and its thread is blocked
+between steps. The throughput result is the same either way, 13 steps in
+$12.0$\,s against $2.0$\,s alone, but the mechanism is not, and our
+stored series cannot separate them.
+
+\section{The penalty counts peers, and stops at the process boundary}
+\label{sec:peers}
+
+Two more measurements say the externality is not $f(q, 32-q)$, and
+neither needs a mismatched pair.
+
+\paragraph{Peers, not busy die.} With $N$ equal slices of one model
+covering the whole die, a slice pays $1.050$, $1.367$, $2.318$ and
+$4.520$ at $N = 1, 2, 4, 8$ on gfx1201, and $1.024$, $1.247$, $1.507$ and
+$2.245$ on gfx90a. In every case the die is fully subscribed and only the
+number of peers changes. Four slices of 8 units pay $77.3\%$ more than
+the pairwise table's entry for an 8-unit slice with one 24-unit peer. The
+$N = 2$ cell is the control that licenses the rest: there the
+arrangement \emph{is} the pairwise one, and it agrees with the
+independently measured pairwise entry to $2.4\%$.
+
+\paragraph{Not across processes.} Every co-run number above, and every
+one we know of in this line of work, is measured with threads of one
+process. Deployed multi-tenant serving is normally one server per tenant.
+Two processes on disjoint $16{+}16$ masks pay $1.97\times$ each; giving
+both processes the whole die instead costs $2.10\times$ --- close enough
+to $2\times$ to be the hardware scheduler time-slicing them. The mask
+still applies, verified against the quota curve at $144.6$ versus
+$112.8$\,ms unmasked, so it caps each process at half the units and the
+time-slicing happens anyway. In aggregate step rate: one process alone on
+the whole die $8.87$/s, two threads of one process at $16{+}16$
+$9.54$/s, two processes with the whole die each $8.45$/s, two processes
+on disjoint halves $6.46$/s. Masking across processes costs $24\%$ and
+buys nothing.
 
 \section{A scheduler that measures, and what it was really doing}
 \label{sec:probe}
@@ -275,11 +399,31 @@ $0.56\%$ \emph{worse} than the strongest non-oracle baseline,
 \ci{+0.0000}{+0.0056} over 45 paired configurations, against a target of
 a 20\% improvement.
 
-It follows from \S\ref{sec:mismatch}. Mismatched pairings cost
-$1.02$--$1.06$, so there is nothing for a contention manager to manage,
-while a spurious probe still costs a good pairing. The pairing itself
-does win: FCFS by $6.5\%$, static partitioning and EDF by about $3\%$,
-and at overload FCFS by $17\%$.
+It follows from \S\ref{sec:mismatch}, though not in the way we first
+wrote it down. We originally explained it by saying mismatched pairings
+cost $1.02$--$1.06$, so a contention manager has nothing to manage. That
+explanation was built on a measurement we have since withdrawn. The
+replacement runs the other way: partitioning a mismatched pair is not
+cheap but ruinous for the faster tenant, so a policy whose action is to
+partition is choosing the worse arm, and a policy that measures more
+carefully still chooses it. The pairing itself does win against the
+baselines that were in the grid --- FCFS by $6.5\%$, static partitioning
+and EDF by about $3\%$, and at overload FCFS by $17\%$ --- which is why
+the baseline set mattered more than the policy set, as the next
+paragraph but one records.
+
+\paragraph{The baseline that was missing.} For most of this project's
+life the ``no partitioning'' arm was whole-die time-slicing between
+tenants. Strict priority --- the whole die to the deadline-carrying
+tenant whenever it has work, no partitioning ever, the obvious production
+policy --- had never been run. It beats the adaptive scheduler on urgent
+miss rate by $+134\%$ under arrivals and $+84.5\%$ under backlog,
+intervals excluding zero under a seed cluster bootstrap, better in 15 of
+20 cells and tied in 3; under arrivals it dominates, with identical video
+goodput and identical Jain fairness. We then tested the two defects that
+could have explained it --- a round barrier and a two-action space --- in
+a 240-cell factorial, and neither does: every cell loses to priority by
+$+83\%$ to $+434\%$, and six actions are far worse than two.
 
 \textbf{How much of the grid could separate anything.} ``45 paired
 configurations'' overstates the evidence, so we say what it is. The
@@ -302,18 +446,50 @@ baseline by $22\%$, and its own ablation by $4.5\%$ on a single cell, and
 which opponent a headline uses is the easiest thing to lose between a
 table and a sentence.
 
-\section{The instrument that fitted an artifact}
+\section{Three instruments that fitted artifacts}
 \label{sec:method}
 
 Reading a step's events one step late avoids draining the pipeline, but
 the read only lands once the previous step's events have retired. When
 the measured side's steps are short it never lands, and the variable
-holds one stale value for an entire episode.
+holds one stale value for an entire episode. The side whose steps are
+short is the side whose CPU runs ahead, which in a mismatched pair is
+exactly the side whose penalty is being measured.
 
-This produced a two-episode ``serialisation transient'' in which each
-side appeared to cost the sum of the two solo steps. The account fitted
-five splits to within 3--9\% over a $3\times$ range of that sum. It was a
-real fit to a stale variable.
+The same defect produced three published cost models, each quantitative
+and each wrong.
+
+\textbf{One.} A two-episode ``serialisation transient'' in which each
+side appeared to cost the sum of the two solo steps, fitting five splits
+to within 3--9\% over a $3\times$ range of that sum. A real fit to a
+stale variable.
+
+\textbf{Two.} A wall clock introduced to replace the stale events, but
+stopped without synchronising the device, so it measured the CPU's
+submission rate: 14 steps of a 269\,ms quota read 156\,ms. The N-way
+penalty of \S\ref{sec:peers} was withdrawn on that reading and restored
+the next day when the clock was drained before it was stopped.
+
+\textbf{Three.} The claim this paper's \S\ref{sec:mismatch} replaces:
+mismatched tenants costing $1.00$--$1.06$ per side and Pareto-dominating
+rotation at every split. Its own published text contains the refutation,
+read at the time as a warm-up transient --- a first co-run episode of
+$988$\,ms per step, ``exactly its own $183$\,ms solo step plus one whole
+$805$\,ms CogVideoX step, with no spread at all''. No spread at all is
+the signature of a variable that is not being updated. What we now
+measure at that split is $5.987$, and equation~\ref{eq:pacing} is the
+$988$\,ms account with a coefficient of $0.543$ instead of $1$ and as the
+steady state rather than a transient.
+
+\textbf{The control that catches all three} is cheap and was missing from
+every one of them: after the co-run episodes, re-measure the solo with
+the peers idle, then again after dropping the allocator cache, then again
+with the peer streams destroyed. A penalty that does not vanish when the
+peers stop is not a penalty. Applying it retroactively disqualifies the
+comparator set we had intended to use for \S\ref{sec:mismatch} --- at
+eight ways its post-episode solo reads $2048$\,ms against a pre-episode
+$504$ --- which is why that section measures its own same-model baseline
+in the same session.
 
 What caught it was not reasoning. Running a second instrument --- events
 bracketing the same step on the same stream, which physically
@@ -334,12 +510,27 @@ routine.
 
 \section{Threats to validity}
 
-\textbf{Single SKU.} Every result is from one mask implementation on one
-card. Nothing here rules out that they depend on that implementation's
-queueing and arbitration, and the bistability of \S\ref{sec:bistable}
-makes that a live question rather than a formality. No amount of
-additional cells on the same card substitutes for cross-vendor
-agreement.
+\textbf{Two SKUs, one vendor.} Results are from gfx1201 (RDNA4, 32
+maskable units) and gfx90a (CDNA2, 104 per GCD). The two disagree in ways
+that matter: bistability is present on the first and absent on the
+second, and the aggregate solo throughput of $N$ slices peaks at four
+ways on gfx90a where it is monotone on gfx1201, so the Amdahl form our
+cost model assumes is refuted there outright. Nothing rules out that the
+whole family of results depends on AMD's queueing and arbitration. No
+number of additional cells on the same two cards substitutes for
+cross-vendor agreement.
+
+\textbf{Two models, one workpoint each.} SDXL at $768\times768$ and
+CogVideoX-2b at $480\times720\times9$. Equation~\ref{eq:pacing}'s
+coefficient is fitted across five splits of one pair; whether $k$ is a
+constant of the hardware, of the step-length ratio, or of these two
+models is not established. The obvious next measurement is a third model
+with an intermediate step length.
+
+\textbf{One process.} \S\ref{sec:peers} shows the mechanism does not
+survive the process boundary, so every quantitative result here describes
+a runtime that holds all tenants in one address space. For a deployment
+of one server per tenant, the finding is the $24\%$ loss, not the table.
 
 \textbf{Same-model co-location is not the primary workload.} The probe
 results of \S\ref{sec:probe} are measured there because the mechanism is
@@ -355,16 +546,28 @@ a unit test both say it should increase them. Under investigation.
 \section{Conclusion}
 
 The claim this work set out to make --- that spatial partitioning raises
-utilisation by a fixed factor --- is false as stated, and the reason is
-interesting: the factor is not fixed. It is bistable, latched per
-process, and depends on whether the co-located tenants contend at all.
+utilisation by a fixed factor --- is false as stated, and so was our
+first replacement for it. The factor is not fixed, and it is not a
+function of the split. It is drawn per process for same-model tenants,
+it grows with the number of peers rather than with how busy the die is,
+it vanishes across the process boundary, and for a mismatched pair it is
+set by the slower tenant's step, so the faster tenant gets worse as you
+give it more of the die.
 
-What survives is a hardware result and a method for getting it. What does
-not is our own scheduling contribution: the probe's measured value was
-the avoidance of an envelope we had added, and the envelope was a net
-cost. We report both because a scheduler that looks good against a
-runtime carrying one of your own defects looks good for the wrong
-reason, and the only way to find that out is to remove the defect and
-measure again.
+That last one is why our scheduler lost. A partitioner needs
+$\mathit{externality}(q, 32-q)$; this hardware supplies something whose
+arguments include which models, how many, and in whose address space. Our
+policies asked the first question, and every negative in this paper ---
+the pre-registered grid, the probe, the loss to strict priority --- is
+what that costs. A scheduler that wants to use spatial partitioning here
+needs pair-specific measurements, an explicit refusal for configurations
+it has none for, and time-slicing kept as a first-class action rather
+than as the baseline it is assumed to beat.
+
+We report our own retractions in full because three of them came from one
+instrument defect and one control would have caught all three, and
+because the version of this paper that would have been submitted a month
+ago had a correct-looking quantitative account of a phenomenon that was
+not happening.
 
 \end{document}
